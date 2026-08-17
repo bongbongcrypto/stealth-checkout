@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+.next/
+.turbo/
+.vercel/
+coverage/
+
+# Environment / secrets — NEVER commit (public repo!)
+.env
+.env.*
+*.local
+*.key
+*.pem
+id_rsa*
+wallet.json
+*mnemonic*
+*seed*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
+
+# Binaries
+*.exe
+*.dll

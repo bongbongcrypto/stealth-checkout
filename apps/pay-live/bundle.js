@@ -31716,7 +31716,7 @@ function mountCheckout(container, opts) {
     checkout.pay(invoice).catch((err) => {
       opts.onFailed?.(err instanceof Error ? err.message : String(err));
       button.disabled = false;
-      button.textContent = `Retry \u2014 ${defaultLabel}`;
+      button.textContent = `Retry: ${defaultLabel}`;
     });
   });
   function renderProgress(p) {
@@ -31840,7 +31840,7 @@ function resolveToken(symbolOrAddress, registry = TOKENS) {
   const known = registry[symbolOrAddress];
   if (known) return known;
   if (/^0x[0-9a-fA-F]+$/.test(symbolOrAddress)) return { address: symbolOrAddress, decimals: 18 };
-  throw new Error(`Unknown token "${symbolOrAddress}" \u2014 register it with an address and decimals.`);
+  throw new Error(`Unknown token "${symbolOrAddress}": register it with an address and decimals.`);
 }
 function amountToUnits(amount, decimals) {
   const [ip = "0", fp = ""] = String(amount).trim().split(".");

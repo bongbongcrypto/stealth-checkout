@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Invoice watcher: watches per-invoice receive addresses over public RPC and
 // fires signed webhooks when a payment lands. This is the piece that makes
-// accepting private payments headless — no proving, no discovery service,
+// accepting private payments headless: no proving, no discovery service,
 // nothing beyond a JSON-RPC endpoint.
 //
 //   WATCHER_RPC=https://rpc.starknet.lava.build \
@@ -130,7 +130,7 @@ function resolveToken(body) {
 
 function createInvoice(body) {
   if (!body.receiveAddress || !/^0x[0-9a-fA-F]+$/.test(body.receiveAddress)) {
-    throw new Error("receiveAddress (hex) is required — one fresh address per invoice");
+    throw new Error("receiveAddress (hex) is required: one fresh address per invoice");
   }
   const { token, tokenAddress, decimals } = resolveToken(body);
   toUnits(body.amount, decimals); // validate amount format early

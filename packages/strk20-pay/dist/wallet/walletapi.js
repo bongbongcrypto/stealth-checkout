@@ -96,7 +96,7 @@ export class WalletApiAdapter {
         this.requireAddress();
         try {
             // wallet_strk20Balances via WalletAccountV6. The wallet may ask the user
-            // for consent — only call this once a payment flow has actually started.
+            // for consent: only call this once a payment flow has actually started.
             const entries = await this.accountV6.strk20Balances([info.address]);
             const entry = entries.find((e) => BigInt(e.token) === BigInt(info.address));
             return unitsToAmount(BigInt(entry?.balance ?? "0x0"), info.decimals);

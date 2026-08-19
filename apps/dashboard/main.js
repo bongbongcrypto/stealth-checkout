@@ -63,7 +63,7 @@ function render(invoices, demo) {
         a.textContent = short(inv.txHash);
         tx.append(a);
       } else {
-        tx.textContent = "—";
+        tx.textContent = "-";
       }
       tr.append(tx);
 
@@ -87,7 +87,7 @@ function render(invoices, demo) {
         });
         linkTd.append(a, copy);
       } else {
-        linkTd.textContent = "—";
+        linkTd.textContent = "-";
       }
       tr.append(linkTd);
       return tr;
@@ -103,7 +103,7 @@ async function refresh() {
     const invoices = await res.json();
     render(invoices, false);
     const watching = invoices.filter((i) => i.status === "watching").length;
-    statusEl.textContent = `watcher OK — ${watching} watching, ${invoices.length} total`;
+    statusEl.textContent = `watcher OK: ${watching} watching, ${invoices.length} total`;
   } catch {
     render(DEMO_ROWS, true);
     statusEl.textContent = "";

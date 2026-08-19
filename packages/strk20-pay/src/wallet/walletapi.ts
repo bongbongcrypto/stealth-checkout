@@ -2,7 +2,7 @@
 // WalletAccountV6. All heavy libraries load lazily inside methods, so the
 // widget stays importable (and testable) in environments without them wired.
 //
-// Every private action is exactly one STRK20_ACTION handed to the wallet —
+// Every private action is exactly one STRK20_ACTION handed to the wallet:
 // and a deposit is NEVER bundled with a transfer: the deposit is a public leg
 // naming the sender, so bundling would let an observer correlate both ends.
 // Unlinkability comes from shielding earlier, separately.
@@ -132,7 +132,7 @@ export class WalletApiAdapter implements WalletAdapter {
     this.requireAddress();
     try {
       // wallet_strk20Balances via WalletAccountV6. The wallet may ask the user
-      // for consent — only call this once a payment flow has actually started.
+      // for consent: only call this once a payment flow has actually started.
       const entries: Array<{ token: string; balance: string }> =
         await this.accountV6.strk20Balances([info.address]);
       const entry = entries.find((e) => BigInt(e.token) === BigInt(info.address));

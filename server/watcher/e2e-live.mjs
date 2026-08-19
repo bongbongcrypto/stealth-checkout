@@ -34,7 +34,7 @@ createInvoice({
   id: "e2e_pool",
   token: "STRK",
   amount: "1",
-  // The STRK20 pool holds STRK on mainnet — perfect stand-in for a paid invoice.
+  // The STRK20 pool holds STRK on mainnet: perfect stand-in for a paid invoice.
   receiveAddress: "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a",
 });
 
@@ -43,7 +43,7 @@ await pollOnce();
 
 const inv = invoices.get("e2e_pool");
 console.log(`invoice status: ${inv.status}`);
-console.log(`tx hash lookup: ${inv.txHash ?? "(best-effort miss — balance is the source of truth)"}`);
+console.log(`tx hash lookup: ${inv.txHash ?? "(best-effort miss: balance is the source of truth)"}`);
 
 const hook = await Promise.race([received, new Promise((r) => setTimeout(() => r({ timeout: true }), 15_000))]);
 if (hook.timeout) {

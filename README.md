@@ -1,23 +1,28 @@
 # Stealth Checkout
 
-**Accept private payments on Starknet.** A drop-in checkout for STRK20: embeddable payment widget, hosted invoice pages, headless payment confirmation with webhooks, receipts — and a pre-sign panel that tells the payer exactly what the payment does and does not reveal.
+**Accept private payments on Starknet.** A drop-in checkout for STRK20: embeddable payment widget, hosted invoice pages, headless payment confirmation with webhooks, receipts, and a pre-sign panel that tells the payer exactly what the payment does and does not reveal.
 
 Built for the [STRK20 Private Sprint](https://strk20.starknet.io/hackathon).
 
+**Try it now:**
+[coin-op arcade demo](https://bongbongcrypto.github.io/stealth-checkout/apps/demo-arcade/index.html) (full flow on a mock wallet, no setup) ·
+[invoice creator / hosted checkout](https://bongbongcrypto.github.io/stealth-checkout/apps/pay-live/index.html) (real wallet, mainnet) ·
+[integration guide](docs/INTEGRATION.md) (three tiers, from zero code to webhooks)
+
 ## Why
 
-STRK20 gives Starknet shielded balances and private transfers. The ecosystem around it is growing fast on the **sending** side — claim links, red packets, payroll rails. But if you run a storefront, a dapp, or a DAO and want to **accept** a private payment, there is nothing to install: no checkout component, no invoices, no receipts, and no way for your backend to learn "you got paid" without opening a wallet and scanning.
+STRK20 gives Starknet shielded balances and private transfers. The ecosystem around it is growing fast on the **sending** side: claim links, red packets, payroll rails. But if you run a storefront, a dapp, or a DAO and want to **accept** a private payment, there is nothing to install: no checkout component, no invoices, no receipts, and no way for your backend to learn "you got paid" without opening a wallet and scanning.
 
-Stealth Checkout is that missing accepting side — the Stripe Checkout of private payments.
+Stealth Checkout is that missing accepting side: the Stripe Checkout of private payments.
 
 ## What's in the box
 
 | Piece | What it does |
 |---|---|
 | `strk20-pay` | Framework-agnostic TS widget + React wrapper. One import → "Pay privately" button with full flow UX (connect → shield if needed → pay → confirmed). |
-| Hosted invoice pages | Sharable `pay/<invoice-id>` pages with amount, memo, status — like a payment link, but the payer side stays private. |
+| Hosted invoice pages | Sharable `pay/<invoice-id>` pages with amount, memo, status: like a payment link, but the payer side stays private. |
 | Watcher + webhooks | Merchant backend confirms payments by watching public RPC for per-invoice receive addresses. No proving dependency, fully headless. Fires `payment.confirmed` webhooks. |
-| Receipts | Per-payment receipt the payer can keep and selectively show — "this invoice was paid" without exposing their wallet history. |
+| Receipts | Per-payment receipt the payer can keep and selectively show: "this invoice was paid" without exposing their wallet history. |
 | Honesty panel | Before signing, the widget shows what this payment reveals on-chain and what it hides. No privacy overclaiming, ever. |
 | Demo store | A coin-op arcade: insert a coin (1 STRK, privately) → play. The full loop, experienceable solo in ~2 minutes. |
 
@@ -29,8 +34,8 @@ Stealth Checkout is that missing accepting side — the Stripe Checkout of priva
 
 ## Payment modes
 
-1. **Invoice address (default)** — the payer unshields to a fresh per-invoice address. The merchant backend confirms it headlessly over public RPC and fires a webhook. Payer identity: severed by the pool. Amount + invoice address: visible (that's the receipt working for you).
-2. **Note transfer** — the payer sends a private note to the merchant's pool account. Fully private on-chain; confirmation happens wallet-side.
+1. **Invoice address (default)**: the payer unshields to a fresh per-invoice address. The merchant backend confirms it headlessly over public RPC and fires a webhook. Payer identity: severed by the pool. Amount + invoice address: visible (that's the receipt working for you).
+2. **Note transfer**: the payer sends a private note to the merchant's pool account. Fully private on-chain; confirmation happens wallet-side.
 
 ## Repository layout
 

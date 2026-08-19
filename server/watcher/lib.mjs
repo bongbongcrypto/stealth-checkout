@@ -1,7 +1,7 @@
-// Pure logic for the invoice watcher — no I/O, fully unit-testable.
+// Pure logic for the invoice watcher: no I/O, fully unit-testable.
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-/** Starknet selector constants (sn_keccak of the name — stable, protocol-wide). */
+/** Starknet selector constants (sn_keccak of the name: stable, protocol-wide). */
 export const SELECTORS = {
   balanceOf: "0x02e4263afad30923c891518314c3c95dbe830a16874e8abc5777a9a20b54c76e",
   // ERC-20 Transfer event key (Cairo1 OZ / standard tokens)
@@ -79,7 +79,7 @@ export function balanceOfRequest(tokenAddress, holderAddress, id = 1) {
 
 /**
  * Best-effort tx-hash discovery: request body for Transfer events to `toAddress`.
- * Keys filter: [ [Transfer], [] (from: any), [to] ]. Some RPCs cap key filters —
+ * Keys filter: [ [Transfer], [] (from: any), [to] ]. Some RPCs cap key filters:
  * callers must treat a miss as "hash unknown", never as "not paid".
  */
 export function transferEventsRequest(tokenAddress, toAddress, fromBlock, id = 1) {

@@ -9,7 +9,7 @@ export function resolveToken(symbolOrAddress, registry = TOKENS) {
         return known;
     if (/^0x[0-9a-fA-F]+$/.test(symbolOrAddress))
         return { address: symbolOrAddress, decimals: 18 };
-    throw new Error(`Unknown token "${symbolOrAddress}" — register it with an address and decimals.`);
+    throw new Error(`Unknown token "${symbolOrAddress}": register it with an address and decimals.`);
 }
 /** Decimal-string amount → integer units for the token. Pure bigint math. */
 export function amountToUnits(amount, decimals) {

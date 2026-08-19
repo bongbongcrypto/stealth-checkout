@@ -1,4 +1,4 @@
-// SHADOW RUN — 60-second score-attack for the Stealth Checkout demo arcade.
+// SHADOW RUN: 60-second score-attack for the Stealth Checkout demo arcade.
 // Plain canvas, no engine. You are a shadow: collect encrypted notes, dodge seekers.
 
 export function createGame(canvas, { onGameOver }) {

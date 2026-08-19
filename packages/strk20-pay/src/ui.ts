@@ -67,7 +67,7 @@ export function mountCheckout(container: HTMLElement, opts: MountOptions): Mount
       .catch((err: unknown) => {
         opts.onFailed?.(err instanceof Error ? err.message : String(err));
         button.disabled = false;
-        button.textContent = `Retry — ${defaultLabel}`;
+        button.textContent = `Retry: ${defaultLabel}`;
       });
   });
 

@@ -4,7 +4,7 @@ import type { Amount, Network } from "../types.js";
  * The only surface the checkout core is allowed to touch.
  *
  * Deliberately mirrors the four actions the Privacy Wallet API ships today
- * (shield / private transfer / unshield / swap) — nothing in the core may
+ * (shield / private transfer / unshield / swap): nothing in the core may
  * assume capabilities beyond these, so the mainnet path stays unblocked.
  */
 export interface WalletAdapter {

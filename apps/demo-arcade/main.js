@@ -16,8 +16,8 @@ let credits = 0;
 let mounted = null;
 let coinSeq = 0;
 
-// One wallet per visitor session, funded with play money. The full flow —
-// shield (public, screened) → note maturation → private payment — runs
+// One wallet per visitor session, funded with play money. The full flow:
+// shield (public, screened) → note maturation → private payment: runs
 // exactly as it will on Sepolia/mainnet, just faster.
 const wallet = new MockWallet({ funded: { STRK: "25" }, latency: 650 });
 
@@ -38,7 +38,7 @@ function freshInvoice() {
     id: `coin-${String(coinSeq).padStart(3, "0")}`,
     token: "STRK",
     amount: "1",
-    memo: "Shadow Run — 1 credit",
+    memo: "Shadow Run: 1 credit",
     mode: "address",
     // Fresh per-invoice receive address: this is what makes headless
     // confirmation possible while the payer stays unlinkable.

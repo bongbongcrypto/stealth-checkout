@@ -41,7 +41,7 @@ export function mountCheckout(container, opts) {
             .catch((err) => {
             opts.onFailed?.(err instanceof Error ? err.message : String(err));
             button.disabled = false;
-            button.textContent = `Retry — ${defaultLabel}`;
+            button.textContent = `Retry: ${defaultLabel}`;
         });
     });
     function renderProgress(p) {

@@ -14,8 +14,8 @@ interface MockOptions {
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * In-memory wallet with the exact adapter surface, so the full checkout flow —
- * including the shield-then-pay path and every failure branch — runs with no
+ * In-memory wallet with the exact adapter surface, so the full checkout flow:
+ * including the shield-then-pay path and every failure branch: runs with no
  * extension, no network, and no funds. Used by the demo arcade until the
  * Sepolia adapter lands, and by tests forever.
  */

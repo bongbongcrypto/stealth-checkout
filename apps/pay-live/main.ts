@@ -113,7 +113,7 @@ async function renderPayer(invoice: Invoice): Promise<void> {
           const delta = baseline === null ? now : now - baseline;
           if (delta >= target) return true;
         } catch {
-          /* RPC refusal is not a chain answer — keep polling */
+          /* RPC refusal is not a chain answer: keep polling */
         }
         await new Promise((r) => setTimeout(r, 10_000));
       }

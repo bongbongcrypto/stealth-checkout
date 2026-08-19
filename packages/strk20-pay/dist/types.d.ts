@@ -19,10 +19,10 @@ export interface Invoice {
     expiresAt?: number;
 }
 /**
- * "address": payer unshields to the invoice's fresh address — merchant confirms
+ * "address": payer unshields to the invoice's fresh address: merchant confirms
  *            headlessly over public RPC. Payer identity severed by the pool;
  *            amount + invoice address visible.
- * "note":    payer sends a private note to the merchant pool account — fully
+ * "note":    payer sends a private note to the merchant pool account: fully
  *            private on-chain; confirmation is wallet-side.
  */
 export type PaymentMode = "address" | "note";

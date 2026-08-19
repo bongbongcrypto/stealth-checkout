@@ -6,7 +6,9 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "tsc -p packages/strk20-pay/tsconfig.json"
+    "build": "tsc -p packages/strk20-pay/tsconfig.json",
+    "test": "node --test packages/strk20-pay/test/checkout.test.mjs server/watcher/test/watcher.test.mjs",
+    "e2e:watcher": "node server/watcher/e2e-live.mjs"
   },
   "devDependencies": {
     "typescript": "5.9.2"

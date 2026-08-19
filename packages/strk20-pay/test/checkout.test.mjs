@@ -1,0 +1,130 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { MockWallet, StealthCheckout, compareAmounts, revealReport } from "../dist/index.js";
+
+const invoice = (over = {}) => ({
+  id: "inv-1",
+  token: "STRK",
+  amount: "1",
+  mode: "address",
+  receiveAddress: "0x0abc",
+  network: "sepolia",
+  createdAt: Date.now(),
+  ...over,
+});
+
+const fastWallet = (opts = {}) => new MockWallet({ latency: 1, funded: { STRK: "10" }, ...opts });
+
+function collectPhases(checkout) {
+  const phases = [];
+  checkout.on((e) => {
+    if (e.type === "progress") phases.push(e.progress.phase);
+  });
+  return phases;
+}
+
+test("full flow: connect → shield → mature → pay → confirm → paid", async () => {
+  const wallet = fastWallet();
+  let confirmedHash = null;
+  const checkout = new StealthCheckout(wallet, async (_inv, txHash) => {
+    confirmedHash = txHash;
+    return true;
+  });
+  const phases = collectPhases(checkout);
+
+  const receipt = await checkout.pay(invoice());
+
+  assert.deepEqual(phases, ["connecting", "preparing", "shielding", "maturing", "paying", "confirming", "paid"]);
+  assert.equal(receipt.invoiceId, "inv-1");
+  assert.equal(receipt.txHash, confirmedHash);
+  assert.match(receipt.disclosure, /Does not link/);
+  assert.equal(await wallet.shieldedBalance("STRK"), "0"); // shielded exactly what was spent
+});
+
+test("already-shielded balance skips the shield phase", async () => {
+  const wallet = fastWallet();
+  await wallet.connect();
+  await wallet.shield("STRK", "5");
+  const checkout = new StealthCheckout(wallet);
+  const phases = collectPhases(checkout);
+
+  await checkout.pay(invoice());
+
+  assert.ok(!phases.includes("shielding"));
+  assert.ok(!phases.includes("maturing"));
+  assert.deepEqual(phases.slice(-2), ["confirming", "paid"]);
+  assert.equal(await wallet.shieldedBalance("STRK"), "4");
+});
+
+test("note mode uses privateTransfer and a note receipt", async () => {
+  const wallet = fastWallet();
+  const checkout = new StealthCheckout(wallet);
+  const receipt = await checkout.pay(invoice({ mode: "note", receiveAddress: undefined, merchantPoolAddress: "0x0pool" }));
+  assert.equal(receipt.mode, "note");
+  assert.match(receipt.disclosure, /Amount and parties are not on-chain/);
+});
+
+test("wallet failure surfaces as a failed event and a rejection", async () => {
+  const wallet = fastWallet({ failAt: "unshield" });
+  const checkout = new StealthCheckout(wallet);
+  let failedEvent = null;
+  checkout.on((e) => {
+    if (e.type === "failed") failedEvent = e;
+  });
+  await assert.rejects(() => checkout.pay(invoice()), /prove the withdrawal/);
+  assert.ok(failedEvent);
+  assert.match(failedEvent.error, /prove the withdrawal/);
+});
+
+test("unconfirmed payment fails rather than minting a receipt", async () => {
+  const checkout = new StealthCheckout(fastWallet(), async () => false);
+  await assert.rejects(() => checkout.pay(invoice()), /not confirmed/);
+});
+
+test("expired invoice never touches the wallet", async () => {
+  const wallet = fastWallet({ failAt: "connect" }); // would throw if touched
+  const checkout = new StealthCheckout(wallet);
+  await assert.rejects(() => checkout.pay(invoice({ expiresAt: Date.now() - 1000 })), /expired/);
+});
+
+test("missing receive address is rejected", async () => {
+  const checkout = new StealthCheckout(fastWallet());
+  await assert.rejects(() => checkout.pay(invoice({ receiveAddress: undefined })), /missing its receive address/);
+});
+
+test("insufficient funds fails at shield with a clear message", async () => {
+  const wallet = fastWallet({ funded: { STRK: "0.5" } });
+  const checkout = new StealthCheckout(wallet);
+  await assert.rejects(() => checkout.pay(invoice()), /Insufficient STRK/);
+});
+
+test("a second pay while in-flight is rejected", async () => {
+  const wallet = fastWallet({ latency: 30 });
+  const checkout = new StealthCheckout(wallet);
+  const first = checkout.pay(invoice());
+  await assert.rejects(() => checkout.pay(invoice({ id: "inv-2" })), /already in progress/);
+  await first;
+});
+
+test("compareAmounts handles decimals without floats", () => {
+  assert.equal(compareAmounts("1", "1"), 0);
+  assert.equal(compareAmounts("1.50", "1.5"), 0);
+  assert.equal(compareAmounts("0.5", "1"), -1);
+  assert.equal(compareAmounts("10", "9"), 1);
+  assert.equal(compareAmounts("0.000000000000000001", "0"), 1);
+  assert.equal(compareAmounts("00.10", "0.1"), 0);
+});
+
+test("honesty report: address mode admits what is public", () => {
+  const rows = revealReport(invoice(), true);
+  const publicFacts = rows.filter((r) => r.visibility === "public").map((r) => r.fact);
+  assert.ok(publicFacts.some((f) => /deposit/i.test(f)));
+  assert.ok(publicFacts.some((f) => /Invoice address/i.test(f)));
+  assert.ok(rows.some((r) => r.visibility === "hidden" && /your wallet/i.test(r.fact)));
+});
+
+test("honesty report: note mode hides amount and parties but admits timing", () => {
+  const rows = revealReport(invoice({ mode: "note" }), false);
+  assert.ok(rows.some((r) => r.visibility === "hidden" && /Amount and both parties/.test(r.fact)));
+  assert.ok(rows.some((r) => r.visibility === "public" && /Timing/i.test(r.fact)));
+});

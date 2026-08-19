@@ -1,5 +1,5 @@
-import type { Amount, Network } from "../types";
-import { WalletActionError, type WalletAdapter } from "./adapter";
+import type { Amount, Network } from "../types.js";
+import { WalletActionError, type WalletAdapter } from "./adapter.js";
 
 interface MockOptions {
   network?: Network;

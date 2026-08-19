@@ -1,8 +1,7 @@
 # Dependencies
 node_modules/
 
-# Build output
-dist/
+# Build output (packages/strk20-pay/dist IS tracked — GitHub Pages serves the demo from it)
 build/
 .next/
 .turbo/

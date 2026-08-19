@@ -1,4 +1,4 @@
-import type { Amount, Network } from "../types";
+import type { Amount, Network } from "../types.js";
 
 /**
  * The only surface the checkout core is allowed to touch.

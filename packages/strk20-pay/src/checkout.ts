@@ -1,7 +1,7 @@
-import { revealReport } from "./honesty";
-import type { CheckoutEvent, Invoice, PaymentPhase, PaymentProgress, Receipt, RevealItem, Unsubscribe } from "./types";
-import type { WalletAdapter } from "./wallet/adapter";
-import { WalletActionError } from "./wallet/adapter";
+import { revealReport } from "./honesty.js";
+import type { CheckoutEvent, Invoice, PaymentPhase, PaymentProgress, Receipt, RevealItem, Unsubscribe } from "./types.js";
+import type { WalletAdapter } from "./wallet/adapter.js";
+import { WalletActionError } from "./wallet/adapter.js";
 
 /**
  * Orchestrates one payment end to end:

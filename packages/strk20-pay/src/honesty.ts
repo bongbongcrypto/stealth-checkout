@@ -1,4 +1,4 @@
-import type { Invoice, RevealItem } from "./types";
+import type { Invoice, RevealItem } from "./types.js";
 
 /**
  * The pre-sign honesty panel: exactly what this payment will reveal on-chain

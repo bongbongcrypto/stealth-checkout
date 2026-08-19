@@ -5,15 +5,4 @@ export { revealReport } from "./honesty.js";
 export { MockWallet } from "./wallet/mock.js";
 export { WalletActionError } from "./wallet/adapter.js";
 export type { WalletAdapter } from "./wallet/adapter.js";
-export type {
-  Amount,
-  CheckoutEvent,
-  Invoice,
-  Network,
-  PaymentMode,
-  PaymentPhase,
-  PaymentProgress,
-  Receipt,
-  RevealItem,
-  Unsubscribe,
-} from "./types.js";
+export type { Amount, CheckoutEvent, Invoice, Network, PaymentMode, PaymentPhase, PaymentProgress, Receipt, RevealItem, Unsubscribe, } from "./types.js";

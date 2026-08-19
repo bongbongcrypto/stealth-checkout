@@ -1,0 +1,14 @@
+{
+  "name": "stealth-checkout",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "tsc -p packages/strk20-pay/tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "5.9.2"
+  }
+}

@@ -173,18 +173,31 @@ function log(msg) {
   console.log(`[watcher ${new Date().toISOString()}] ${msg}`);
 }
 
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
 function json(res, code, data) {
   const body = JSON.stringify(data, null, 2);
-  res.writeHead(code, { "Content-Type": "application/json" });
+  res.writeHead(code, { "Content-Type": "application/json", ...CORS });
   res.end(body);
 }
 
 export function makeServer() {
   return createServer(async (req, res) => {
     const url = new URL(req.url, "http://localhost");
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, CORS);
+      return res.end();
+    }
     try {
       if (req.method === "GET" && url.pathname === "/healthz") {
         return json(res, 200, { ok: true, watching: [...invoices.values()].filter((i) => i.status === "watching").length });
+      }
+      if (req.method === "GET" && url.pathname === "/invoices") {
+        return json(res, 200, [...invoices.values()].sort((a, b) => b.createdAt - a.createdAt));
       }
       if (req.method === "POST" && url.pathname === "/invoices") {
         let raw = "";

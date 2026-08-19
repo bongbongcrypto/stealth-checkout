@@ -11,6 +11,7 @@
     "e2e:watcher": "node server/watcher/e2e-live.mjs"
   },
   "devDependencies": {
+    "esbuild": "0.25.9",
     "typescript": "5.9.2"
   }
 }

@@ -20,10 +20,13 @@ export declare class StealthCheckout {
     /** Honesty panel rows for this invoice, given current balances. */
     preview(invoice: Invoice): Promise<RevealItem[]>;
     pay(invoice: Invoice): Promise<Receipt>;
-    private needsShield;
+    /** Shield, then block until the new notes are actually spendable. */
+    private shieldStep;
+    private payStep;
     private executePayment;
-    private matureIfSupported;
     private emit;
 }
 /** Compare two decimal-string amounts without floats. */
 export declare function compareAmounts(a: string, b: string): -1 | 0 | 1;
+/** Does this wallet error mean "you do not have enough shielded funds"? */
+export declare function isInsufficientFunds(err: unknown): boolean;

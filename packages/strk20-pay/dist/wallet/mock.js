@@ -62,9 +62,12 @@ export class MockWallet {
         this.take(this.shielded, token, amount, "unshield");
         return { txHash: this.hash() };
     }
-    /** Test/demo hook: simulate the ~10-block note maturation delay. */
-    async matureNotes() {
-        await wait(this.latency);
+    /** Simulates the ~10-block note maturation delay. */
+    async awaitMaturity(onProgress) {
+        for (let left = 3; left > 0; left--) {
+            onProgress?.(left);
+            await wait(this.latency / 3);
+        }
     }
     assertConnected(action) {
         if (!this.connected)

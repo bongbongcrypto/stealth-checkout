@@ -2,6 +2,8 @@ import { WalletActionError } from "./adapter.js";
 import { TOKENS, amountToFelt, resolveToken, unitsToAmount } from "../tokens.js";
 /** Wallet-API version that introduced the STRK20 methods (Ready, Xverse). */
 export const MIN_STRK20_WALLET_API = "0.10.3";
+/** Pool notes become spendable this many blocks after the deposit lands. */
+export const MATURITY_BLOCKS = 10;
 export class WalletApiAdapter {
     network;
     rpcUrl;
@@ -9,6 +11,7 @@ export class WalletApiAdapter {
     preferWallet;
     discoveryTimeoutMs;
     account = null;
+    shieldedAtBlock = null;
     accountV6 = null;
     provider = null;
     constructor(opts) {
@@ -101,14 +104,57 @@ export class WalletApiAdapter {
             const entry = entries.find((e) => BigInt(e.token) === BigInt(info.address));
             return unitsToAmount(BigInt(entry?.balance ?? "0x0"), info.decimals);
         }
-        catch (err) {
-            // A wallet that cannot report shielded balances still may pay; treat as
-            // zero so the flow shields first rather than failing outright.
-            return "0";
+        catch {
+            // The wallet declined to report. Say UNKNOWN: answering zero here would
+            // make the caller shield funds the user has already shielded.
+            return null;
         }
     }
     async shield(token, amount) {
-        return this.invoke("shield", this.actionsShield(token, amount));
+        const result = await this.invoke("shield", this.actionsShield(token, amount));
+        this.shieldedAtBlock = await this.blockOfTx(result.txHash).catch(() => null);
+        return result;
+    }
+    /**
+     * Wait until the notes created by our last shield are spendable. Without this
+     * a payment fires one block after the deposit and cannot succeed, because a
+     * pool note only matures after MATURITY_BLOCKS.
+     */
+    async awaitMaturity(onProgress) {
+        const start = this.shieldedAtBlock;
+        if (start === null)
+            return;
+        const target = start + MATURITY_BLOCKS;
+        const deadline = Date.now() + 15 * 60_000;
+        while (Date.now() < deadline) {
+            const head = await this.currentBlock().catch(() => null);
+            if (head !== null) {
+                const left = target - head;
+                if (left <= 0)
+                    return;
+                onProgress?.(left);
+            }
+            await new Promise((r) => setTimeout(r, 5_000));
+        }
+        // Falling through is deliberate: let the payment attempt produce the real
+        // error rather than inventing one from a timer.
+    }
+    async blockOfTx(txHash) {
+        const { RpcProvider } = (await import("starknet"));
+        this.provider ??= new RpcProvider({ nodeUrl: this.rpcUrl });
+        for (let i = 0; i < 30; i++) {
+            const receipt = await this.provider.getTransactionReceipt(txHash).catch(() => null);
+            const block = receipt?.block_number;
+            if (typeof block === "number")
+                return block;
+            await new Promise((r) => setTimeout(r, 4_000));
+        }
+        return null;
+    }
+    async currentBlock() {
+        const { RpcProvider } = (await import("starknet"));
+        this.provider ??= new RpcProvider({ nodeUrl: this.rpcUrl });
+        return this.provider.getBlockNumber();
     }
     async privateTransfer(token, amount, toPoolAddress) {
         return this.invoke("privateTransfer", this.actionsTransfer(token, amount, toPoolAddress));

@@ -14,8 +14,18 @@ export interface WalletAdapter {
     isConnected(): boolean;
     /** Public ERC-20 balance (pre-shield). */
     publicBalance(token: string): Promise<Amount>;
-    /** Shielded (in-pool) balance. */
-    shieldedBalance(token: string): Promise<Amount>;
+    /**
+     * Shielded (in-pool) balance, or null when the wallet will not report it.
+     * Null means UNKNOWN, never zero: treating a refusal as zero makes a caller
+     * shield funds it already has.
+     */
+    shieldedBalance(token: string): Promise<Amount | null>;
+    /**
+     * Block until funds shielded by this adapter are spendable. Pool notes mature
+     * after roughly ten blocks, so a payment attempted straight after a shield
+     * cannot succeed. `onProgress` reports blocks remaining for the UI.
+     */
+    awaitMaturity?(onProgress?: (blocksLeft: number) => void): Promise<void>;
     /** Deposit into the pool. PUBLIC + compliance-screened. Resolves at acceptance. */
     shield(token: string, amount: Amount): Promise<{
         txHash: string;

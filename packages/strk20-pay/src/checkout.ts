@@ -29,7 +29,8 @@ export class StealthCheckout {
 
   /** Honesty panel rows for this invoice, given current balances. */
   async preview(invoice: Invoice): Promise<RevealItem[]> {
-    const willShieldFirst = this.wallet.isConnected() ? await this.needsShield(invoice) : true;
+    const shielded = this.wallet.isConnected() ? await this.wallet.shieldedBalance(invoice.token) : null;
+    const willShieldFirst = shielded === null || compareAmounts(shielded, invoice.amount) < 0;
     return revealReport(invoice, willShieldFirst);
   }
 
@@ -49,20 +50,27 @@ export class StealthCheckout {
       }
 
       this.emit("preparing", "Checking your shielded balance…", false);
+      const shielded = await this.wallet.shieldedBalance(invoice.token);
       let shieldTxHash: string | undefined;
-      if (await this.needsShield(invoice)) {
-        this.emit("shielding", `Your wallet will pop up to shield ${invoice.amount} ${invoice.token}. This deposit is public and screened.`, true);
-        ({ txHash: shieldTxHash } = await this.wallet.shield(invoice.token, invoice.amount));
-        this.emit("maturing", "Waiting for your shielded funds to mature (~10 blocks). Leave this page open.", false, shieldTxHash);
-        await this.matureIfSupported();
-      }
+      let txHash: string;
 
-      const paying =
-        invoice.mode === "address"
-          ? "Your wallet will pop up to pay the invoice address privately."
-          : "Your wallet will pop up to send a private note to the merchant.";
-      this.emit("paying", paying, true);
-      const { txHash } = await this.executePayment(invoice);
+      if (shielded === null) {
+        // The wallet would not report a balance. Try paying with what may
+        // already be shielded rather than shielding again: a needless deposit
+        // costs a pool fee and publishes another public leg.
+        try {
+          ({ txHash } = await this.payStep(invoice));
+        } catch (err) {
+          if (!isInsufficientFunds(err)) throw err;
+          shieldTxHash = await this.shieldStep(invoice);
+          ({ txHash } = await this.payStep(invoice));
+        }
+      } else {
+        if (compareAmounts(shielded, invoice.amount) < 0) {
+          shieldTxHash = await this.shieldStep(invoice);
+        }
+        ({ txHash } = await this.payStep(invoice));
+      }
 
       this.emit("confirming", "Payment sent. Waiting for on-chain confirmation…", false, txHash);
       const confirmed = await this.confirmPayment(invoice, txHash);
@@ -98,9 +106,30 @@ export class StealthCheckout {
     }
   }
 
-  private async needsShield(invoice: Invoice): Promise<boolean> {
-    const shielded = await this.wallet.shieldedBalance(invoice.token);
-    return compareAmounts(shielded, invoice.amount) < 0;
+  /** Shield, then block until the new notes are actually spendable. */
+  private async shieldStep(invoice: Invoice): Promise<string> {
+    this.emit(
+      "shielding",
+      `Your wallet will pop up to shield ${invoice.amount} ${invoice.token}. This deposit is public and screened.`,
+      true,
+    );
+    const { txHash } = await this.wallet.shield(invoice.token, invoice.amount);
+    this.emit("maturing", "Waiting for your shielded funds to mature (about ten blocks). Leave this page open.", false, txHash);
+    await this.wallet.awaitMaturity?.((blocksLeft) => {
+      this.emit("maturing", `Waiting for your shielded funds to mature: ${blocksLeft} block(s) to go. Leave this page open.`, false, txHash);
+    });
+    return txHash;
+  }
+
+  private async payStep(invoice: Invoice): Promise<{ txHash: string }> {
+    this.emit(
+      "paying",
+      invoice.mode === "address"
+        ? "Your wallet will pop up to pay the invoice address privately."
+        : "Your wallet will pop up to send a private note to the merchant.",
+      true,
+    );
+    return this.executePayment(invoice);
   }
 
   private async executePayment(invoice: Invoice): Promise<{ txHash: string }> {
@@ -110,11 +139,6 @@ export class StealthCheckout {
     }
     if (!invoice.merchantPoolAddress) throw new Error("Invoice is missing the merchant pool address.");
     return this.wallet.privateTransfer(invoice.token, invoice.amount, invoice.merchantPoolAddress);
-  }
-
-  private async matureIfSupported(): Promise<void> {
-    const maybe = this.wallet as WalletAdapter & { matureNotes?: () => Promise<void> };
-    if (maybe.matureNotes) await maybe.matureNotes();
   }
 
   private emit(phase: PaymentPhase, message: string, walletPopupImminent: boolean, txHash?: string, error?: string): void {
@@ -139,4 +163,10 @@ export function compareAmounts(a: string, b: string): -1 | 0 | 1 {
   const ap = af.padEnd(len, "0");
   const bp = bf.padEnd(len, "0");
   return ap === bp ? 0 : ap < bp ? -1 : 1;
+}
+
+/** Does this wallet error mean "you do not have enough shielded funds"? */
+export function isInsufficientFunds(err: unknown): boolean {
+  const raw = err instanceof Error ? err.message : String(err ?? "");
+  return /insufficient|not enough|no (unspent )?notes|balance too low|NOT_ENOUGH/i.test(raw);
 }

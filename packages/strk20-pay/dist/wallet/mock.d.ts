@@ -39,8 +39,8 @@ export declare class MockWallet implements WalletAdapter {
     unshield(token: string, amount: Amount, _toAddress: string): Promise<{
         txHash: string;
     }>;
-    /** Test/demo hook: simulate the ~10-block note maturation delay. */
-    matureNotes(): Promise<void>;
+    /** Simulates the ~10-block note maturation delay. */
+    awaitMaturity(onProgress?: (blocksLeft: number) => void): Promise<void>;
     private assertConnected;
     private move;
     private take;

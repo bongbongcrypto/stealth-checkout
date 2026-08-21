@@ -81,9 +81,12 @@ export class MockWallet implements WalletAdapter {
     return { txHash: this.hash() };
   }
 
-  /** Test/demo hook: simulate the ~10-block note maturation delay. */
-  async matureNotes(): Promise<void> {
-    await wait(this.latency);
+  /** Simulates the ~10-block note maturation delay. */
+  async awaitMaturity(onProgress?: (blocksLeft: number) => void): Promise<void> {
+    for (let left = 3; left > 0; left--) {
+      onProgress?.(left);
+      await wait(this.latency / 3);
+    }
   }
 
   private assertConnected(action: "shield" | "privateTransfer" | "unshield"): void {

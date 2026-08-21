@@ -13,6 +13,9 @@ import { TOKENS, type TokenInfo, amountToFelt, resolveToken, unitsToAmount } fro
 /** Wallet-API version that introduced the STRK20 methods (Ready, Xverse). */
 export const MIN_STRK20_WALLET_API = "0.10.3";
 
+/** Pool notes become spendable this many blocks after the deposit lands. */
+export const MATURITY_BLOCKS = 10;
+
 export interface WalletApiOptions {
   network: Network;
   /** JSON-RPC endpoint; required on Sepolia, defaults to a public one on mainnet. */
@@ -38,6 +41,7 @@ export class WalletApiAdapter implements WalletAdapter {
   private readonly preferWallet: string;
   private readonly discoveryTimeoutMs: number;
   private account: { address: string } | null = null;
+  private shieldedAtBlock: number | null = null;
   private accountV6: any = null;
   private provider: any = null;
 
@@ -127,7 +131,7 @@ export class WalletApiAdapter implements WalletAdapter {
     return unitsToAmount(low + (high << 128n), info.decimals);
   }
 
-  async shieldedBalance(token: string): Promise<Amount> {
+  async shieldedBalance(token: string): Promise<Amount | null> {
     const info = resolveToken(token, this.registry);
     this.requireAddress();
     try {
@@ -137,15 +141,58 @@ export class WalletApiAdapter implements WalletAdapter {
         await this.accountV6.strk20Balances([info.address]);
       const entry = entries.find((e) => BigInt(e.token) === BigInt(info.address));
       return unitsToAmount(BigInt(entry?.balance ?? "0x0"), info.decimals);
-    } catch (err) {
-      // A wallet that cannot report shielded balances still may pay; treat as
-      // zero so the flow shields first rather than failing outright.
-      return "0";
+    } catch {
+      // The wallet declined to report. Say UNKNOWN: answering zero here would
+      // make the caller shield funds the user has already shielded.
+      return null;
     }
   }
 
   async shield(token: string, amount: Amount): Promise<{ txHash: string }> {
-    return this.invoke("shield", this.actionsShield(token, amount));
+    const result = await this.invoke("shield", this.actionsShield(token, amount));
+    this.shieldedAtBlock = await this.blockOfTx(result.txHash).catch(() => null);
+    return result;
+  }
+
+  /**
+   * Wait until the notes created by our last shield are spendable. Without this
+   * a payment fires one block after the deposit and cannot succeed, because a
+   * pool note only matures after MATURITY_BLOCKS.
+   */
+  async awaitMaturity(onProgress?: (blocksLeft: number) => void): Promise<void> {
+    const start = this.shieldedAtBlock;
+    if (start === null) return;
+    const target = start + MATURITY_BLOCKS;
+    const deadline = Date.now() + 15 * 60_000;
+    while (Date.now() < deadline) {
+      const head = await this.currentBlock().catch(() => null);
+      if (head !== null) {
+        const left = target - head;
+        if (left <= 0) return;
+        onProgress?.(left);
+      }
+      await new Promise((r) => setTimeout(r, 5_000));
+    }
+    // Falling through is deliberate: let the payment attempt produce the real
+    // error rather than inventing one from a timer.
+  }
+
+  private async blockOfTx(txHash: string): Promise<number | null> {
+    const { RpcProvider } = (await import("starknet")) as any;
+    this.provider ??= new RpcProvider({ nodeUrl: this.rpcUrl });
+    for (let i = 0; i < 30; i++) {
+      const receipt = await this.provider.getTransactionReceipt(txHash).catch(() => null);
+      const block = receipt?.block_number;
+      if (typeof block === "number") return block;
+      await new Promise((r) => setTimeout(r, 4_000));
+    }
+    return null;
+  }
+
+  private async currentBlock(): Promise<number> {
+    const { RpcProvider } = (await import("starknet")) as any;
+    this.provider ??= new RpcProvider({ nodeUrl: this.rpcUrl });
+    return this.provider.getBlockNumber();
   }
 
   async privateTransfer(token: string, amount: Amount, toPoolAddress: string): Promise<{ txHash: string }> {

@@ -15,10 +15,11 @@ const invoice = (over = {}) => ({
 
 const fastWallet = (opts = {}) => new MockWallet({ latency: 1, funded: { STRK: "10" }, ...opts });
 
+/** Phases in order, collapsing repeats (maturing ticks once per block left). */
 function collectPhases(checkout) {
   const phases = [];
   checkout.on((e) => {
-    if (e.type === "progress") phases.push(e.progress.phase);
+    if (e.type === "progress" && phases.at(-1) !== e.progress.phase) phases.push(e.progress.phase);
   });
   return phases;
 }
@@ -41,6 +42,47 @@ test("full flow: connect → shield → mature → pay → confirm → paid", as
   assert.notEqual(receipt.shieldTxHash, receipt.txHash);
   assert.match(receipt.disclosure, /Does not link/);
   assert.equal(await wallet.shieldedBalance("STRK"), "0"); // shielded exactly what was spent
+});
+
+test("maturity is awaited after shielding, and reports blocks left", async () => {
+  const wallet = fastWallet();
+  const checkout = new StealthCheckout(wallet);
+  const waits = [];
+  checkout.on((e) => {
+    if (e.type === "progress" && e.progress.phase === "maturing") waits.push(e.progress.message);
+  });
+  await checkout.pay(invoice());
+  assert.ok(waits.length > 1, "maturity should report progress, not pass instantly");
+  assert.ok(waits.some((m) => /block\(s\) to go/.test(m)));
+});
+
+test("an unknown shielded balance pays first instead of shielding again", async () => {
+  // A wallet that refuses to report balances but is funded in the pool: the
+  // flow must not spend a second deposit to find that out.
+  const wallet = fastWallet();
+  await wallet.connect();
+  await wallet.shield("STRK", "5");
+  wallet.shieldedBalance = async () => null;
+  const checkout = new StealthCheckout(wallet);
+  const phases = collectPhases(checkout);
+
+  const receipt = await checkout.pay(invoice());
+
+  assert.ok(!phases.includes("shielding"), "should not shield when funds may already be there");
+  assert.equal(receipt.shieldTxHash, undefined);
+  assert.equal(await wallet.publicBalance("STRK"), "5"); // only the original shield left public funds
+});
+
+test("unknown balance still shields when the wallet reports insufficient funds", async () => {
+  const wallet = fastWallet();
+  wallet.shieldedBalance = async () => null;
+  const checkout = new StealthCheckout(wallet);
+  const phases = collectPhases(checkout);
+
+  const receipt = await checkout.pay(invoice());
+
+  assert.ok(phases.includes("shielding"), "falls back to shielding after the insufficient-funds error");
+  assert.ok(receipt.shieldTxHash);
 });
 
 test("already-shielded balance skips the shield phase", async () => {

@@ -3,6 +3,8 @@ import { type WalletAdapter } from "./adapter.js";
 import { type TokenInfo } from "../tokens.js";
 /** Wallet-API version that introduced the STRK20 methods (Ready, Xverse). */
 export declare const MIN_STRK20_WALLET_API = "0.10.3";
+/** Pool notes become spendable this many blocks after the deposit lands. */
+export declare const MATURITY_BLOCKS = 10;
 export interface WalletApiOptions {
     network: Network;
     /** JSON-RPC endpoint; required on Sepolia, defaults to a public one on mainnet. */
@@ -26,6 +28,7 @@ export declare class WalletApiAdapter implements WalletAdapter {
     private readonly preferWallet;
     private readonly discoveryTimeoutMs;
     private account;
+    private shieldedAtBlock;
     private accountV6;
     private provider;
     constructor(opts: WalletApiOptions);
@@ -36,10 +39,18 @@ export declare class WalletApiAdapter implements WalletAdapter {
         address: string;
     }>;
     publicBalance(token: string): Promise<Amount>;
-    shieldedBalance(token: string): Promise<Amount>;
+    shieldedBalance(token: string): Promise<Amount | null>;
     shield(token: string, amount: Amount): Promise<{
         txHash: string;
     }>;
+    /**
+     * Wait until the notes created by our last shield are spendable. Without this
+     * a payment fires one block after the deposit and cannot succeed, because a
+     * pool note only matures after MATURITY_BLOCKS.
+     */
+    awaitMaturity(onProgress?: (blocksLeft: number) => void): Promise<void>;
+    private blockOfTx;
+    private currentBlock;
     privateTransfer(token: string, amount: Amount, toPoolAddress: string): Promise<{
         txHash: string;
     }>;

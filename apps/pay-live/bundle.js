@@ -31595,7 +31595,8 @@ var StealthCheckout = class {
   }
   /** Honesty panel rows for this invoice, given current balances. */
   async preview(invoice) {
-    const willShieldFirst = this.wallet.isConnected() ? await this.needsShield(invoice) : true;
+    const shielded = this.wallet.isConnected() ? await this.wallet.shieldedBalance(invoice.token) : null;
+    const willShieldFirst = shielded === null || compareAmounts(shielded, invoice.amount) < 0;
     return revealReport(invoice, willShieldFirst);
   }
   async pay(invoice) {
@@ -31612,16 +31613,23 @@ var StealthCheckout = class {
         await this.wallet.connect();
       }
       this.emit("preparing", "Checking your shielded balance\u2026", false);
+      const shielded = await this.wallet.shieldedBalance(invoice.token);
       let shieldTxHash;
-      if (await this.needsShield(invoice)) {
-        this.emit("shielding", `Your wallet will pop up to shield ${invoice.amount} ${invoice.token}. This deposit is public and screened.`, true);
-        ({ txHash: shieldTxHash } = await this.wallet.shield(invoice.token, invoice.amount));
-        this.emit("maturing", "Waiting for your shielded funds to mature (~10 blocks). Leave this page open.", false, shieldTxHash);
-        await this.matureIfSupported();
+      let txHash;
+      if (shielded === null) {
+        try {
+          ({ txHash } = await this.payStep(invoice));
+        } catch (err) {
+          if (!isInsufficientFunds(err)) throw err;
+          shieldTxHash = await this.shieldStep(invoice);
+          ({ txHash } = await this.payStep(invoice));
+        }
+      } else {
+        if (compareAmounts(shielded, invoice.amount) < 0) {
+          shieldTxHash = await this.shieldStep(invoice);
+        }
+        ({ txHash } = await this.payStep(invoice));
       }
-      const paying = invoice.mode === "address" ? "Your wallet will pop up to pay the invoice address privately." : "Your wallet will pop up to send a private note to the merchant.";
-      this.emit("paying", paying, true);
-      const { txHash } = await this.executePayment(invoice);
       this.emit("confirming", "Payment sent. Waiting for on-chain confirmation\u2026", false, txHash);
       const confirmed = await this.confirmPayment(invoice, txHash);
       if (!confirmed) throw new Error("The payment was not confirmed on-chain.");
@@ -31646,9 +31654,27 @@ var StealthCheckout = class {
       throw err;
     }
   }
-  async needsShield(invoice) {
-    const shielded = await this.wallet.shieldedBalance(invoice.token);
-    return compareAmounts(shielded, invoice.amount) < 0;
+  /** Shield, then block until the new notes are actually spendable. */
+  async shieldStep(invoice) {
+    this.emit(
+      "shielding",
+      `Your wallet will pop up to shield ${invoice.amount} ${invoice.token}. This deposit is public and screened.`,
+      true
+    );
+    const { txHash } = await this.wallet.shield(invoice.token, invoice.amount);
+    this.emit("maturing", "Waiting for your shielded funds to mature (about ten blocks). Leave this page open.", false, txHash);
+    await this.wallet.awaitMaturity?.((blocksLeft) => {
+      this.emit("maturing", `Waiting for your shielded funds to mature: ${blocksLeft} block(s) to go. Leave this page open.`, false, txHash);
+    });
+    return txHash;
+  }
+  async payStep(invoice) {
+    this.emit(
+      "paying",
+      invoice.mode === "address" ? "Your wallet will pop up to pay the invoice address privately." : "Your wallet will pop up to send a private note to the merchant.",
+      true
+    );
+    return this.executePayment(invoice);
   }
   async executePayment(invoice) {
     if (invoice.mode === "address") {
@@ -31657,10 +31683,6 @@ var StealthCheckout = class {
     }
     if (!invoice.merchantPoolAddress) throw new Error("Invoice is missing the merchant pool address.");
     return this.wallet.privateTransfer(invoice.token, invoice.amount, invoice.merchantPoolAddress);
-  }
-  async matureIfSupported() {
-    const maybe = this.wallet;
-    if (maybe.matureNotes) await maybe.matureNotes();
   }
   emit(phase, message, walletPopupImminent, txHash, error3) {
     this.phase = phase;
@@ -31682,6 +31704,10 @@ function compareAmounts(a, b) {
   const ap = af.padEnd(len, "0");
   const bp = bf.padEnd(len, "0");
   return ap === bp ? 0 : ap < bp ? -1 : 1;
+}
+function isInsufficientFunds(err) {
+  const raw = err instanceof Error ? err.message : String(err ?? "");
+  return /insufficient|not enough|no (unspent )?notes|balance too low|NOT_ENOUGH/i.test(raw);
 }
 
 // packages/strk20-pay/src/ui.ts
@@ -31861,6 +31887,7 @@ function amountToFelt(amount, decimals) {
 
 // packages/strk20-pay/src/wallet/walletapi.ts
 var MIN_STRK20_WALLET_API = "0.10.3";
+var MATURITY_BLOCKS = 10;
 var WalletApiAdapter = class {
   network;
   rpcUrl;
@@ -31868,6 +31895,7 @@ var WalletApiAdapter = class {
   preferWallet;
   discoveryTimeoutMs;
   account = null;
+  shieldedAtBlock = null;
   accountV6 = null;
   provider = null;
   constructor(opts) {
@@ -31952,12 +31980,50 @@ var WalletApiAdapter = class {
       const entries = await this.accountV6.strk20Balances([info.address]);
       const entry = entries.find((e) => BigInt(e.token) === BigInt(info.address));
       return unitsToAmount(BigInt(entry?.balance ?? "0x0"), info.decimals);
-    } catch (err) {
-      return "0";
+    } catch {
+      return null;
     }
   }
   async shield(token, amount) {
-    return this.invoke("shield", this.actionsShield(token, amount));
+    const result = await this.invoke("shield", this.actionsShield(token, amount));
+    this.shieldedAtBlock = await this.blockOfTx(result.txHash).catch(() => null);
+    return result;
+  }
+  /**
+   * Wait until the notes created by our last shield are spendable. Without this
+   * a payment fires one block after the deposit and cannot succeed, because a
+   * pool note only matures after MATURITY_BLOCKS.
+   */
+  async awaitMaturity(onProgress) {
+    const start = this.shieldedAtBlock;
+    if (start === null) return;
+    const target = start + MATURITY_BLOCKS;
+    const deadline = Date.now() + 15 * 6e4;
+    while (Date.now() < deadline) {
+      const head = await this.currentBlock().catch(() => null);
+      if (head !== null) {
+        const left = target - head;
+        if (left <= 0) return;
+        onProgress?.(left);
+      }
+      await new Promise((r) => setTimeout(r, 5e3));
+    }
+  }
+  async blockOfTx(txHash) {
+    const { RpcProvider: RpcProvider2 } = await Promise.resolve().then(() => (init_dist(), dist_exports));
+    this.provider ??= new RpcProvider2({ nodeUrl: this.rpcUrl });
+    for (let i = 0; i < 30; i++) {
+      const receipt = await this.provider.getTransactionReceipt(txHash).catch(() => null);
+      const block = receipt?.block_number;
+      if (typeof block === "number") return block;
+      await new Promise((r) => setTimeout(r, 4e3));
+    }
+    return null;
+  }
+  async currentBlock() {
+    const { RpcProvider: RpcProvider2 } = await Promise.resolve().then(() => (init_dist(), dist_exports));
+    this.provider ??= new RpcProvider2({ nodeUrl: this.rpcUrl });
+    return this.provider.getBlockNumber();
   }
   async privateTransfer(token, amount, toPoolAddress) {
     return this.invoke("privateTransfer", this.actionsTransfer(token, amount, toPoolAddress));

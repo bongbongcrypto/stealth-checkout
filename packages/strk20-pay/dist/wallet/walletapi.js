@@ -140,7 +140,7 @@ export class WalletApiAdapter {
             return { txHash: transaction_hash };
         }
         catch (err) {
-            throw new WalletActionError(action, err instanceof Error ? err.message : `${action} failed in the wallet.`, err);
+            throw new WalletActionError(action, explainWalletError(err, action), err);
         }
     }
     requireAddress() {
@@ -148,4 +148,30 @@ export class WalletApiAdapter {
             throw new WalletActionError("connect", "Wallet is not connected.");
         return this.account.address;
     }
+}
+/**
+ * Turn a raw wallet error into something a payer can act on.
+ *
+ * The one everybody hits first is NOT_REGISTERED: every pool user publishes a
+ * viewing key on-chain once, and until that lands the pool will not accept a
+ * deposit. Wallets do it as part of their own first shield, so the fix is a
+ * one-time action in the wallet rather than anything this app can sign for.
+ */
+export function explainWalletError(err, action) {
+    const raw = err instanceof Error ? err.message : String(err ?? "");
+    if (/NOT_REGISTERED/i.test(raw)) {
+        return ("Your wallet is not registered with the privacy pool yet. This is a one-time step: " +
+            "open your wallet, shield any amount there once (that publishes your viewing key on-chain), " +
+            "wait about ten blocks, then come back and pay.");
+    }
+    if (/SCREENING|COMPLIANCE|BLOCKED/i.test(raw)) {
+        return "The privacy pool's compliance screening rejected this deposit. Deposits are screened on every route.";
+    }
+    if (/INSUFFICIENT|BALANCE/i.test(raw)) {
+        return `Not enough balance to ${action === "shield" ? "shield" : "pay"}, including fees.`;
+    }
+    if (/reject|denied|USER_REFUSED|cancel/i.test(raw)) {
+        return "You dismissed the wallet prompt.";
+    }
+    return raw || `${action} failed in the wallet.`;
 }

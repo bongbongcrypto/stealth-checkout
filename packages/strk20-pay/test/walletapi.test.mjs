@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { WalletApiAdapter, amountToFelt, amountToUnits, resolveToken, unitsToAmount } from "../dist/index.js";
+import { WalletApiAdapter, amountToFelt, amountToUnits, explainWalletError, resolveToken, unitsToAmount } from "../dist/index.js";
 
 const STRK = "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
 
@@ -48,4 +48,17 @@ test("actions before connect fail with a connect error, not a crash", async () =
   const adapter = new WalletApiAdapter({ network: "mainnet" });
   await assert.rejects(() => adapter.shield("STRK", "1"), /not connected/);
   await assert.rejects(() => adapter.unshield("STRK", "1", "0x0i"), /not connected/);
+});
+
+test("wallet errors are translated into actions the payer can take", () => {
+  const reg = explainWalletError(new Error("execution failed: NOT_REGISTERED"), "shield");
+  assert.match(reg, /not registered/i);
+  assert.match(reg, /one-time/i);
+  assert.match(reg, /shield any amount there once/i);
+
+  assert.match(explainWalletError(new Error("USER_REFUSED_OP"), "unshield"), /dismissed/i);
+  assert.match(explainWalletError(new Error("insufficient balance"), "shield"), /Not enough balance/i);
+  assert.match(explainWalletError(new Error("screening failed"), "shield"), /compliance screening/i);
+  // unknown errors pass through rather than being swallowed
+  assert.equal(explainWalletError(new Error("weird rpc thing"), "shield"), "weird rpc thing");
 });

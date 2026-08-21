@@ -67,4 +67,13 @@ export declare class WalletApiAdapter implements WalletAdapter {
     private invoke;
     private requireAddress;
 }
+/**
+ * Turn a raw wallet error into something a payer can act on.
+ *
+ * The one everybody hits first is NOT_REGISTERED: every pool user publishes a
+ * viewing key on-chain once, and until that lands the pool will not accept a
+ * deposit. Wallets do it as part of their own first shield, so the fix is a
+ * one-time action in the wallet rather than anything this app can sign for.
+ */
+export declare function explainWalletError(err: unknown, action: "shield" | "privateTransfer" | "unshield"): string;
 export {};

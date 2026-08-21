@@ -72,10 +72,45 @@ function renderCreator(): void {
   });
 }
 
+/**
+ * Wallet compatibility panel. Privacy actions need a wallet advertising Wallet
+ * API >= 0.10.3 (Ready X, Xverse). The older Ready extension connects fine but
+ * cannot pay privately, so say which wallets were found and whether each is
+ * capable, instead of failing later with a vague error.
+ */
+async function reportWalletSupport(wallet: WalletApiAdapter): Promise<void> {
+  const box = document.getElementById("wallet-check")!;
+  box.textContent = "Checking your wallet…";
+  try {
+    const found = await wallet.listWallets();
+    if (found.length === 0) {
+      box.className = "check bad";
+      box.textContent =
+        "No Starknet wallet detected in this browser. Install Ready X (ready.co) in Chrome, then reload.";
+      return;
+    }
+    const capable = found.filter((w) => w.strk20);
+    const names = found.map((w) => `${w.name}${w.strk20 ? " (private payments: yes)" : " (private payments: no)"}`);
+    if (capable.length > 0) {
+      box.className = "check good";
+      box.textContent = `Ready to pay privately. Detected: ${names.join(", ")}`;
+    } else {
+      box.className = "check bad";
+      box.textContent =
+        `Detected ${names.join(", ")}. None of these can make private payments. ` +
+        "Private payments need Ready X (Chrome) with Smart Wallet and Private enabled; the older Ready extension and Firefox cannot do it.";
+    }
+  } catch (err) {
+    box.className = "check bad";
+    box.textContent = `Could not check your wallet: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
 async function renderPayer(invoice: Invoice): Promise<void> {
   app.innerHTML = `
     <h1>Invoice ${invoice.id}</h1>
     <p class="muted">${invoice.memo ?? "Private payment on Starknet mainnet"}</p>
+    <div id="wallet-check" class="check"></div>
     <div id="checkout"></div>
     <p class="muted small">Confirmation runs in this page over public RPC (balance delta on the
     invoice address). Payer identity is severed by the STRK20 pool.
@@ -101,6 +136,7 @@ async function renderPayer(invoice: Invoice): Promise<void> {
   }
 
   const wallet = new WalletApiAdapter({ network: "mainnet", rpcUrl: RPC_URL });
+  void reportWalletSupport(wallet);
   mountCheckout(document.getElementById("checkout")!, {
     invoice,
     wallet,

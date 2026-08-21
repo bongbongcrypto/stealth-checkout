@@ -47,13 +47,31 @@ server/watcher/        # RPC watcher + webhook dispatcher
 strk20.json            # sprint manifest (txs, demo, video)
 ```
 
+## Verified on mainnet
+
+`strk20.json` lists five Starknet mainnet transactions against the live STRK20 pool.
+All of them exist, SUCCEEDED, and carry pool events for the same account:
+
+| Block | What it is | Tx |
+|---|---|---|
+| 13642789 | `ViewingKeySet` + `Deposit`: the one-time pool registration, then the opening shield | `0x30ecaffb...9b32` |
+| 13643247 | `Deposit` | `0x620188e2...bed3` |
+| 13643266 | `Deposit` | `0x365816d7...bdf1` |
+| 13645507 | `Deposit` | `0x1663fa3f...700b` |
+| 13643191 | pool state event | `0x32a6b74f...0140` |
+
+Re-verify any of them yourself, and prove the headless confirmation path at the same
+time, with `npm run e2e:watcher`: it confirms a payment against mainnet over public RPC
+and fires a signed webhook, without spending anything.
+
 ## Status
 
-Sprint build in progress (Aug 14 – 31). This section tracks the scored checklist:
+Sprint build in progress (Aug 14 to 31). Scored checklist:
 
-- [ ] Live demo URL
+- [x] Public repo, MIT licensed
+- [x] Live demo URL
+- [x] 3+ mainnet transactions against the STRK20 pool in `strk20.json`
 - [ ] 3-minute demo video
-- [ ] 3 mainnet transactions against the STRK20 pool in `strk20.json`
 
 ## License
 

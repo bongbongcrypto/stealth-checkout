@@ -19,7 +19,7 @@
     .cabinet {
       background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
       padding: 18px; box-shadow: 0 0 60px rgba(178, 141, 255, 0.08);
-      max-width: 100%;
+      max-width: 100%; min-width: 0;
     }
     .marquee {
       text-align: center; font-family: monospace; font-weight: 700; font-size: 20px;
@@ -47,7 +47,7 @@
       margin-left: 8px; font-size: 9px; font-weight: 700; color: var(--green);
       border: 1px solid var(--green); border-radius: 3px; padding: 0 4px; vertical-align: 1px;
     }
-    .side { max-width: 360px; width: 100%; display: flex; flex-direction: column; gap: 14px; }
+    .side { max-width: 360px; width: 100%; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
     .pitch { color: var(--muted); font-size: 13px; }
     .pitch strong { color: var(--fg); }
     .pitch code { color: var(--green); background: #191c23; padding: 1px 5px; border-radius: 4px; }

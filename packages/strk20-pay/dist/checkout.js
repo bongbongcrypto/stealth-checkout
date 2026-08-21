@@ -42,10 +42,11 @@ export class StealthCheckout {
                 await this.wallet.connect();
             }
             this.emit("preparing", "Checking your shielded balance…", false);
+            let shieldTxHash;
             if (await this.needsShield(invoice)) {
                 this.emit("shielding", `Your wallet will pop up to shield ${invoice.amount} ${invoice.token}. This deposit is public and screened.`, true);
-                await this.wallet.shield(invoice.token, invoice.amount);
-                this.emit("maturing", "Waiting for your shielded funds to mature (~10 blocks). Leave this page open.", false);
+                ({ txHash: shieldTxHash } = await this.wallet.shield(invoice.token, invoice.amount));
+                this.emit("maturing", "Waiting for your shielded funds to mature (~10 blocks). Leave this page open.", false, shieldTxHash);
                 await this.matureIfSupported();
             }
             const paying = invoice.mode === "address"
@@ -64,6 +65,7 @@ export class StealthCheckout {
                 network: invoice.network,
                 mode: invoice.mode,
                 txHash,
+                shieldTxHash,
                 confirmedAt: Date.now(),
                 disclosure: invoice.mode === "address"
                     ? "Proves this invoice was paid. Does not link the payment to the payer's wallet."

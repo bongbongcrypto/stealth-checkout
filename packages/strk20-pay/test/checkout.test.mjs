@@ -37,6 +37,8 @@ test("full flow: connect → shield → mature → pay → confirm → paid", as
   assert.deepEqual(phases, ["connecting", "preparing", "shielding", "maturing", "paying", "confirming", "paid"]);
   assert.equal(receipt.invoiceId, "inv-1");
   assert.equal(receipt.txHash, confirmedHash);
+  assert.ok(receipt.shieldTxHash, "shield hash is kept on the receipt");
+  assert.notEqual(receipt.shieldTxHash, receipt.txHash);
   assert.match(receipt.disclosure, /Does not link/);
   assert.equal(await wallet.shieldedBalance("STRK"), "0"); // shielded exactly what was spent
 });

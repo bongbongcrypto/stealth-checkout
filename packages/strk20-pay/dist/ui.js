@@ -64,7 +64,7 @@ export function mountCheckout(container, opts) {
         button.hidden = true;
         honesty.root.hidden = true;
         receiptBox.hidden = false;
-        receiptBox.replaceChildren(line("spay-receipt-title", "Receipt"), line("spay-receipt-row", `Invoice ${receipt.invoiceId}`), line("spay-receipt-row", `${receipt.amount} ${receipt.token} · ${receipt.mode === "address" ? "invoice address" : "private note"} · ${receipt.network}`), line("spay-receipt-row", receipt.txHash ? `tx ${shorten(receipt.txHash)}` : ""), line("spay-receipt-note", receipt.disclosure));
+        receiptBox.replaceChildren(line("spay-receipt-title", "Receipt"), line("spay-receipt-row", `Invoice ${receipt.invoiceId}`), line("spay-receipt-row", `${receipt.amount} ${receipt.token} · ${receipt.mode === "address" ? "invoice address" : "private note"} · ${receipt.network}`), line("spay-receipt-row", receipt.txHash ? `payment tx ${receipt.txHash}` : ""), line("spay-receipt-row", receipt.shieldTxHash ? `shield tx ${receipt.shieldTxHash}` : ""), line("spay-receipt-note", receipt.disclosure));
         opts.onPaid?.(receipt);
     }
     return {

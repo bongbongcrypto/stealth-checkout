@@ -61,6 +61,8 @@ export interface Receipt {
   mode: PaymentMode;
   /** Tx hash of the confirming transaction (mode "address"). */
   txHash?: string;
+  /** Tx hash of the shield step, when the flow had to shield first. */
+  shieldTxHash?: string;
   confirmedAt: number;
   /** What this receipt proves and what it deliberately does not. */
   disclosure: string;

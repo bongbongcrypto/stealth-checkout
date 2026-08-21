@@ -100,7 +100,7 @@ export class WalletApiAdapter implements WalletAdapter {
       if (capable.length === 0) {
         const seen = wallets.map((w) => w.name).join(", ") || "none";
         throw new Error(
-          `No STRK20-capable wallet found (detected: ${seen}). Install Ready X and enable Smart Wallet + Private.`,
+          `No wallet here can make private payments (detected: ${seen}). Update your Ready extension to the latest version (it is now called Ready X) and enable Smart Wallet + Private.`,
         );
       }
       const pick =

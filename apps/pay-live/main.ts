@@ -86,7 +86,7 @@ async function reportWalletSupport(wallet: WalletApiAdapter): Promise<void> {
     if (found.length === 0) {
       box.className = "check bad";
       box.textContent =
-        "No Starknet wallet detected in this browser. Install Ready X (ready.co) in Chrome, then reload.";
+        "No Starknet wallet detected in this browser. Install Ready X from the Chrome Web Store, then reload.";
       return;
     }
     const capable = found.filter((w) => w.strk20);
@@ -97,8 +97,9 @@ async function reportWalletSupport(wallet: WalletApiAdapter): Promise<void> {
     } else {
       box.className = "check bad";
       box.textContent =
-        `Detected ${names.join(", ")}. None of these can make private payments. ` +
-        "Private payments need Ready X (Chrome) with Smart Wallet and Private enabled; the older Ready extension and Firefox cannot do it.";
+        `Detected ${names.join(", ")}. None of these can make private payments yet. ` +
+        "If yours still shows the old name \"Ready Wallet (Formerly Argent)\", it is out of date: the same extension is now called Ready X. " +
+        "Update it (browser extensions page, turn on Developer mode, press Update), enable Smart Wallet + Private, then reload this page.";
     }
   } catch (err) {
     box.className = "check bad";

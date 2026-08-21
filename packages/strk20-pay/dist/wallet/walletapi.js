@@ -67,7 +67,7 @@ export class WalletApiAdapter {
             const capable = wallets.filter((w) => w.strk20);
             if (capable.length === 0) {
                 const seen = wallets.map((w) => w.name).join(", ") || "none";
-                throw new Error(`No STRK20-capable wallet found (detected: ${seen}). Install Ready X and enable Smart Wallet + Private.`);
+                throw new Error(`No wallet here can make private payments (detected: ${seen}). Update your Ready extension to the latest version (it is now called Ready X) and enable Smart Wallet + Private.`);
             }
             const pick = capable.find((w) => w.name.toLowerCase().includes(this.preferWallet)) ?? capable[0];
             this.accountV6 = await WalletAccountV6.connect(this.provider, pick.wallet);

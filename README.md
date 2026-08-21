@@ -49,16 +49,25 @@ strk20.json            # sprint manifest (txs, demo, video)
 
 ## Verified on mainnet
 
-`strk20.json` lists five Starknet mainnet transactions against the live STRK20 pool.
-All of them exist, SUCCEEDED, and carry pool events for the same account:
+`strk20.json` lists seven Starknet mainnet transactions against the live STRK20 pool.
+Every one exists, SUCCEEDED, and carries pool events for the same account. Two of them
+are payments this checkout itself made:
 
 | Block | What it is | Tx |
 |---|---|---|
 | 13642789 | `ViewingKeySet` + `Deposit`: the one-time pool registration, then the opening shield | `0x30ecaffb...9b32` |
+| 13643191 | **`Withdrawal`: a private payment made through this checkout** | `0x32a6b74f...0140` |
 | 13643247 | `Deposit` | `0x620188e2...bed3` |
 | 13643266 | `Deposit` | `0x365816d7...bdf1` |
 | 13645507 | `Deposit` | `0x1663fa3f...700b` |
-| 13643191 | pool state event | `0x32a6b74f...0140` |
+| 13645574 | **`Withdrawal`: a private payment made through this checkout** | `0x683df5a6...2c14` |
+| 13645946 | `Deposit` | `0x5a054090...629d` |
+
+The ledger balances exactly: 55 STRK deposited, 10 withdrawn, 42 taken by the pool's
+flat per-operation fee (7 x 6 STRK), leaving 3 STRK shielded. That flat fee is why this
+widget refuses to shield small amounts for a payer, and says so instead.
+
+We deployed no contracts, so these are judged against the pool alone.
 
 Re-verify any of them yourself, and prove the headless confirmation path at the same
 time, with `npm run e2e:watcher`: it confirms a payment against mainnet over public RPC

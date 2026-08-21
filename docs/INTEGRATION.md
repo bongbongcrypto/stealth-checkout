@@ -96,6 +96,18 @@ Verify the `X-Spay-Signature` header with HMAC-SHA256 over the raw body
 Prove it works before wiring anything: `npm run e2e:watcher` runs the whole
 confirm-and-webhook loop against Starknet mainnet without spending anything.
 
+## Why the widget will not shield for your payer
+
+If the payer has no shielded balance, the widget stops and tells them to shield in
+their wallet first, ahead of time. That refusal is deliberate, and it comes from the
+protocol's own guidance: a deposit is a public leg that names the depositor, so a
+deposit made moments before a payment can be tied to it by amount and timing.
+Shielding separately, earlier, is what makes the payment unlinkable. It is also
+cheaper, because the pool charges a fee per deposit.
+
+Pass `allowInlineShield: true` if you would rather trade that away for a single
+click; our arcade demo does, because a mock wallet has no wallet UI to send players to.
+
 ## The honesty contract
 
 Whatever tier you use, tell your users the truth. With STRK20 today:

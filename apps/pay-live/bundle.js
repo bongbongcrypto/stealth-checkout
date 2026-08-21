@@ -31583,9 +31583,10 @@ var WalletActionError = class extends Error {
 
 // packages/strk20-pay/src/checkout.ts
 var StealthCheckout = class {
-  constructor(wallet, confirmPayment = async () => true) {
+  constructor(wallet, confirmPayment = async () => true, allowInlineShield = false) {
     this.wallet = wallet;
     this.confirmPayment = confirmPayment;
+    this.allowInlineShield = allowInlineShield;
   }
   listeners = /* @__PURE__ */ new Set();
   phase = "idle";
@@ -31621,12 +31622,12 @@ var StealthCheckout = class {
           ({ txHash } = await this.payStep(invoice));
         } catch (err) {
           if (!isInsufficientFunds(err)) throw err;
-          shieldTxHash = await this.shieldStep(invoice);
+          shieldTxHash = await this.shieldOrExplain(invoice);
           ({ txHash } = await this.payStep(invoice));
         }
       } else {
         if (compareAmounts(shielded, invoice.amount) < 0) {
-          shieldTxHash = await this.shieldStep(invoice);
+          shieldTxHash = await this.shieldOrExplain(invoice, shielded);
         }
         ({ txHash } = await this.payStep(invoice));
       }
@@ -31653,6 +31654,17 @@ var StealthCheckout = class {
       this.listeners.forEach((l) => l({ type: "failed", error: message, phase: this.phase }));
       throw err;
     }
+  }
+  /**
+   * Either shield inline (opt-in) or stop and say why not. Refusing is the
+   * privacy-preserving answer, so the message has to be genuinely useful.
+   */
+  async shieldOrExplain(invoice, shielded) {
+    if (this.allowInlineShield) return this.shieldStep(invoice);
+    const have = shielded !== void 0 ? ` You currently have ${shielded} ${invoice.token} shielded.` : "";
+    throw new Error(
+      `You need at least ${invoice.amount} ${invoice.token} shielded before paying.${have} Shield it in your wallet first, in one go and ahead of time: the pool charges a fee per deposit, and a deposit made moments before a payment can be linked to it by amount and timing. Wait about ten blocks after shielding, then come back to this invoice.`
+    );
   }
   /** Shield, then block until the new notes are actually spendable. */
   async shieldStep(invoice) {
@@ -31714,7 +31726,7 @@ function isInsufficientFunds(err) {
 function mountCheckout(container, opts) {
   injectStylesOnce();
   const { invoice, wallet } = opts;
-  const checkout = new StealthCheckout(wallet, opts.confirm);
+  const checkout = new StealthCheckout(wallet, opts.confirm, opts.allowInlineShield ?? false);
   const root = el("div", "spay");
   const amountLine = el("div", "spay-amount");
   amountLine.textContent = `${invoice.amount} ${invoice.token}`;

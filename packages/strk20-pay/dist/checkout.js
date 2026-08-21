@@ -13,11 +13,22 @@ import { WalletActionError } from "./wallet/adapter.js";
 export class StealthCheckout {
     wallet;
     confirmPayment;
+    allowInlineShield;
     listeners = new Set();
     phase = "idle";
-    constructor(wallet, confirmPayment = async () => true) {
+    constructor(wallet, confirmPayment = async () => true, 
+    /**
+     * Shield inline when the payer has no shielded funds. OFF by default, and
+     * that default is the protocol's own advice: a deposit is a public leg
+     * naming the depositor, so shielding moments before paying lets an
+     * observer correlate the two ends by amount and timing. Shielding ahead of
+     * time, separately, is what makes the payment unlinkable. It is also
+     * cheaper, since the pool charges a fee per deposit.
+     */
+    allowInlineShield = false) {
         this.wallet = wallet;
         this.confirmPayment = confirmPayment;
+        this.allowInlineShield = allowInlineShield;
     }
     on(listener) {
         this.listeners.add(listener);
@@ -48,7 +59,7 @@ export class StealthCheckout {
             let txHash;
             if (shielded === null) {
                 // The wallet would not report a balance. Try paying with what may
-                // already be shielded rather than shielding again: a needless deposit
+                // already be shielded rather than shielding blind: a needless deposit
                 // costs a pool fee and publishes another public leg.
                 try {
                     ({ txHash } = await this.payStep(invoice));
@@ -56,13 +67,13 @@ export class StealthCheckout {
                 catch (err) {
                     if (!isInsufficientFunds(err))
                         throw err;
-                    shieldTxHash = await this.shieldStep(invoice);
+                    shieldTxHash = await this.shieldOrExplain(invoice);
                     ({ txHash } = await this.payStep(invoice));
                 }
             }
             else {
                 if (compareAmounts(shielded, invoice.amount) < 0) {
-                    shieldTxHash = await this.shieldStep(invoice);
+                    shieldTxHash = await this.shieldOrExplain(invoice, shielded);
                 }
                 ({ txHash } = await this.payStep(invoice));
             }
@@ -97,6 +108,19 @@ export class StealthCheckout {
             this.listeners.forEach((l) => l({ type: "failed", error: message, phase: this.phase }));
             throw err;
         }
+    }
+    /**
+     * Either shield inline (opt-in) or stop and say why not. Refusing is the
+     * privacy-preserving answer, so the message has to be genuinely useful.
+     */
+    async shieldOrExplain(invoice, shielded) {
+        if (this.allowInlineShield)
+            return this.shieldStep(invoice);
+        const have = shielded !== undefined ? ` You currently have ${shielded} ${invoice.token} shielded.` : "";
+        throw new Error(`You need at least ${invoice.amount} ${invoice.token} shielded before paying.${have} ` +
+            "Shield it in your wallet first, in one go and ahead of time: the pool charges a fee per deposit, " +
+            "and a deposit made moments before a payment can be linked to it by amount and timing. " +
+            "Wait about ten blocks after shielding, then come back to this invoice.");
     }
     /** Shield, then block until the new notes are actually spendable. */
     async shieldStep(invoice) {

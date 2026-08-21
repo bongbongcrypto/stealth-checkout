@@ -61,6 +61,9 @@ function insertCoin() {
     invoice: freshInvoice(),
     wallet,
     confirm: watcherConfirm,
+    // The arcade opts in to inline shielding because the mock wallet has no
+    // wallet UI to send players to. Real merchants should leave this off.
+    allowInlineShield: true,
     onPaid() {
       credits += 1;
       updateButtons();

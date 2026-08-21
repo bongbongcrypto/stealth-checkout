@@ -30,7 +30,7 @@ test("full flow: connect → shield → mature → pay → confirm → paid", as
   const checkout = new StealthCheckout(wallet, async (_inv, txHash) => {
     confirmedHash = txHash;
     return true;
-  });
+  }, true);
   const phases = collectPhases(checkout);
 
   const receipt = await checkout.pay(invoice());
@@ -46,7 +46,7 @@ test("full flow: connect → shield → mature → pay → confirm → paid", as
 
 test("maturity is awaited after shielding, and reports blocks left", async () => {
   const wallet = fastWallet();
-  const checkout = new StealthCheckout(wallet);
+  const checkout = new StealthCheckout(wallet, undefined, true);
   const waits = [];
   checkout.on((e) => {
     if (e.type === "progress" && e.progress.phase === "maturing") waits.push(e.progress.message);
@@ -76,7 +76,7 @@ test("an unknown shielded balance pays first instead of shielding again", async 
 test("unknown balance still shields when the wallet reports insufficient funds", async () => {
   const wallet = fastWallet();
   wallet.shieldedBalance = async () => null;
-  const checkout = new StealthCheckout(wallet);
+  const checkout = new StealthCheckout(wallet, undefined, true);
   const phases = collectPhases(checkout);
 
   const receipt = await checkout.pay(invoice());
@@ -102,7 +102,7 @@ test("already-shielded balance skips the shield phase", async () => {
 
 test("note mode uses privateTransfer and a note receipt", async () => {
   const wallet = fastWallet();
-  const checkout = new StealthCheckout(wallet);
+  const checkout = new StealthCheckout(wallet, undefined, true);
   const receipt = await checkout.pay(invoice({ mode: "note", receiveAddress: undefined, merchantPoolAddress: "0x0pool" }));
   assert.equal(receipt.mode, "note");
   assert.match(receipt.disclosure, /Amount and parties are not on-chain/);
@@ -110,7 +110,7 @@ test("note mode uses privateTransfer and a note receipt", async () => {
 
 test("wallet failure surfaces as a failed event and a rejection", async () => {
   const wallet = fastWallet({ failAt: "unshield" });
-  const checkout = new StealthCheckout(wallet);
+  const checkout = new StealthCheckout(wallet, undefined, true);
   let failedEvent = null;
   checkout.on((e) => {
     if (e.type === "failed") failedEvent = e;
@@ -121,7 +121,7 @@ test("wallet failure surfaces as a failed event and a rejection", async () => {
 });
 
 test("unconfirmed payment fails rather than minting a receipt", async () => {
-  const checkout = new StealthCheckout(fastWallet(), async () => false);
+  const checkout = new StealthCheckout(fastWallet(), async () => false, true);
   await assert.rejects(() => checkout.pay(invoice()), /not confirmed/);
 });
 
@@ -132,19 +132,19 @@ test("expired invoice never touches the wallet", async () => {
 });
 
 test("missing receive address is rejected", async () => {
-  const checkout = new StealthCheckout(fastWallet());
+  const checkout = new StealthCheckout(fastWallet(), undefined, true);
   await assert.rejects(() => checkout.pay(invoice({ receiveAddress: undefined })), /missing its receive address/);
 });
 
 test("insufficient funds fails at shield with a clear message", async () => {
   const wallet = fastWallet({ funded: { STRK: "0.5" } });
-  const checkout = new StealthCheckout(wallet);
+  const checkout = new StealthCheckout(wallet, undefined, true);
   await assert.rejects(() => checkout.pay(invoice()), /Insufficient STRK/);
 });
 
 test("a second pay while in-flight is rejected", async () => {
   const wallet = fastWallet({ latency: 30 });
-  const checkout = new StealthCheckout(wallet);
+  const checkout = new StealthCheckout(wallet, undefined, true);
   const first = checkout.pay(invoice());
   await assert.rejects(() => checkout.pay(invoice({ id: "inv-2" })), /already in progress/);
   await first;
@@ -171,4 +171,23 @@ test("honesty report: note mode hides amount and parties but admits timing", () 
   const rows = revealReport(invoice({ mode: "note" }), false);
   assert.ok(rows.some((r) => r.visibility === "hidden" && /Amount and both parties/.test(r.fact)));
   assert.ok(rows.some((r) => r.visibility === "public" && /Timing/i.test(r.fact)));
+});
+
+test("by default the widget refuses to shield inline, and says why", async () => {
+  // The protocol's own guidance: a deposit is a public leg naming the payer,
+  // so shielding moments before paying is what makes the two correlatable.
+  const wallet = fastWallet();
+  const checkout = new StealthCheckout(wallet);
+  const phases = collectPhases(checkout);
+
+  await assert.rejects(() => checkout.pay(invoice()), (err) => {
+    assert.match(err.message, /need at least 1 STRK shielded/i);
+    assert.match(err.message, /fee per deposit/i);
+    assert.match(err.message, /linked to it by amount and timing/i);
+    assert.match(err.message, /ten blocks/i);
+    return true;
+  });
+
+  assert.ok(!phases.includes("shielding"), "no deposit is made");
+  assert.equal(await wallet.publicBalance("STRK"), "10", "no funds moved");
 });

@@ -10,6 +10,12 @@ export interface MountOptions {
     onFailed?: (error: string) => void;
     /** Button label; defaults to "Pay {amount} {token} privately". */
     label?: string;
+    /**
+     * Let the widget shield for the payer when they have no shielded funds.
+     * Off by default: shielding ahead of time, separately, is what keeps the
+     * payment unlinkable, and it avoids paying the pool's per-deposit fee twice.
+     */
+    allowInlineShield?: boolean;
 }
 export interface MountedCheckout {
     unmount(): void;

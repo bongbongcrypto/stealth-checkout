@@ -11,6 +11,12 @@ export interface MountOptions {
   onFailed?: (error: string) => void;
   /** Button label; defaults to "Pay {amount} {token} privately". */
   label?: string;
+  /**
+   * Let the widget shield for the payer when they have no shielded funds.
+   * Off by default: shielding ahead of time, separately, is what keeps the
+   * payment unlinkable, and it avoids paying the pool's per-deposit fee twice.
+   */
+  allowInlineShield?: boolean;
 }
 
 export interface MountedCheckout {
@@ -27,7 +33,7 @@ export interface MountedCheckout {
 export function mountCheckout(container: HTMLElement, opts: MountOptions): MountedCheckout {
   injectStylesOnce();
   const { invoice, wallet } = opts;
-  const checkout = new StealthCheckout(wallet, opts.confirm);
+  const checkout = new StealthCheckout(wallet, opts.confirm, opts.allowInlineShield ?? false);
 
   const root = el("div", "spay");
   const amountLine = el("div", "spay-amount");

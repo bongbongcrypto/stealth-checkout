@@ -7,7 +7,7 @@ import { StealthCheckout } from "./checkout.js";
 export function mountCheckout(container, opts) {
     injectStylesOnce();
     const { invoice, wallet } = opts;
-    const checkout = new StealthCheckout(wallet, opts.confirm);
+    const checkout = new StealthCheckout(wallet, opts.confirm, opts.allowInlineShield ?? false);
     const root = el("div", "spay");
     const amountLine = el("div", "spay-amount");
     amountLine.textContent = `${invoice.amount} ${invoice.token}`;

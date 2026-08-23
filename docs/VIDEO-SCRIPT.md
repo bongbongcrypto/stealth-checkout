@@ -139,8 +139,10 @@ observation, which is worth showing too.
 
 > Three ways in. An invoice link with zero code. The widget in one mount call, vanilla
 > or React. Or the watcher with webhooks if you want your own backend.
-> It is on npm and it is MIT. If your sprint project needs to get paid, this is the
-> layer, and I will fix whatever breaks the same day.
+> It is MIT. If your sprint project needs to get paid, this is the layer, and I will
+> fix whatever breaks the same day.
+
+*Only say "it is on npm" if `npm publish` has actually run by the time you record.*
 > Repo is in the description.
 
 ---

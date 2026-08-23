@@ -14,10 +14,12 @@ export class MockWallet {
     pub = new Map();
     shielded = new Map();
     txCounter = 0;
+    fee;
     constructor(opts = {}) {
         this.network = opts.network ?? "sepolia";
         this.latency = opts.latency ?? 600;
         this.failAt = opts.failAt;
+        this.fee = toUnits(opts.poolFeeStrk ?? "6");
         for (const [token, amount] of Object.entries(opts.funded ?? { STRK: "100" })) {
             this.pub.set(token, toUnits(amount));
         }
@@ -38,12 +40,17 @@ export class MockWallet {
     async shieldedBalance(token) {
         return fromUnits(this.shielded.get(token) ?? 0n);
     }
+    async poolFee() {
+        return fromUnits(this.fee);
+    }
     async shield(token, amount) {
         this.assertConnected("shield");
         await wait(this.latency * 2); // screening + acceptance
         if (this.failAt === "shield")
             throw new WalletActionError("shield", "Deposit rejected by compliance screening.");
-        this.move(this.pub, this.shielded, token, amount, "shield");
+        // Public funds pay amount + fee; the pool credits the amount.
+        this.take(this.pub, token, fromUnits(toUnits(amount) + this.fee), "shield");
+        this.shielded.set(token, (this.shielded.get(token) ?? 0n) + toUnits(amount));
         return { txHash: this.hash() };
     }
     async privateTransfer(token, amount, _toPoolAddress) {
@@ -51,7 +58,7 @@ export class MockWallet {
         await wait(this.latency * 2); // proof generation happens in the wallet
         if (this.failAt === "privateTransfer")
             throw new WalletActionError("privateTransfer", "Wallet failed to prove the transfer.");
-        this.take(this.shielded, token, amount, "privateTransfer");
+        this.take(this.shielded, token, fromUnits(toUnits(amount) + this.fee), "privateTransfer");
         return { txHash: this.hash() };
     }
     async unshield(token, amount, _toAddress) {
@@ -59,7 +66,9 @@ export class MockWallet {
         await wait(this.latency * 2);
         if (this.failAt === "unshield")
             throw new WalletActionError("unshield", "Wallet failed to prove the withdrawal.");
-        this.take(this.shielded, token, amount, "unshield");
+        // The recipient gets the full amount; the fee comes out of the payer's
+        // shielded balance on top of it.
+        this.take(this.shielded, token, fromUnits(toUnits(amount) + this.fee), "unshield");
         return { txHash: this.hash() };
     }
     /** Simulates the ~10-block note maturation delay. */
@@ -72,10 +81,6 @@ export class MockWallet {
     assertConnected(action) {
         if (!this.connected)
             throw new WalletActionError(action, "Wallet is not connected.");
-    }
-    move(from, to, token, amount, action) {
-        this.take(from, token, amount, action);
-        to.set(token, (to.get(token) ?? 0n) + toUnits(amount));
     }
     take(from, token, amount, action) {
         const bal = from.get(token) ?? 0n;

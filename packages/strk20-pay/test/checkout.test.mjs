@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MockWallet, StealthCheckout, compareAmounts, revealReport } from "../dist/index.js";
+import { MockWallet, StealthCheckout, addAmounts, compareAmounts, revealReport } from "../dist/index.js";
 
 const invoice = (over = {}) => ({
   id: "inv-1",
@@ -13,7 +13,10 @@ const invoice = (over = {}) => ({
   ...over,
 });
 
-const fastWallet = (opts = {}) => new MockWallet({ latency: 1, funded: { STRK: "10" }, ...opts });
+// The pool charges a flat 6 STRK per operation, so a 1 STRK invoice paid from
+// scratch costs 14: shield 1+6 and pay 1+6. Fixtures are funded accordingly;
+// anything tighter is testing a flow that cannot happen on mainnet.
+const fastWallet = (opts = {}) => new MockWallet({ latency: 1, funded: { STRK: "100" }, ...opts });
 
 /** Phases in order, collapsing repeats (maturing ticks once per block left). */
 function collectPhases(checkout) {
@@ -41,7 +44,7 @@ test("full flow: connect → shield → mature → pay → confirm → paid", as
   assert.ok(receipt.shieldTxHash, "shield hash is kept on the receipt");
   assert.notEqual(receipt.shieldTxHash, receipt.txHash);
   assert.match(receipt.disclosure, /Does not link/);
-  assert.equal(await wallet.shieldedBalance("STRK"), "0"); // shielded exactly what was spent
+  assert.equal(await wallet.shieldedBalance("STRK"), "0", "shielded amount+fee, spent amount+fee");
 });
 
 test("maturity is awaited after shielding, and reports blocks left", async () => {
@@ -61,7 +64,7 @@ test("an unknown shielded balance pays first instead of shielding again", async 
   // flow must not spend a second deposit to find that out.
   const wallet = fastWallet();
   await wallet.connect();
-  await wallet.shield("STRK", "5");
+  await wallet.shield("STRK", "20");
   wallet.shieldedBalance = async () => null;
   const checkout = new StealthCheckout(wallet);
   const phases = collectPhases(checkout);
@@ -70,7 +73,7 @@ test("an unknown shielded balance pays first instead of shielding again", async 
 
   assert.ok(!phases.includes("shielding"), "should not shield when funds may already be there");
   assert.equal(receipt.shieldTxHash, undefined);
-  assert.equal(await wallet.publicBalance("STRK"), "5"); // only the original shield left public funds
+  assert.equal(await wallet.publicBalance("STRK"), "74"); // 100 - (20 shielded + 6 fee)
 });
 
 test("unknown balance still shields when the wallet reports insufficient funds", async () => {
@@ -88,7 +91,7 @@ test("unknown balance still shields when the wallet reports insufficient funds",
 test("already-shielded balance skips the shield phase", async () => {
   const wallet = fastWallet();
   await wallet.connect();
-  await wallet.shield("STRK", "5");
+  await wallet.shield("STRK", "20"); // comfortably covers 1 + the 6 fee
   const checkout = new StealthCheckout(wallet);
   const phases = collectPhases(checkout);
 
@@ -97,7 +100,7 @@ test("already-shielded balance skips the shield phase", async () => {
   assert.ok(!phases.includes("shielding"));
   assert.ok(!phases.includes("maturing"));
   assert.deepEqual(phases.slice(-2), ["confirming", "paid"]);
-  assert.equal(await wallet.shieldedBalance("STRK"), "4");
+  assert.equal(await wallet.shieldedBalance("STRK"), "13", "20 shielded, 1 paid, 6 fee");
 });
 
 test("note mode uses privateTransfer and a note receipt", async () => {
@@ -137,7 +140,7 @@ test("missing receive address is rejected", async () => {
 });
 
 test("insufficient funds fails at shield with a clear message", async () => {
-  const wallet = fastWallet({ funded: { STRK: "0.5" } });
+  const wallet = fastWallet({ funded: { STRK: "0.5" } }); // cannot even cover the fee
   const checkout = new StealthCheckout(wallet, undefined, true);
   await assert.rejects(() => checkout.pay(invoice()), /Insufficient STRK/);
 });
@@ -181,15 +184,16 @@ test("by default the widget refuses to shield inline, and says why", async () =>
   const phases = collectPhases(checkout);
 
   await assert.rejects(() => checkout.pay(invoice()), (err) => {
-    assert.match(err.message, /need at least 1 STRK shielded/i);
-    assert.match(err.message, /fee per deposit/i);
+    // The refusal must quote real arithmetic: 1 to the merchant, 6 to the pool.
+    assert.match(err.message, /need 7 STRK shielded/i);
+    assert.match(err.message, /flat 6 STRK for the payment itself/i);
     assert.match(err.message, /linked to it by amount and timing/i);
     assert.match(err.message, /ten blocks/i);
     return true;
   });
 
   assert.ok(!phases.includes("shielding"), "no deposit is made");
-  assert.equal(await wallet.publicBalance("STRK"), "10", "no funds moved");
+  assert.equal(await wallet.publicBalance("STRK"), "100", "no funds moved");
 });
 
 test("a retry after a failed confirmation never sends money twice", async () => {
@@ -222,7 +226,7 @@ test("paying a mainnet invoice from a sepolia wallet is refused before any promp
   const wallet = fastWallet();
   const checkout = new StealthCheckout(wallet, undefined, true);
   await assert.rejects(() => checkout.pay(invoice({ network: "mainnet" })), /invoice is for mainnet.*wallet is on sepolia/);
-  assert.equal(await wallet.publicBalance("STRK"), "10", "no funds moved");
+  assert.equal(await wallet.publicBalance("STRK"), "100", "no funds moved");
 });
 
 test("a reload cannot re-send a payment: the record is persisted", async () => {
@@ -232,7 +236,7 @@ test("a reload cannot re-send a payment: the record is persisted", async () => {
   const shared = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
   const wallet = fastWallet();
   await wallet.connect();
-  await wallet.shield("STRK", "5");
+  await wallet.shield("STRK", "20");
 
   const page1 = new StealthCheckout(wallet, async () => false, false, shared);
   await assert.rejects(() => page1.pay(invoice()), /sent once/);
@@ -248,9 +252,9 @@ test("a reload cannot re-send a payment: the record is persisted", async () => {
 test("a remembered payment cannot be claimed by a different invoice reusing its id", async () => {
   const store = new Map();
   const shared = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
-  const wallet = fastWallet({ funded: { STRK: "100" } });
+  const wallet = fastWallet({ funded: { STRK: "200" } });
   await wallet.connect();
-  await wallet.shield("STRK", "60");
+  await wallet.shield("STRK", "150");
 
   const first = new StealthCheckout(wallet, async () => false, false, shared);
   await assert.rejects(() => first.pay(invoice({ amount: "1" })), /sent once/);
@@ -313,4 +317,43 @@ test("a corrupt stored record is ignored, not fatal", async () => {
   const checkout = new StealthCheckout(wallet, async () => true, true, shared);
   const receipt = await checkout.pay(invoice());
   assert.equal(receipt.invoiceId, "inv-1", "a poisoned record must not brick the invoice");
+});
+
+test("the pool's flat fee is part of every amount decision", async () => {
+  // The pool charges 6 STRK per operation on top of the invoice. Gating on the
+  // amount alone let a payer through who then hit an opaque wallet error with
+  // their money already in the pool.
+  const wallet = fastWallet();
+  await wallet.connect();
+  await wallet.shield("STRK", "5"); // 5 shielded: enough for the amount, NOT the fee
+  const checkout = new StealthCheckout(wallet);
+
+  await assert.rejects(() => checkout.pay(invoice({ amount: "5" })), (err) => {
+    assert.match(err.message, /need 11 STRK shielded/, "5 to the merchant plus 6 to the pool");
+    return true;
+  });
+});
+
+test("inline shielding deposits enough to afford the payment that follows", async () => {
+  // Shielding exactly the invoice amount credits the amount, then the payment
+  // needs amount + fee, so it could never succeed on mainnet at any size.
+  const wallet = fastWallet();
+  const checkout = new StealthCheckout(wallet, async () => true, true);
+  const shielded = [];
+  checkout.on((e) => {
+    if (e.type === "progress" && e.progress.phase === "shielding") shielded.push(e.progress.message);
+  });
+
+  const receipt = await checkout.pay(invoice({ amount: "5" }));
+
+  assert.match(shielded[0], /shield 11 STRK/, "deposits amount + fee");
+  assert.ok(receipt.txHash);
+  assert.equal(await wallet.shieldedBalance("STRK"), "0", "deposit exactly covered the payment");
+});
+
+test("addAmounts is exact, and rejects junk", () => {
+  assert.equal(addAmounts("5", "6"), "11");
+  assert.equal(addAmounts("0.1", "0.2"), "0.3"); // no float drift
+  assert.equal(addAmounts("1.999999999999999999", "0.000000000000000001"), "2");
+  assert.throws(() => addAmounts("abc", "1"), /Not a valid amount/);
 });

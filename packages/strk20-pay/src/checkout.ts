@@ -49,10 +49,17 @@ export class StealthCheckout {
     return () => this.listeners.delete(listener);
   }
 
-  /** Honesty panel rows for this invoice, given current balances. */
+  /**
+   * Honesty panel rows for this invoice, given current balances. The threshold
+   * is amount + pool fee, the same one `pay` uses: judging by the amount alone
+   * told a payer holding exactly the invoice amount that no public deposit was
+   * coming, and then one was.
+   */
   async preview(invoice: Invoice): Promise<RevealItem[]> {
-    const shielded = this.wallet.isConnected() ? await this.wallet.shieldedBalance(invoice.token) : null;
-    const willShieldFirst = shielded === null || compareAmounts(shielded, invoice.amount) < 0;
+    if (!this.wallet.isConnected()) return revealReport(invoice, true);
+    const shielded = await this.wallet.shieldedBalance(invoice.token);
+    const fee = (await this.wallet.poolFee?.(invoice.token)) ?? "0";
+    const willShieldFirst = shielded === null || compareAmounts(shielded, addAmounts(invoice.amount, fee)) < 0;
     return revealReport(invoice, willShieldFirst);
   }
 
@@ -106,12 +113,18 @@ export class StealthCheckout {
           ({ txHash } = await this.payStep(invoice));
         } catch (err) {
           if (!isInsufficientFunds(err)) throw err;
-          shieldTxHash = await this.shieldOrExplain(invoice);
+          const fee = (await this.wallet.poolFee?.(invoice.token)) ?? "0";
+          shieldTxHash = await this.shieldOrExplain(invoice, undefined, fee);
           ({ txHash } = await this.payStep(invoice));
         }
       } else {
-        if (compareAmounts(shielded, invoice.amount) < 0) {
-          shieldTxHash = await this.shieldOrExplain(invoice, shielded);
+        // Paying costs amount + fee out of the shielded balance. Gating on the
+        // amount alone waved payers through who then hit an opaque wallet
+        // error with the money still in the pool.
+        const fee = (await this.wallet.poolFee?.(invoice.token)) ?? "0";
+        const needed = addAmounts(invoice.amount, fee);
+        if (compareAmounts(shielded, needed) < 0) {
+          shieldTxHash = await this.shieldOrExplain(invoice, shielded, fee);
         }
         ({ txHash } = await this.payStep(invoice));
       }
@@ -191,12 +204,17 @@ export class StealthCheckout {
    * Either shield inline (opt-in) or stop and say why not. Refusing is the
    * privacy-preserving answer, so the message has to be genuinely useful.
    */
-  private async shieldOrExplain(invoice: Invoice, shielded?: Amount): Promise<string> {
-    if (this.allowInlineShield) return this.shieldStep(invoice);
-    const have = shielded !== undefined ? ` You currently have ${shielded} ${invoice.token} shielded.` : "";
+  private async shieldOrExplain(invoice: Invoice, shielded?: Amount, fee = "0"): Promise<string> {
+    if (this.allowInlineShield) return this.shieldStep(invoice, fee);
+    const needed = addAmounts(invoice.amount, fee);
+    const have = shielded !== undefined ? ` You have ${shielded} ${invoice.token} shielded right now.` : "";
+    const feeNote =
+      compareAmounts(fee, "0") > 0
+        ? ` The pool charges a flat ${fee} ${invoice.token} for the payment itself, on top of the ${invoice.amount} the merchant receives.`
+        : "";
     throw new Error(
-      `You need at least ${invoice.amount} ${invoice.token} shielded before paying.${have} ` +
-        "Shield it in your wallet first, in one go and ahead of time: the pool charges a fee per deposit, " +
+      `You need ${needed} ${invoice.token} shielded to pay this invoice.${have}${feeNote} ` +
+        "Shield it in your wallet first, in one go and ahead of time: each deposit costs the same flat fee again, " +
         "and a deposit made moments before a payment can be linked to it by amount and timing. " +
         "Wait about ten blocks after shielding, then come back to this invoice.",
     );
@@ -224,13 +242,16 @@ export class StealthCheckout {
   }
 
   /** Shield, then block until the new notes are actually spendable. */
-  private async shieldStep(invoice: Invoice): Promise<string> {
+  private async shieldStep(invoice: Invoice, fee = "0"): Promise<string> {
+    // Shield the amount PLUS the fee the payment will cost, or the deposit
+    // lands and the payment that follows can never be afforded.
+    const deposit = addAmounts(invoice.amount, fee);
     this.emit(
       "shielding",
-      `Your wallet will pop up to shield ${invoice.amount} ${invoice.token}. This deposit is public and screened.`,
+      `Your wallet will pop up to shield ${deposit} ${invoice.token}. This deposit is public and screened.`,
       true,
     );
-    const { txHash } = await this.wallet.shield(invoice.token, invoice.amount);
+    const { txHash } = await this.wallet.shield(invoice.token, deposit);
     this.emit("maturing", "Waiting for your shielded funds to mature (about ten blocks). Leave this page open.", false, txHash);
     await this.wallet.awaitMaturity?.((blocksLeft) => {
       this.emit("maturing", `Waiting for your shielded funds to mature: ${blocksLeft} block(s) to go. Leave this page open.`, false, txHash);
@@ -350,4 +371,18 @@ export function sameFelt(a: string, b: string): boolean {
   } catch {
     return a === b;
   }
+}
+
+/** Add two decimal-string amounts exactly, with no float. */
+export function addAmounts(a: string, b: string, decimals = 18): string {
+  const units = (x: string): bigint => {
+    if (!/^\d+(\.\d+)?$/.test(String(x).trim())) throw new Error(`Not a valid amount: ${JSON.stringify(x)}`);
+    const [ip = "0", fp = ""] = String(x).trim().split(".");
+    return BigInt(ip || "0") * 10n ** BigInt(decimals) + BigInt(fp.padEnd(decimals, "0").slice(0, decimals) || "0");
+  };
+  const total = units(a) + units(b);
+  const one = 10n ** BigInt(decimals);
+  const ip = total / one;
+  const fp = (total % one).toString().padStart(decimals, "0").replace(/0+$/, "");
+  return fp ? `${ip}.${fp}` : ip.toString();
 }

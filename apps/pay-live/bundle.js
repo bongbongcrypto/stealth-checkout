@@ -1133,10 +1133,10 @@ function getUnsafeNumberReason(value) {
 }
 function extractSignificantDigits(value) {
   const {
-    start,
+    start: start2,
     end
   } = getSignificantDigitRange(value);
-  const digits = value.substring(start, end);
+  const digits = value.substring(start2, end);
   const dot = digits.indexOf(".");
   if (dot === -1) {
     return digits;
@@ -1144,12 +1144,12 @@ function extractSignificantDigits(value) {
   return digits.substring(0, dot) + digits.substring(dot + 1);
 }
 function getSignificantDigitRange(value) {
-  let start = 0;
+  let start2 = 0;
   if (value[0] === "-") {
-    start++;
+    start2++;
   }
-  while (value[start] === "0" || value[start] === ".") {
-    start++;
+  while (value[start2] === "0" || value[start2] === ".") {
+    start2++;
   }
   let end = value.lastIndexOf("e");
   if (end === -1) {
@@ -1158,11 +1158,11 @@ function getSignificantDigitRange(value) {
   if (end === -1) {
     end = value.length;
   }
-  while ((value[end - 1] === "0" || value[end - 1] === ".") && end > start) {
+  while ((value[end - 1] === "0" || value[end - 1] === ".") && end > start2) {
     end--;
   }
   return {
-    start,
+    start: start2,
     end
   };
 }
@@ -1310,7 +1310,7 @@ function parse(text, reviver, options) {
         } else {
           initial = false;
         }
-        const start = i;
+        const start2 = i;
         const key = parseString();
         if (key === void 0) {
           throwObjectKeyExpected();
@@ -1326,7 +1326,7 @@ function parse(text, reviver, options) {
         if (Object.prototype.hasOwnProperty.call(object, key) && !isDeepEqual(value2, object[key])) {
           const returnedValue = onDuplicateKey({
             key,
-            position: start + 1,
+            position: start2 + 1,
             oldValue: object[key],
             newValue: value2
           });
@@ -1420,10 +1420,10 @@ function parse(text, reviver, options) {
     }
   }
   function parseNumeric() {
-    const start = i;
+    const start2 = i;
     if (text.charCodeAt(i) === codeMinus) {
       i++;
-      expectDigit(start);
+      expectDigit(start2);
     }
     if (text.charCodeAt(i) === codeZero) {
       i++;
@@ -1435,7 +1435,7 @@ function parse(text, reviver, options) {
     }
     if (text.charCodeAt(i) === codeDot) {
       i++;
-      expectDigit(start);
+      expectDigit(start2);
       while (isDigit(text.charCodeAt(i))) {
         i++;
       }
@@ -1445,13 +1445,13 @@ function parse(text, reviver, options) {
       if (text.charCodeAt(i) === codeMinus || text.charCodeAt(i) === codePlus) {
         i++;
       }
-      expectDigit(start);
+      expectDigit(start2);
       while (isDigit(text.charCodeAt(i))) {
         i++;
       }
     }
-    if (i > start) {
-      return parseNumber(text.slice(start, i));
+    if (i > start2) {
+      return parseNumber(text.slice(start2, i));
     }
   }
   function eatComma() {
@@ -1481,9 +1481,9 @@ function parse(text, reviver, options) {
       throw new SyntaxError(`Expected end of input ${gotAt()}`);
     }
   }
-  function expectDigit(start) {
+  function expectDigit(start2) {
     if (!isDigit(text.charCodeAt(i))) {
-      const numSoFar = text.slice(start, i);
+      const numSoFar = text.slice(start2, i);
       throw new SyntaxError(`Invalid number '${numSoFar}', expecting a digit ${gotAt()}`);
     }
   }
@@ -1511,15 +1511,15 @@ function parse(text, reviver, options) {
   function throwInvalidCharacter(char) {
     throw new SyntaxError(`Invalid character '${char}' ${pos()}`);
   }
-  function throwInvalidEscapeCharacter(start) {
-    const chars = text.slice(start, start + 2);
+  function throwInvalidEscapeCharacter(start2) {
+    const chars = text.slice(start2, start2 + 2);
     throw new SyntaxError(`Invalid escape character '${chars}' ${pos()}`);
   }
   function throwObjectValueExpected() {
     throw new SyntaxError(`Object value expected after ':' ${pos()}`);
   }
-  function throwInvalidUnicodeCharacter(start) {
-    const chars = text.slice(start, start + 6);
+  function throwInvalidUnicodeCharacter(start2) {
+    const chars = text.slice(start2, start2 + 6);
     throw new SyntaxError(`Invalid unicode character '${chars}' ${pos()}`);
   }
   function pos() {
@@ -13203,8 +13203,8 @@ ${JSON.stringify(data2, null, 2)}`;
     isTypeArray = (type) => /\*/.test(type) || type.startsWith("core::array::Array::") || type.startsWith("core::array::Span::");
     isTypeTuple = (type) => type.startsWith("(") && type.endsWith(")");
     isTypeNamedTuple = (type) => {
-      const start = type.indexOf("(");
-      return start !== -1 && type.indexOf(")", start + 1) !== -1 && type.includes(":");
+      const start2 = type.indexOf("(");
+      return start2 !== -1 && type.indexOf(")", start2 + 1) !== -1 && type.includes(":");
     };
     isTypeStruct = (type, structs) => type in structs;
     isTypeEnum = (type, enums) => type in enums;
@@ -18195,12 +18195,12 @@ ${JSON.stringify(data2, null, 2)}`;
         const retryInterval = options?.retryInterval ?? 500;
         const errorStates = ["REVERTED"];
         const successStates = ["ACCEPTED_ON_L2", "ACCEPTED_ON_L1", "PRE_CONFIRMED"];
-        const start = (/* @__PURE__ */ new Date()).getTime();
+        const start2 = (/* @__PURE__ */ new Date()).getTime();
         while (retries > 0) {
           await wait(retryInterval);
           const txStatus = await provider.getTransactionStatus(txHash);
           logger.info(
-            `fastWaitForTransaction: ${retries} retries left, status: ${JSON.stringify(txStatus)}, elapsed: ${((/* @__PURE__ */ new Date()).getTime() - start) / 1e3}s.`
+            `fastWaitForTransaction: ${retries} retries left, status: ${JSON.stringify(txStatus)}, elapsed: ${((/* @__PURE__ */ new Date()).getTime() - start2) / 1e3}s.`
           );
           const executionStatus = txStatus.execution_status ?? "";
           const finalityStatus = txStatus.finality_status;
@@ -18214,7 +18214,7 @@ ${JSON.stringify(data2, null, 2)}`;
             while (currentNonce === initNonce && retries > 0) {
               currentNonce = BigInt(await provider.getNonceForAddress(address, BlockTag.PRE_CONFIRMED));
               logger.info(
-                `fastWaitForTransaction: checking new nonce ${currentNonce}, initial was ${initNonce}, elapsed: ${((/* @__PURE__ */ new Date()).getTime() - start) / 1e3}s.`
+                `fastWaitForTransaction: checking new nonce ${currentNonce}, initial was ${initNonce}, elapsed: ${((/* @__PURE__ */ new Date()).getTime() - start2) / 1e3}s.`
               );
               if (currentNonce !== initNonce) {
                 return true;
@@ -25554,15 +25554,15 @@ function pad(bytes, options = {}) {
 }
 function trim(value, options = {}) {
   const { dir = "left" } = options;
-  let start = 0;
+  let start2 = 0;
   let end = value.length;
   if (dir === "left")
-    while (start < end && value[start] === 0)
-      start++;
+    while (start2 < end && value[start2] === 0)
+      start2++;
   else
-    while (end > start && value[end - 1] === 0)
+    while (end > start2 && value[end - 1] === 0)
       end--;
-  return start === 0 && end === value.length ? value : value.slice(start, end);
+  return start2 === 0 && end === value.length ? value : value.slice(start2, end);
 }
 var init_bytes = __esm({
   "node_modules/@starknet-io/get-starknet-virtual-wallet/node_modules/ox/dist/core/internal/bytes.js"() {
@@ -25854,23 +25854,23 @@ function padRight(value, size5) {
 function random(length2) {
   return fromBytes(crypto.getRandomValues(new Uint8Array(length2)));
 }
-function slice(value, start, end, options = {}) {
+function slice(value, start2, end, options = {}) {
   const { strict } = options;
-  assertStartOffset(value, start);
+  assertStartOffset(value, start2);
   let value_;
-  if (end === void 0 && (start === void 0 || start >= 0)) {
-    if (start === void 0 || start === 0)
+  if (end === void 0 && (start2 === void 0 || start2 >= 0)) {
+    if (start2 === void 0 || start2 === 0)
       value_ = value;
     else
-      value_ = `0x${value.slice(2 + start * 2)}`;
+      value_ = `0x${value.slice(2 + start2 * 2)}`;
   } else {
     const data2 = value.slice(2);
-    const startOffset = (start ?? 0) * 2;
+    const startOffset = (start2 ?? 0) * 2;
     const endOffset = end !== void 0 ? end * 2 : void 0;
     value_ = `0x${data2.slice(startOffset, endOffset)}`;
   }
   if (strict)
-    assertEndOffset(value_, start, end);
+    assertEndOffset(value_, start2, end);
   return value_;
 }
 function size2(value) {
@@ -26009,22 +26009,22 @@ function assertSize2(hex, size_) {
   if (size5 > size_)
     throw new SizeOverflowError2({ givenSize: size5, maxSize: size_ });
 }
-function assertStartOffset(value, start) {
-  if (typeof start !== "number" || start <= 0)
+function assertStartOffset(value, start2) {
+  if (typeof start2 !== "number" || start2 <= 0)
     return;
   const size5 = value.length - 2 + 1 >> 1;
-  if (start > size5 - 1)
+  if (start2 > size5 - 1)
     throw new SliceOffsetOutOfBoundsError2({
-      offset: start,
+      offset: start2,
       position: "start",
       size: size5
     });
 }
-function assertEndOffset(value, start, end) {
-  if (typeof start !== "number" || typeof end !== "number")
+function assertEndOffset(value, start2, end) {
+  if (typeof start2 !== "number" || typeof end !== "number")
     return;
   const size5 = value.length - 2 + 1 >> 1;
-  if (size5 !== end - start)
+  if (size5 !== end - start2)
     throw new SliceOffsetOutOfBoundsError2({
       offset: end,
       position: "end",
@@ -26048,19 +26048,19 @@ function pad2(hex_, options = {}) {
 function trim2(value, options = {}) {
   const { dir = "left" } = options;
   const data2 = value.slice(2);
-  let start = 0;
+  let start2 = 0;
   let end = data2.length;
   if (dir === "left")
-    while (start < end && data2.charCodeAt(start) === 48)
-      start++;
+    while (start2 < end && data2.charCodeAt(start2) === 48)
+      start2++;
   else
-    while (end > start && data2.charCodeAt(end - 1) === 48)
+    while (end > start2 && data2.charCodeAt(end - 1) === 48)
       end--;
-  if (start >= end)
+  if (start2 >= end)
     return "0x";
-  if (dir === "right" && (end - start) % 2 === 1)
-    return `0x${data2.slice(start, end)}0`;
-  return `0x${data2.slice(start, end)}`;
+  if (dir === "right" && (end - start2) % 2 === 1)
+    return `0x${data2.slice(start2, end)}0`;
+  return `0x${data2.slice(start2, end)}`;
 }
 var init_hex2 = __esm({
   "node_modules/@starknet-io/get-starknet-virtual-wallet/node_modules/ox/dist/core/internal/hex.js"() {
@@ -29489,16 +29489,16 @@ function assertSize4(hex, size_) {
       maxSize: size_
     });
 }
-function assertStartOffset3(value, start) {
-  if (typeof start === "number" && start > 0 && start > size4(value) - 1)
+function assertStartOffset3(value, start2) {
+  if (typeof start2 === "number" && start2 > 0 && start2 > size4(value) - 1)
     throw new SliceOffsetOutOfBoundsError4({
-      offset: start,
+      offset: start2,
       position: "start",
       size: size4(value)
     });
 }
-function assertEndOffset3(value, start, end) {
-  if (typeof start === "number" && typeof end === "number" && size4(value) !== end - start) {
+function assertEndOffset3(value, start2, end) {
+  if (typeof start2 === "number" && typeof end === "number" && size4(value) !== end - start2) {
     throw new SliceOffsetOutOfBoundsError4({
       offset: end,
       position: "end",
@@ -29661,12 +29661,12 @@ function padRight3(value, size5) {
 function random4(length2) {
   return fromBytes2(random3(length2));
 }
-function slice2(value, start, end, options = {}) {
+function slice2(value, start2, end, options = {}) {
   const { strict } = options;
-  assertStartOffset3(value, start);
-  const value_ = `0x${value.replace("0x", "").slice((start ?? 0) * 2, (end ?? value.length) * 2)}`;
+  assertStartOffset3(value, start2);
+  const value_ = `0x${value.replace("0x", "").slice((start2 ?? 0) * 2, (end ?? value.length) * 2)}`;
   if (strict)
-    assertEndOffset3(value_, start, end);
+    assertEndOffset3(value_, start2, end);
   return value_;
 }
 function size4(value) {
@@ -31609,10 +31609,17 @@ var StealthCheckout = class {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
-  /** Honesty panel rows for this invoice, given current balances. */
+  /**
+   * Honesty panel rows for this invoice, given current balances. The threshold
+   * is amount + pool fee, the same one `pay` uses: judging by the amount alone
+   * told a payer holding exactly the invoice amount that no public deposit was
+   * coming, and then one was.
+   */
   async preview(invoice) {
-    const shielded = this.wallet.isConnected() ? await this.wallet.shieldedBalance(invoice.token) : null;
-    const willShieldFirst = shielded === null || compareAmounts(shielded, invoice.amount) < 0;
+    if (!this.wallet.isConnected()) return revealReport(invoice, true);
+    const shielded = await this.wallet.shieldedBalance(invoice.token);
+    const fee = await this.wallet.poolFee?.(invoice.token) ?? "0";
+    const willShieldFirst = shielded === null || compareAmounts(shielded, addAmounts(invoice.amount, fee)) < 0;
     return revealReport(invoice, willShieldFirst);
   }
   async pay(invoice) {
@@ -31651,12 +31658,15 @@ var StealthCheckout = class {
           ({ txHash } = await this.payStep(invoice));
         } catch (err) {
           if (!isInsufficientFunds(err)) throw err;
-          shieldTxHash = await this.shieldOrExplain(invoice);
+          const fee = await this.wallet.poolFee?.(invoice.token) ?? "0";
+          shieldTxHash = await this.shieldOrExplain(invoice, void 0, fee);
           ({ txHash } = await this.payStep(invoice));
         }
       } else {
-        if (compareAmounts(shielded, invoice.amount) < 0) {
-          shieldTxHash = await this.shieldOrExplain(invoice, shielded);
+        const fee = await this.wallet.poolFee?.(invoice.token) ?? "0";
+        const needed = addAmounts(invoice.amount, fee);
+        if (compareAmounts(shielded, needed) < 0) {
+          shieldTxHash = await this.shieldOrExplain(invoice, shielded, fee);
         }
         ({ txHash } = await this.payStep(invoice));
       }
@@ -31719,11 +31729,13 @@ var StealthCheckout = class {
    * Either shield inline (opt-in) or stop and say why not. Refusing is the
    * privacy-preserving answer, so the message has to be genuinely useful.
    */
-  async shieldOrExplain(invoice, shielded) {
-    if (this.allowInlineShield) return this.shieldStep(invoice);
-    const have = shielded !== void 0 ? ` You currently have ${shielded} ${invoice.token} shielded.` : "";
+  async shieldOrExplain(invoice, shielded, fee = "0") {
+    if (this.allowInlineShield) return this.shieldStep(invoice, fee);
+    const needed = addAmounts(invoice.amount, fee);
+    const have = shielded !== void 0 ? ` You have ${shielded} ${invoice.token} shielded right now.` : "";
+    const feeNote = compareAmounts(fee, "0") > 0 ? ` The pool charges a flat ${fee} ${invoice.token} for the payment itself, on top of the ${invoice.amount} the merchant receives.` : "";
     throw new Error(
-      `You need at least ${invoice.amount} ${invoice.token} shielded before paying.${have} Shield it in your wallet first, in one go and ahead of time: the pool charges a fee per deposit, and a deposit made moments before a payment can be linked to it by amount and timing. Wait about ten blocks after shielding, then come back to this invoice.`
+      `You need ${needed} ${invoice.token} shielded to pay this invoice.${have}${feeNote} Shield it in your wallet first, in one go and ahead of time: each deposit costs the same flat fee again, and a deposit made moments before a payment can be linked to it by amount and timing. Wait about ten blocks after shielding, then come back to this invoice.`
     );
   }
   finish(invoice, txHash, shieldTxHash) {
@@ -31744,13 +31756,14 @@ var StealthCheckout = class {
     return receipt;
   }
   /** Shield, then block until the new notes are actually spendable. */
-  async shieldStep(invoice) {
+  async shieldStep(invoice, fee = "0") {
+    const deposit = addAmounts(invoice.amount, fee);
     this.emit(
       "shielding",
-      `Your wallet will pop up to shield ${invoice.amount} ${invoice.token}. This deposit is public and screened.`,
+      `Your wallet will pop up to shield ${deposit} ${invoice.token}. This deposit is public and screened.`,
       true
     );
-    const { txHash } = await this.wallet.shield(invoice.token, invoice.amount);
+    const { txHash } = await this.wallet.shield(invoice.token, deposit);
     this.emit("maturing", "Waiting for your shielded funds to mature (about ten blocks). Leave this page open.", false, txHash);
     await this.wallet.awaitMaturity?.((blocksLeft) => {
       this.emit("maturing", `Waiting for your shielded funds to mature: ${blocksLeft} block(s) to go. Leave this page open.`, false, txHash);
@@ -31822,6 +31835,18 @@ function sameFelt(a, b) {
     return a === b;
   }
 }
+function addAmounts(a, b, decimals = 18) {
+  const units2 = (x) => {
+    if (!/^\d+(\.\d+)?$/.test(String(x).trim())) throw new Error(`Not a valid amount: ${JSON.stringify(x)}`);
+    const [ip2 = "0", fp2 = ""] = String(x).trim().split(".");
+    return BigInt(ip2 || "0") * 10n ** BigInt(decimals) + BigInt(fp2.padEnd(decimals, "0").slice(0, decimals) || "0");
+  };
+  const total = units2(a) + units2(b);
+  const one = 10n ** BigInt(decimals);
+  const ip = total / one;
+  const fp = (total % one).toString().padStart(decimals, "0").replace(/0+$/, "");
+  return fp ? `${ip}.${fp}` : ip.toString();
+}
 
 // packages/strk20-pay/src/ui.ts
 function mountCheckout(container, opts) {
@@ -31836,6 +31861,42 @@ function mountCheckout(container, opts) {
     memo.textContent = invoice.memo;
     amountLine.append(memo);
   }
+  const confirmBox = document.createElement("dl");
+  confirmBox.className = "spay-confirm";
+  const recipient = invoice.receiveAddress ?? invoice.merchantPoolAddress ?? "";
+  const confirmRow = (label, value) => {
+    const dt = document.createElement("dt");
+    dt.textContent = label;
+    const dd = document.createElement("dd");
+    if (typeof value === "string") dd.textContent = value;
+    else dd.append(value);
+    confirmBox.append(dt, dd);
+  };
+  confirmRow("Merchant receives", `${invoice.amount} ${invoice.token}`);
+  const feeCell = document.createElement("span");
+  feeCell.textContent = "checking\u2026";
+  confirmRow("Pool fee", feeCell);
+  const totalCell = document.createElement("strong");
+  totalCell.textContent = "\u2014";
+  confirmRow("You pay", totalCell);
+  if (recipient) confirmRow("To", explorerNode(wallet, "address", recipient));
+  confirmRow("Network", invoice.network === "mainnet" ? "Starknet mainnet" : "Starknet sepolia");
+  const feeWarning = el("div", "spay-fee-warn");
+  feeWarning.hidden = true;
+  void (async () => {
+    const fee = await wallet.poolFee?.(invoice.token) ?? null;
+    if (fee === null) {
+      feeCell.textContent = "unknown";
+      totalCell.textContent = `${invoice.amount} ${invoice.token} plus the pool fee`;
+      return;
+    }
+    feeCell.textContent = `${fee} ${invoice.token}`;
+    totalCell.textContent = `${addAmounts(invoice.amount, fee)} ${invoice.token}`;
+    if (compareAmounts(fee, invoice.amount) > 0) {
+      feeWarning.hidden = false;
+      feeWarning.textContent = `Heads up: the pool's flat fee of ${fee} ${invoice.token} is larger than this invoice. Private payments through the pool cost the same fee whatever the amount, so small ones carry most of it. Shield once for several purchases rather than once per purchase.`;
+    }
+  })();
   const button = el("button", "spay-btn");
   button.type = "button";
   const defaultLabel = opts.label ?? `Pay ${invoice.amount} ${invoice.token} privately`;
@@ -31845,10 +31906,13 @@ function mountCheckout(container, opts) {
   const honesty = buildHonestyPanel();
   const receiptBox = el("div", "spay-receipt");
   receiptBox.hidden = true;
-  root.append(amountLine, button, status, honesty.root, receiptBox);
+  root.append(amountLine, confirmBox, feeWarning, honesty.root, button, status, receiptBox);
   container.append(root);
   void checkout.preview(invoice).then((rows) => honesty.render(rows));
   const off = checkout.on((event) => {
+    if (event.type === "progress" && event.progress.phase === "preparing") {
+      void checkout.preview(invoice).then((rows) => honesty.render(rows));
+    }
     if (event.type === "progress") renderProgress(event.progress);
     if (event.type === "paid") renderReceipt(event.receipt);
   });
@@ -31861,6 +31925,7 @@ function mountCheckout(container, opts) {
     });
   });
   function renderProgress(p) {
+    status.setAttribute("aria-live", p.phase === "failed" ? "assertive" : "polite");
     status.textContent = p.message;
     status.classList.toggle("spay-status-popup", p.walletPopupImminent);
     status.classList.toggle("spay-status-error", p.phase === "failed");
@@ -31876,6 +31941,8 @@ function mountCheckout(container, opts) {
     if (p.phase !== "failed") button.textContent = labels[p.phase] ?? defaultLabel;
   }
   function renderReceipt(receipt) {
+    receiptBox.setAttribute("role", "status");
+    receiptBox.tabIndex = -1;
     button.hidden = true;
     honesty.root.hidden = true;
     receiptBox.hidden = false;
@@ -31883,10 +31950,11 @@ function mountCheckout(container, opts) {
       line("spay-receipt-title", "Receipt"),
       line("spay-receipt-row", `Invoice ${receipt.invoiceId}`),
       line("spay-receipt-row", `${receipt.amount} ${receipt.token} \xB7 ${receipt.mode === "address" ? "invoice address" : "private note"} \xB7 ${receipt.network}`),
-      line("spay-receipt-row", receipt.txHash ? `payment tx ${receipt.txHash}` : ""),
-      line("spay-receipt-row", receipt.shieldTxHash ? `shield tx ${receipt.shieldTxHash}` : ""),
+      txLine(wallet, "payment", receipt.txHash),
+      txLine(wallet, "shield", receipt.shieldTxHash),
       line("spay-receipt-note", receipt.disclosure)
     );
+    receiptBox.focus();
     opts.onPaid?.(receipt);
   }
   return {
@@ -31900,6 +31968,7 @@ function mountCheckout(container, opts) {
 function buildHonestyPanel() {
   const root = document.createElement("details");
   root.className = "spay-honesty";
+  root.open = true;
   const summary = document.createElement("summary");
   summary.textContent = "What will this payment reveal?";
   const list = el("div", "spay-honesty-list");
@@ -31930,10 +31999,35 @@ function el(tag, className) {
   node.className = className;
   return node;
 }
+function explorerNode(wallet, kind, value) {
+  const href = wallet.explorerUrl?.(kind, value) ?? null;
+  if (!href) {
+    const span = document.createElement("span");
+    span.textContent = shorten(value);
+    span.title = value;
+    return span;
+  }
+  const a = document.createElement("a");
+  a.href = href;
+  a.target = "_blank";
+  a.rel = "noreferrer";
+  a.textContent = shorten(value);
+  a.title = value;
+  return a;
+}
+function txLine(wallet, label, hash) {
+  const row = el("div", "spay-receipt-row");
+  if (!hash) return row;
+  row.append(`${label} tx `, explorerNode(wallet, "tx", hash));
+  return row;
+}
 function line(className, text) {
   const node = el("div", className);
   node.textContent = text;
   return node;
+}
+function shorten(hash) {
+  return hash.length > 14 ? `${hash.slice(0, 8)}\u2026${hash.slice(-4)}` : hash;
 }
 var stylesInjected = false;
 function injectStylesOnce() {
@@ -31944,10 +32038,10 @@ function injectStylesOnce() {
   style.textContent = `
 .spay{--spay-bg:#111318;--spay-fg:#e8eaf0;--spay-accent:#7ee787;--spay-muted:#9aa1ad;--spay-danger:#ff7b72;
   background:var(--spay-bg);color:var(--spay-fg);border:1px solid #2a2e37;border-radius:12px;
-  padding:16px;max-width:340px;font:14px/1.45 system-ui,sans-serif}
+  padding:16px;max-width:100%;width:340px;box-sizing:border-box;font:14px/1.45 system-ui,sans-serif}
 .spay-amount{font-size:22px;font-weight:700;margin-bottom:2px}
 .spay-memo{font-size:12px;font-weight:400;color:var(--spay-muted)}
-.spay-btn{width:100%;margin-top:10px;padding:10px 14px;border:0;border-radius:8px;cursor:pointer;
+.spay-btn{width:100%;margin-top:10px;padding:12px 14px;min-height:44px;border:0;border-radius:8px;cursor:pointer;
   background:var(--spay-accent);color:#08110a;font-weight:700;font-size:14px}
 .spay-btn:disabled{opacity:.75;cursor:progress}
 .spay-status{min-height:1.4em;margin-top:8px;font-size:12.5px;color:var(--spay-muted)}
@@ -31955,17 +32049,27 @@ function injectStylesOnce() {
 .spay-status-popup::before{content:"\u2197 ";font-weight:700}
 .spay-status-error{color:var(--spay-danger)}
 .spay-honesty{margin-top:10px;border-top:1px solid #2a2e37;padding-top:8px;font-size:12.5px}
-.spay-honesty summary{cursor:pointer;color:var(--spay-muted)}
+.spay-honesty summary{cursor:pointer;color:var(--spay-fg);font-weight:600;font-size:13px;padding:8px 0}
 .spay-honesty-row{display:flex;gap:8px;margin-top:8px}
 .spay-badge{flex:0 0 auto;height:fit-content;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700}
-.spay-badge-public{background:#3d2a2a;color:var(--spay-danger)}
+.spay-badge-public{background:#332f1c;color:#f0c674}
 .spay-badge-hidden{background:#22321f;color:var(--spay-accent)}
-.spay-honesty-fact{font-weight:600}
-.spay-honesty-detail{color:var(--spay-muted)}
+.spay-honesty-fact{font-weight:600;font-size:13px;color:var(--spay-fg)}
+.spay-honesty-detail{color:var(--spay-muted);font-size:12px;line-height:1.5;margin-top:2px}
 .spay-receipt{margin-top:10px}
 .spay-receipt-title{font-weight:700;color:var(--spay-accent)}
-.spay-receipt-row{font-size:12.5px;margin-top:4px}
+.spay-receipt-row{font-size:12.5px;margin-top:4px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}
 .spay-receipt-note{font-size:12px;color:var(--spay-muted);margin-top:8px;border-top:1px solid #2a2e37;padding-top:8px}
+.spay-confirm{margin-top:10px;padding:10px;background:#0d0f14;border:1px solid #2a2e37;border-radius:8px;
+  font-size:12px;display:grid;grid-template-columns:auto 1fr;gap:4px 12px}
+.spay-confirm dt{color:var(--spay-muted)}
+.spay-confirm dd{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}
+.spay-fee-warn{margin-top:8px;padding:8px 10px;border-radius:8px;font-size:12px;line-height:1.5;
+  background:#332f1c;color:#f0c674;border:1px solid #5a5230}
+.spay-btn:focus-visible{outline:3px solid #e8eaf0;outline-offset:2px}
+.spay-honesty summary:focus-visible{outline:2px solid var(--spay-accent);outline-offset:2px;border-radius:4px}
+.spay a:focus-visible{outline:2px solid var(--spay-accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.spay *{transition:none!important;animation:none!important}}
 `;
   document.head.append(style);
 }
@@ -32006,14 +32110,29 @@ function amountToFelt(amount, decimals) {
 // packages/strk20-pay/src/wallet/walletapi.ts
 var MIN_STRK20_WALLET_API = "0.10.3";
 var MATURITY_BLOCKS = 10;
+var EXPLORER_BASE = {
+  mainnet: "https://voyager.online",
+  sepolia: "https://sepolia.voyager.online"
+};
+var POOL_ADDRESS = {
+  mainnet: "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a",
+  sepolia: "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a"
+};
 var WalletApiAdapter = class {
   network;
+  /** Voyager, on the network this adapter is actually connected to. */
+  explorerUrl(kind, value) {
+    if (!/^0x[0-9a-fA-F]{1,64}$/.test(value)) return null;
+    const path2 = kind === "tx" ? "tx" : "contract";
+    return `${EXPLORER_BASE[this.network]}/${path2}/${value}`;
+  }
   rpcUrl;
   registry;
   preferWallet;
   discoveryTimeoutMs;
   account = null;
   shieldedAtBlock = null;
+  feeCache = void 0;
   accountV6 = null;
   provider = null;
   constructor(opts) {
@@ -32065,9 +32184,8 @@ var WalletApiAdapter = class {
       const wallets = await this.listWallets();
       const capable = wallets.filter((w) => w.strk20);
       if (capable.length === 0) {
-        const seen = wallets.map((w) => w.name).join(", ") || "none";
         throw new Error(
-          `No wallet here can make private payments (detected: ${seen}). Update your Ready extension to the latest version (it is now called Ready X) and enable Smart Wallet + Private.`
+          wallets.length === 0 ? "No Starknet wallet was found in this browser. Install Ready X (Chrome Web Store or Edge Add-ons), enable Smart Wallet and Private in its settings, then reload this page." : `None of the wallets here can make private payments (found: ${wallets.map((w) => w.name).join(", ")}). If yours still shows the old name "Ready Wallet (Formerly Argent)", it is the same extension out of date: update it, enable Smart Wallet + Private, then reload.`
         );
       }
       const pick = capable.find((w) => w.name.toLowerCase().includes(this.preferWallet)) ?? capable[0];
@@ -32102,6 +32220,31 @@ var WalletApiAdapter = class {
       return null;
     }
   }
+  /**
+   * Read the pool's flat fee. It is a real charge that no STRK20 documentation
+   * mentions: we found it by calling the contract. Cached because it does not
+   * move, and returned as null rather than zero when unreadable, so a caller
+   * can say "unknown" instead of quietly promising the payer too low a total.
+   */
+  async poolFee(token) {
+    const info = resolveToken(token, this.registry);
+    if (this.feeCache !== void 0) return this.feeCache;
+    try {
+      const { RpcProvider: RpcProvider2 } = await Promise.resolve().then(() => (init_dist(), dist_exports));
+      this.provider ??= new RpcProvider2({ nodeUrl: this.rpcUrl });
+      const res2 = await this.provider.callContract({
+        contractAddress: POOL_ADDRESS[this.network],
+        entrypoint: "get_fee_amount",
+        calldata: []
+      });
+      const low = BigInt(res2[0] ?? "0x0");
+      const high = BigInt(res2[1] ?? "0x0");
+      this.feeCache = unitsToAmount(low + (high << 128n), info.decimals);
+    } catch {
+      this.feeCache = null;
+    }
+    return this.feeCache;
+  }
   async shield(token, amount) {
     const result = await this.invoke("shield", this.actionsShield(token, amount));
     this.shieldedAtBlock = await this.blockOfTx(result.txHash).catch(() => null);
@@ -32113,9 +32256,9 @@ var WalletApiAdapter = class {
    * pool note only matures after MATURITY_BLOCKS.
    */
   async awaitMaturity(onProgress) {
-    const start = this.shieldedAtBlock;
-    if (start === null) return;
-    const target = start + MATURITY_BLOCKS;
+    const start2 = this.shieldedAtBlock;
+    if (start2 === null) return;
+    const target = start2 + MATURITY_BLOCKS;
     const deadline = Date.now() + 15 * 6e4;
     while (Date.now() < deadline) {
       const head = await this.currentBlock().catch(() => null);
@@ -32202,6 +32345,18 @@ var RPC_URL = "https://rpc.starknet.lava.build";
 var app = document.getElementById("app");
 var params = new URLSearchParams(location.search);
 var to = params.get("to");
+function watcherOrigin() {
+  const raw = params.get("watcher");
+  if (!raw) return null;
+  try {
+    const url2 = new URL(raw);
+    const local = url2.hostname === "localhost" || url2.hostname === "127.0.0.1";
+    if (url2.protocol !== "https:" && !(url2.protocol === "http:" && local)) return null;
+    return url2.origin;
+  } catch {
+    return null;
+  }
+}
 if (!to) {
   renderCreator();
 } else if (!/^0x[0-9a-fA-F]{10,64}$/.test(to)) {
@@ -32211,7 +32366,7 @@ if (!to) {
   if (!/^\d+(\.\d{1,18})?$/.test(amount) || Number(amount) <= 0) {
     renderError("This invoice link has an invalid amount.");
   } else {
-    void renderPayer({
+    void start({
       id: (params.get("id") ?? `inv_${Date.now().toString(36)}`).slice(0, 64),
       token: params.get("token") === "STRK" ? "STRK" : "STRK",
       amount,
@@ -32222,6 +32377,40 @@ if (!to) {
       createdAt: Date.now()
     });
   }
+}
+async function fetchServerInvoice(origin, invoice) {
+  const url2 = `${origin}/public/invoices/${encodeURIComponent(invoice.id)}?to=${encodeURIComponent(invoice.receiveAddress)}`;
+  const res2 = await fetch(url2, { signal: AbortSignal.timeout(8e3) });
+  if (!res2.ok) return null;
+  const body = await res2.json();
+  if (!body || typeof body.amount !== "string") return null;
+  if (BigInt(body.receiveAddress) !== BigInt(invoice.receiveAddress)) return null;
+  if (!/^\d+(\.\d{1,18})?$/.test(body.amount) || Number(body.amount) <= 0) return null;
+  return body;
+}
+async function start(fromUrl) {
+  const origin = watcherOrigin();
+  if (!origin) return renderPayer(fromUrl, null);
+  let server = null;
+  let reachable = true;
+  try {
+    server = await fetchServerInvoice(origin, fromUrl);
+  } catch {
+    reachable = false;
+    server = null;
+  }
+  if (!server) {
+    const host = new URL(origin).host;
+    return renderError(
+      reachable ? `The merchant's server at ${host} does not recognise this invoice. Do not pay it: ask the merchant for a fresh link.` : `The merchant's server at ${host} could not be reached, so the amount on this link cannot be verified. Reload in a moment. Paying an unverified link risks paying the wrong amount.`
+    );
+  }
+  if (server.status !== "watching") {
+    return renderError(
+      server.status === "paid" || server.status === "paid_late" ? "This invoice has already been paid. Nothing more is owed, so this page will not take another payment." : `The merchant's server is no longer accepting payment for this invoice (${server.status.replace(/_/g, " ")}). Ask for a fresh link.`
+    );
+  }
+  renderPayer({ ...fromUrl, amount: server.amount, expiresAt: server.expiresAt ?? void 0 }, { origin, server, urlAmount: fromUrl.amount });
 }
 function renderError(message) {
   app.replaceChildren();
@@ -32240,6 +32429,11 @@ function renderCreator() {
     <label>Receive address (fresh, one per invoice)<input id="f-to" placeholder="0x\u2026" /></label>
     <label>Amount (STRK)<input id="f-amount" value="2" /></label>
     <label>Memo (never goes on-chain)<input id="f-memo" placeholder="Order #42" /></label>
+    <label>Invoice id, as registered with your watcher (optional)<input id="f-id" placeholder="inv_9f2a" /></label>
+    <label>Watcher URL (optional, strongly recommended)<input id="f-watcher" placeholder="https://pay.example.com" /></label>
+    <p class="muted small">With a watcher, the payer's page reads the amount from your server and settles
+    against it. Without one, the amount lives in the link, and a payer who edits the link pays the edited
+    amount and still sees a receipt: treat that receipt as an observation, never as proof.</p>
     <button id="f-make">Create link</button>
     <div id="f-out" class="out" hidden></div>
   `;
@@ -32253,8 +32447,21 @@ function renderCreator() {
       out.textContent = "Enter a valid Starknet address.";
       return;
     }
+    const watcher = document.getElementById("f-watcher").value.trim();
+    const invoiceId = document.getElementById("f-id").value.trim();
+    if (watcher && !invoiceId) {
+      out.hidden = false;
+      out.textContent = "A watcher URL needs the invoice id it was registered under.";
+      return;
+    }
     const url2 = new URL(location.href);
-    url2.search = new URLSearchParams({ to: toValue, amount, ...memo ? { memo } : {} }).toString();
+    url2.search = new URLSearchParams({
+      to: toValue,
+      amount,
+      ...memo ? { memo } : {},
+      ...invoiceId ? { id: invoiceId } : {},
+      ...watcher ? { watcher } : {}
+    }).toString();
     out.hidden = false;
     out.replaceChildren();
     const link = document.createElement("a");
@@ -32293,7 +32500,7 @@ async function reportWalletSupport(wallet) {
     box.textContent = `Could not check your wallet: ${err instanceof Error ? err.message : String(err)}`;
   }
 }
-async function renderPayer(invoice) {
+async function renderPayer(invoice, authority) {
   app.replaceChildren();
   const title = document.createElement("h1");
   title.textContent = `Invoice ${invoice.id}`;
@@ -32305,16 +32512,27 @@ async function renderPayer(invoice) {
   check.className = "check";
   const host = document.createElement("div");
   host.id = "checkout";
+  const source = document.createElement("p");
+  source.className = "check";
+  if (authority) {
+    source.classList.add("good");
+    source.textContent = `Terms confirmed by the merchant's server at ${new URL(authority.origin).host}.`;
+    if (authority.urlAmount !== invoice.amount) {
+      source.textContent += ` This link said ${authority.urlAmount} ${invoice.token}; the server says ${invoice.amount} ${invoice.token}, and the server is what counts.`;
+    }
+  } else {
+    source.textContent = "The amount above comes from this link, not from a merchant server. This page can show you that the money arrived, but its receipt is not proof of payment to anyone else: the merchant confirms independently from the chain.";
+  }
   const foot = document.createElement("p");
   foot.className = "muted small";
-  foot.textContent = "Confirmation runs in this page over public RPC (balance delta on the invoice address). Payer identity is severed by the STRK20 pool. ";
+  foot.textContent = authority ? "Settlement is confirmed by the merchant's watcher, cross-checked here against public RPC. Payer identity is severed by the STRK20 pool. " : "Confirmation runs in this page over public RPC (balance delta on the invoice address). Payer identity is severed by the STRK20 pool. ";
   const link = document.createElement("a");
   link.href = `https://voyager.online/contract/${encodeURIComponent(invoice.receiveAddress)}`;
   link.target = "_blank";
   link.rel = "noreferrer";
   link.textContent = "address on Voyager";
   foot.append(link);
-  app.append(title, memo, check, host, foot);
+  app.append(title, memo, source, check, host, foot);
   const provider = new RpcProvider({ nodeUrl: RPC_URL });
   const token = resolveToken(invoice.token, TOKENS);
   const readBalance = async () => {
@@ -32348,6 +32566,13 @@ async function renderPayer(invoice) {
       const target = amountToUnits(invoice.amount, token.decimals);
       const started = Date.now();
       while (Date.now() - started < 10 * 6e4) {
+        if (authority) {
+          try {
+            const fresh = await fetchServerInvoice(authority.origin, invoice);
+            if (fresh && (fresh.status === "paid" || fresh.status === "paid_late")) return true;
+          } catch {
+          }
+        }
         try {
           const received = await readBalance() - baseline;
           if (received >= target) return true;

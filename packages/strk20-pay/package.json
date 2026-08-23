@@ -1,7 +1,28 @@
 {
   "name": "strk20-pay",
   "version": "0.1.0",
-  "description": "Drop-in checkout for accepting private STRK20 payments on Starknet.",
+  "description": "Drop-in checkout for accepting private STRK20 payments on Starknet: widget, per-invoice addresses, receipts, and headless RPC confirmation.",
+  "keywords": [
+    "starknet",
+    "strk20",
+    "privacy",
+    "payments",
+    "checkout",
+    "invoice",
+    "cairo",
+    "web3"
+  ],
+  "homepage": "https://bongbongcrypto.github.io/stealth-checkout/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bongbongcrypto/stealth-checkout.git",
+    "directory": "packages/strk20-pay"
+  },
+  "bugs": {
+    "url": "https://github.com/bongbongcrypto/stealth-checkout/issues"
+  },
+  "author": "bongbongcrypto",
+  "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -9,13 +30,29 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js"
     }
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "README.md",
+    "LICENSE"
   ],
-  "license": "MIT",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "npm run build"
+  },
   "dependencies": {
     "@starknet-io/get-starknet-discovery": "6.0.2",
     "@starknet-io/get-starknet-wallet-standard": "6.0.2",

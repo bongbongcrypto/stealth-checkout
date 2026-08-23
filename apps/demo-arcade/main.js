@@ -15,6 +15,14 @@ const boardEl = document.getElementById("board");
 let credits = 0;
 let mounted = null;
 let coinSeq = 0;
+/**
+ * True from the moment the payer clicks pay until the payment settles or
+ * fails. Pressing INSERT COIN during that window used to unmount the widget
+ * while the payment kept running in the wallet: the money left, the listener
+ * that grants the credit died with the widget, and the replacement invoice
+ * carried a brand-new id, so the duplicate-payment guard never saw it either.
+ */
+let paying = false;
 
 // One wallet per visitor session, funded with play money. The full flow:
 // shield (public, screened) → note maturation → private payment: runs
@@ -56,6 +64,7 @@ async function watcherConfirm() {
 }
 
 function insertCoin() {
+  if (paying) return; // never tear down a checkout that is spending money
   mounted?.unmount();
   mounted = mountCheckout(checkoutHost, {
     invoice: freshInvoice(),
@@ -65,30 +74,49 @@ function insertCoin() {
     // wallet UI to send players to. Real merchants should leave this off.
     allowInlineShield: true,
     onPaid() {
+      paying = false;
       credits += 1;
       updateButtons();
     },
+    onFailed() {
+      paying = false;
+      updateButtons();
+    },
+  });
+  // Any phase past "idle" means a wallet action is either open or already
+  // broadcast, so the widget must survive until it reaches a terminal state.
+  mounted.checkout.on((event) => {
+    if (event.type !== "progress") return;
+    const live = !["idle", "paid", "failed", "expired"].includes(event.progress.phase);
+    if (live !== paying) {
+      paying = live;
+      updateButtons();
+    }
   });
 }
 
 function updateButtons() {
   creditsEl.textContent = String(credits);
-  startBtn.disabled = credits < 1 || game.isRunning();
+  startBtn.disabled = credits < 1 || game.isRunning() || paying;
   practiceBtn.disabled = game.isRunning();
-  coinBtn.disabled = game.isRunning();
+  coinBtn.disabled = game.isRunning() || paying;
+  coinBtn.textContent = paying ? "PAYING\u2026" : "INSERT COIN";
+  coinBtn.title = paying ? "A payment is in progress: it must finish before another coin" : "";
 }
 
 startBtn.addEventListener("click", () => {
-  if (credits < 1 || game.isRunning()) return;
+  if (credits < 1 || game.isRunning() || paying) return;
   credits -= 1;
   updateButtons();
   game.start("paid");
+  canvas.focus();
   updateButtons();
 });
 
 practiceBtn.addEventListener("click", () => {
   if (game.isRunning()) return;
   game.start("practice");
+  canvas.focus(); // keyboard control should not require a second click
   updateButtons();
 });
 
@@ -96,17 +124,31 @@ coinBtn.addEventListener("click", insertCoin);
 
 const BOARD_KEY = "shadow-run-board";
 
+/** A corrupt or foreign value under our key must not blank the page. */
+function readBoard() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(BOARD_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((r) => r && Number.isFinite(r.score)) : [];
+  } catch {
+    return [];
+  }
+}
+
 function saveScore(score, paid) {
-  const board = JSON.parse(localStorage.getItem(BOARD_KEY) ?? "[]");
+  const board = readBoard();
   board.push({ score, paid, at: Date.now() });
   board.sort((a, b) => b.score - a.score);
-  localStorage.setItem(BOARD_KEY, JSON.stringify(board.slice(0, 5)));
+  try {
+    localStorage.setItem(BOARD_KEY, JSON.stringify(board.slice(0, 5)));
+  } catch {
+    // A full or disabled store costs a high score, not the session.
+  }
 }
 
 function renderBoard() {
-  const board = JSON.parse(localStorage.getItem(BOARD_KEY) ?? "[]");
+  const board = readBoard();
   boardEl.replaceChildren(
-    ...board.map((row, i) => {
+    ...board.map((row) => {
       const li = document.createElement("li");
       li.textContent = `${String(row.score).padStart(6, "0")}`;
       if (row.paid) {
@@ -123,3 +165,36 @@ function renderBoard() {
 renderBoard();
 updateButtons();
 insertCoin();
+
+// Touch controls. The game reads keyboard state off `window`, so the pad
+// speaks the same language rather than reaching into the game's internals.
+// Without this the arcade was unplayable on a phone, which is where a judge
+// scanning a QR code would open it.
+for (const btn of document.querySelectorAll(".touchpad button")) {
+  const key = btn.dataset.key;
+  let down = false;
+  const press = (type) => window.dispatchEvent(new KeyboardEvent(type, { key }));
+
+  btn.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    down = true;
+    press("keydown");
+    // Capture AFTER the press, and never let it throw the press away: it
+    // rejects any pointer it does not recognise, and putting it first meant a
+    // failed capture swallowed the keydown and the button did nothing.
+    try {
+      btn.setPointerCapture(e.pointerId);
+    } catch {
+      /* sliding off the button will release the key instead */
+    }
+  });
+
+  const release = () => {
+    if (!down) return; // a stray leave must not send a keyup nobody asked for
+    down = false;
+    press("keyup");
+  };
+  for (const end of ["pointerup", "pointercancel", "pointerleave"]) {
+    btn.addEventListener(end, release);
+  }
+}

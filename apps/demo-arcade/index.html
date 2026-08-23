@@ -21,11 +21,32 @@
       padding: 18px; box-shadow: 0 0 60px rgba(178, 141, 255, 0.08);
       max-width: 100%; min-width: 0;
     }
-    .marquee {
+    h1.marquee {
       text-align: center; font-family: monospace; font-weight: 700; font-size: 20px;
       color: var(--purple); text-shadow: 0 0 18px rgba(178, 141, 255, 0.7);
-      letter-spacing: 3px; margin-bottom: 12px;
+      letter-spacing: 3px; margin: 0 0 12px;
     }
+    canvas:focus-visible, .deck button:focus-visible, a:focus-visible {
+      outline: 2px solid var(--green); outline-offset: 2px;
+    }
+    .controls { margin-top: 10px; font-size: 11.5px; color: var(--muted); text-align: center; }
+    .controls kbd {
+      background: #191c23; border: 1px solid var(--line); border-radius: 4px;
+      padding: 0 5px; font-family: monospace; color: var(--fg);
+    }
+    .touchpad { display: none; gap: 8px; margin-top: 10px; }
+    .touchpad button {
+      flex: 1; padding: 16px 0; font-size: 18px; border: 1px solid var(--line);
+      border-radius: 8px; background: #191c23; color: var(--fg); touch-action: manipulation;
+    }
+    @media (hover: none) and (pointer: coarse) { .touchpad { display: flex; } }
+    @media (max-width: 520px) {
+      body { padding: 12px; align-items: flex-start; }
+      .deck { gap: 8px; }
+      .deck button { flex: 1 1 46%; min-height: 44px; }
+      .credit-box { order: -1; flex: 1 1 100%; }
+    }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
     canvas { display: block; border: 1px solid var(--line); border-radius: 8px; background: #0a0c10;
       max-width: 100%; height: auto; }
     .deck { display: flex; gap: 10px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
@@ -58,12 +79,22 @@
 <body>
   <div class="wrap">
     <div class="cabinet">
-      <div class="marquee">STEALTH ARCADE</div>
-      <canvas id="screen" width="440" height="330"></canvas>
+      <h1 class="marquee">STEALTH ARCADE</h1>
+      <canvas id="screen" width="440" height="330" tabindex="0"
+        aria-label="Shadow Run: a canvas game. Use the arrow keys or W A S D to move."></canvas>
+      <p class="controls">
+        <kbd>&larr;</kbd><kbd>&rarr;</kbd> or <kbd>A</kbd><kbd>D</kbd> to move &middot;
+        <kbd>&uarr;</kbd> or <kbd>W</kbd> or <kbd>Space</kbd> to jump
+      </p>
+      <div class="touchpad" aria-hidden="true">
+        <button type="button" data-key="ArrowLeft" aria-label="Move left">&larr;</button>
+        <button type="button" data-key=" " aria-label="Jump">JUMP</button>
+        <button type="button" data-key="ArrowRight" aria-label="Move right">&rarr;</button>
+      </div>
       <div class="deck">
         <button id="coin">INSERT COIN</button>
         <div class="credit-box">
-          <div class="n" id="credits">0</div>
+          <div class="n" id="credits" role="status" aria-live="polite" aria-label="Credits">0</div>
           <div class="l">CREDITS</div>
         </div>
         <button id="start">START (1 CREDIT)</button>

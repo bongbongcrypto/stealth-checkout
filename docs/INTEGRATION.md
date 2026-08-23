@@ -10,23 +10,62 @@ wherever your users are: a button, a QR, a chat message.
 1. Open the [invoice creator](https://bongbongcrypto.github.io/stealth-checkout/apps/pay-live/index.html).
 2. Enter a FRESH receive address (one per invoice: that is what keeps your
    revenue untotalable) and the amount.
-3. Share the generated link. The payer gets a full checkout: wallet connect,
-   shield if needed, private payment, receipt. Confirmation runs in the payer's
-   browser over public RPC.
+3. Optionally fill in your watcher URL and the invoice id you registered it
+   under. Do this if you can: without it, the amount lives in the link, and a
+   payer who edits the link pays the edited amount and still sees a receipt.
+   With it, the payer's page fetches the amount from your server and refuses
+   the link if your server does not recognise it or has already settled it.
+4. Share the generated link. The payer gets a full checkout: wallet connect,
+   shield if needed, private payment, receipt.
 
 Watch the address yourself, or run the watcher (Tier 2) for webhooks.
 
+**A receipt on the payer's screen is not proof of payment to you.** Without a
+watcher, that page is only telling the payer what it observed on-chain. Confirm
+independently, from your own ledger, before you ship anything.
+
 ## Tier 1: drop-in widget (a few lines)
 
-The widget is plain ESM. It is not on npm yet, and a plain git install does NOT
-work: npm would fetch the monorepo root, which exports nothing. Vendor the
-package folder instead. Two commands, and you own the copy (MIT):
+```bash
+npm install strk20-pay
+```
+
+A plain git install of this repo does NOT work: npm would fetch the monorepo
+root, which exports nothing. If you would rather vendor it than depend on the
+registry, copy the package folder and install that (MIT, so the copy is yours):
 
 ```bash
 git clone --depth 1 https://github.com/bongbongcrypto/stealth-checkout.git /tmp/sc
 cp -r /tmp/sc/packages/strk20-pay ./vendor/strk20-pay
 npm install ./vendor/strk20-pay
 ```
+
+### React
+
+The React binding mounts the same widget rather than reimplementing it, so a fix
+lands in both at once. It never imports React: you hand it the two hooks it
+needs, which keeps `strk20-pay` installable in projects that have no React.
+
+```tsx
+import { useEffect, useRef } from "react";
+import { createCheckoutHook } from "strk20-pay/react";
+
+const useCheckout = createCheckoutHook({ useEffect, useRef });
+
+export function PayButton({ invoice, wallet }) {
+  const ref = useCheckout({
+    invoice,
+    wallet,
+    confirm: (inv) => fetch(`/api/confirm/${inv.id}`).then((r) => r.ok),
+    onPaid: (receipt) => console.log(receipt),
+  });
+  return <div ref={ref} />;
+}
+```
+
+Inline callbacks are read through a ref, so a parent re-render cannot tear down
+a checkout that is mid-payment. The widget remounts only when the invoice's own
+terms change.
 
 ```ts
 import { mountCheckout, WalletApiAdapter } from "strk20-pay";
@@ -86,22 +125,74 @@ WEBHOOK_SECRET=whsec_yours \
 node server/watcher/watcher.mjs
 ```
 
+`WATCHER_TOKEN` is required: without it the API refuses every request rather
+than starting open. Set `WATCHER_ORIGIN` to the exact origin of your dashboard
+if a browser needs to reach it; there is no wildcard.
+
 ```bash
 # register an invoice to watch
 curl -X POST http://127.0.0.1:8787/invoices \
   -H "Content-Type: application/json" \
-  -d '{"id":"order-42","token":"STRK","amount":"5","receiveAddress":"0x..."}'
+  -H "Authorization: Bearer $WATCHER_TOKEN" \
+  -H "Idempotency-Key: order-42-create" \
+  -d '{"id":"order-42","token":"STRK","amount":"5","receiveAddress":"0x...","expiresAt":1756600000000}'
 ```
+
+Send `Idempotency-Key` on every create. A POST that times out on your side has
+usually succeeded on the server's, and retrying without a key returns "invoice
+already exists", which reads like a failure and gets retried by hand. With a
+key, the retry returns the invoice that was created the first time.
 
 Your endpoint receives:
 
 ```json
 { "event": "payment.confirmed",
   "deliveryId": "dlv_4f3c…",
-  "invoice": { "id": "order-42", "token": "STRK", "amount": "5",
-               "receiveAddress": "0x04ea…", "txHash": "0x30ec…", "receivedUnits": "5000000000000000000",
-               "confirmedAt": 1756600000000 } }
+  "attempt": 1,
+  "invoice": { "id": "order-42", "token": "STRK", "amount": "5", "status": "paid",
+               "receiveAddress": "0x04ea…", "txHash": "0x30ec…",
+               "receivedUnits": "5000000000000000000", "shortfallUnits": null,
+               "overpaidUnits": null, "confirmedAt": 1756600000000 } }
 ```
+
+### Invoice states
+
+| State | Meaning | What to do |
+|---|---|---|
+| `watching` | Live, accepting payment. `receivedUnits` shows partial progress. | Nothing. |
+| `paid` | Settled in full, before the deadline. | Ship it. |
+| `paid_late` | Settled in full, after the deadline but inside a 24-hour grace window. | Your policy. The money is real either way. |
+| `underpaid` | The deadline passed with some money at the address, but not enough. `shortfallUnits` says how much is missing. | Refund or top up by hand. The address is deliberately not released. |
+| `expired` | The deadline passed with nothing received. | Nothing. Deletable. |
+| `reserving` | A create crashed mid-flight. | Delete it and create again. |
+| `needs_reregistration` | A row from a build that predates baselines. | Delete it and create again. |
+
+An `overpaidUnits` field appears on any settled invoice that received more than
+it asked for. Nothing is done with it automatically: silently keeping an
+overpayment is how disputes start.
+
+### Webhook delivery
+
+Deliveries are queued on the invoice row itself and persisted, so a restart
+resumes them rather than losing them. Failures back off exponentially up to
+thirty minutes and stop after eight attempts, at which point:
+
+```bash
+curl -X POST http://127.0.0.1:8787/invoices/order-42/redeliver \
+  -H "Authorization: Bearer $WATCHER_TOKEN"
+```
+
+re-queues the same `deliveryId`.
+
+### Reconciliation
+
+```bash
+curl http://127.0.0.1:8787/invoices.csv -H "Authorization: Bearer $WATCHER_TOKEN" -o invoices.csv
+```
+
+or use the dashboard's **Export CSV** button. Timestamps are ISO-8601 and cells
+beginning `=`, `+`, `-`, or `@` are prefixed with an apostrophe, so opening the
+file in a spreadsheet cannot execute anything.
 
 `txHash` is best effort and may be `null`; the confirmation itself rests on the
 balance delta, so never require the hash to be present.
@@ -128,6 +219,22 @@ cheaper, because the pool charges a fee per deposit.
 
 Pass `allowInlineShield: true` if you would rather trade that away for a single
 click; our arcade demo does, because a mock wallet has no wallet UI to send players to.
+
+## Budget for the pool's fee
+
+The pool charges a **flat 6 STRK per operation** on mainnet, on top of the
+amount, read live from `get_fee_amount()`. It is the same whether the operation
+moves 1 STRK or 1,000, and it is charged once per operation: a payer who has to
+shield first pays it twice.
+
+The consequences are worth pricing in before you launch:
+
+- The widget adds it to the total the payer sees, and warns when it exceeds the
+  invoice. Do not build your own total from `invoice.amount` alone.
+- Below roughly 60 STRK, the fee is more than 10% of the purchase. Micropayments
+  through the pool do not work today, whatever the UI makes them look like.
+- `wallet.poolFee(token)` returns it, or `null` when it cannot be read. Treat
+  `null` as unknown, never as zero.
 
 ## Upgrading from an earlier build
 

@@ -54,7 +54,12 @@ export declare class StealthCheckout {
      */
     store?: PaymentStore | null);
     on(listener: (e: CheckoutEvent) => void): Unsubscribe;
-    /** Honesty panel rows for this invoice, given current balances. */
+    /**
+     * Honesty panel rows for this invoice, given current balances. The threshold
+     * is amount + pool fee, the same one `pay` uses: judging by the amount alone
+     * told a payer holding exactly the invoice amount that no public deposit was
+     * coming, and then one was.
+     */
     preview(invoice: Invoice): Promise<RevealItem[]>;
     pay(invoice: Invoice): Promise<Receipt>;
     private storeKey;
@@ -113,3 +118,5 @@ export declare function matchesInvoice(sent: SentPayment, invoice: Invoice): boo
  * padding or case look like a different one, so the payment went out twice.
  */
 export declare function sameFelt(a: string, b: string): boolean;
+/** Add two decimal-string amounts exactly, with no float. */
+export declare function addAmounts(a: string, b: string, decimals?: number): string;

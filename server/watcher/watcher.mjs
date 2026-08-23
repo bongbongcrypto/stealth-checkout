@@ -8,23 +8,34 @@
 //   WEBHOOK_SECRET=whsec_xxx node server/watcher/watcher.mjs
 //
 // API (merchant-facing, bind localhost or put behind your own auth):
-//   POST   /invoices      {id?, token | tokenAddress+decimals, amount, receiveAddress, expiresAt?}
-//   GET    /invoices      every invoice, newest first
-//   GET    /invoices/:id  one invoice
-//   DELETE /invoices/:id  release a reserving / expired / needs_reregistration row
-//   GET    /healthz       unauthenticated liveness
+//   POST   /invoices                {id?, token | tokenAddress+decimals, amount, receiveAddress, expiresAt?}
+//                                   send Idempotency-Key to make retries safe
+//   GET    /invoices                every invoice, newest first
+//   GET    /invoices.csv            the same rows as CSV, for reconciliation
+//   GET    /invoices/:id            one invoice
+//   DELETE /invoices/:id            release a reserving / expired / needs_reregistration row
+//   POST   /invoices/:id/redeliver  re-queue this invoice's webhook
+//   GET    /healthz                 unauthenticated liveness
+//
+// Payer-facing (unauthenticated, needs the invoice id AND its address, which
+// is exactly what a payment link carries):
+//   GET    /public/invoices/:id?to=0x…   the invoice terms, so a hosted page
+//                                        does not have to trust its own URL
 
 import { createServer } from "node:http";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import {
+  DELETABLE_STATES,
+  LATE_GRACE_MS,
+  SETTLED_STATES,
   TOKENS,
-  UNPAYABLE_STATES,
   balanceOfRequest,
   evaluateInvoice,
   hasUsableBaseline,
   sameAddress,
+  shouldPoll,
   signPayload,
   toUnits,
   transferEventsRequest,
@@ -42,6 +53,15 @@ const API_TOKEN = process.env.WATCHER_TOKEN ?? "";
 /** Exact origin allowed to call this from a browser. No wildcard. */
 const ALLOWED_ORIGIN = process.env.WATCHER_ORIGIN ?? "";
 const STORE_PATH = process.env.WATCHER_STORE ?? fileURLToPath(new URL("./invoices.json", import.meta.url));
+/** Give up after this many webhook attempts. The row stays redeliverable. */
+const WEBHOOK_MAX_ATTEMPTS = Number(process.env.WEBHOOK_MAX_ATTEMPTS ?? 8);
+
+/**
+ * Replayed POST /invoices calls, keyed by Idempotency-Key. A merchant's retry
+ * after a timeout used to hit "Invoice already exists" and read as a failure,
+ * so orders were created twice or not at all.
+ */
+const idempotency = new Map();
 
 /** @type {Map<string, any>} */
 const invoices = new Map();
@@ -72,6 +92,7 @@ export async function pollLoop() {
   polling = true;
   try {
     await pollOnce();
+    await drainWebhooks();
   } finally {
     polling = false;
   }
@@ -79,20 +100,30 @@ export async function pollLoop() {
 
 async function pollOnce() {
   for (const [id, inv] of invoices) {
-    if (inv.status !== "watching") continue;
+    // Expired and underpaid rows keep being polled through the grace window:
+    // money that arrives a minute after the deadline is still the payer's
+    // money, and refusing to look for it does not make it go away.
+    if (!shouldPoll(inv)) continue;
     try {
       const result = await rpc(balanceOfRequest(inv.tokenAddress, inv.receiveAddress, ++rpcId));
       const balance = u256FromCallResult(result);
       const next = evaluateInvoice(inv, balance);
-      if (next !== inv) {
-        invoices.set(id, next);
-        await persist();
-        if (next.status === "paid") {
+      if (next === inv) continue;
+      invoices.set(id, next);
+      await persist();
+      if (next.status !== inv.status) {
+        if (SETTLED_STATES.has(next.status)) {
           next.txHash = await findTxHash(next).catch(() => undefined);
           await persist();
-          await deliverWebhook(next);
+          queueWebhook(next, "payment.confirmed");
+        } else if (next.status === "underpaid") {
+          // Silence here is the expensive option: the payer's money is sitting
+          // at an address only the merchant can sweep.
+          queueWebhook(next, "payment.underpaid");
         }
         log(`${id} → ${next.status}${next.txHash ? ` (${next.txHash.slice(0, 12)}…)` : ""}`);
+      } else if (next.receivedUnits !== inv.receivedUnits) {
+        log(`${id} partial: ${next.receivedUnits} / ${toUnits(inv.amount, inv.decimals)} units`);
       }
     } catch (err) {
       // RPC refusal is not a chain answer: keep watching, never mark unpaid.
@@ -108,7 +139,37 @@ async function findTxHash(inv) {
   return txHashFromEvents(events, inv.receiveAddress);
 }
 
-async function deliverWebhook(inv, attempt = 1) {
+/**
+ * Mark a webhook as owed. The queue lives on the invoice row itself, so it is
+ * written to disk by the same persist() as everything else: a restart used to
+ * drop every in-flight retry, because the retries were setTimeout callbacks in
+ * a process that no longer existed. The merchant never heard about the payment
+ * and the money looked unpaid forever.
+ */
+function queueWebhook(inv, event) {
+  const row = invoices.get(inv.id) ?? inv;
+  row.webhook = {
+    event,
+    deliveryId: row.webhook?.deliveryId ?? `dlv_${randomUUID()}`,
+    attempts: 0,
+    nextAttemptAt: Date.now(),
+    lastError: undefined,
+  };
+  invoices.set(row.id, row);
+  void persist();
+}
+
+/** Send everything that is due. Called from the same loop as the poller. */
+async function drainWebhooks(now = Date.now()) {
+  for (const inv of [...invoices.values()]) {
+    const w = inv.webhook;
+    if (!w || w.deliveredAt || w.attempts >= WEBHOOK_MAX_ATTEMPTS) continue;
+    if (w.nextAttemptAt > now) continue;
+    await deliverWebhook(inv);
+  }
+}
+
+async function deliverWebhook(inv) {
   // Server configuration only. An invoice can never name its own endpoint.
   if (!WEBHOOK_URL) return;
   if (!WEBHOOK_SECRET) {
@@ -117,22 +178,25 @@ async function deliverWebhook(inv, attempt = 1) {
     log(`webhook ${inv.id} NOT SENT: WEBHOOK_SECRET is unset, refusing to send unsigned`);
     return;
   }
-  const deliveryId = inv.deliveryId ?? `dlv_${randomUUID()}`;
-  if (!inv.deliveryId) {
-    inv.deliveryId = deliveryId;
-    invoices.set(inv.id, inv);
-  }
+  const row = invoices.get(inv.id) ?? inv;
+  const w = row.webhook ?? { event: "payment.confirmed", deliveryId: `dlv_${randomUUID()}`, attempts: 0 };
+  row.webhook = w;
+  const attempt = w.attempts + 1;
   const body = JSON.stringify({
-    event: "payment.confirmed",
-    deliveryId, // stable across retries: merchants dedupe on this
+    event: w.event,
+    deliveryId: w.deliveryId, // stable across retries: merchants dedupe on this
+    attempt,
     invoice: {
-      id: inv.id,
-      token: inv.token,
-      amount: inv.amount,
-      receiveAddress: inv.receiveAddress,
-      txHash: inv.txHash ?? null,
-      receivedUnits: inv.receivedUnits ?? null,
-      confirmedAt: inv.confirmedAt,
+      id: row.id,
+      token: row.token,
+      amount: row.amount,
+      status: row.status,
+      receiveAddress: row.receiveAddress,
+      txHash: row.txHash ?? null,
+      receivedUnits: row.receivedUnits ?? null,
+      shortfallUnits: row.shortfallUnits ?? null,
+      overpaidUnits: row.overpaidUnits ?? null,
+      confirmedAt: row.confirmedAt ?? null,
     },
   });
   const timestamp = Math.floor(Date.now() / 1000);
@@ -148,12 +212,24 @@ async function deliverWebhook(inv, attempt = 1) {
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    invoices.set(inv.id, { ...invoices.get(inv.id), webhookDeliveredAt: Date.now() });
+    w.attempts = attempt;
+    w.deliveredAt = Date.now();
+    w.lastError = undefined;
+    row.webhookDeliveredAt = w.deliveredAt;
+    invoices.set(row.id, row);
     await persist();
   } catch (err) {
-    log(`webhook ${inv.id} attempt ${attempt} failed: ${err.message}`);
-    if (attempt < 5) setTimeout(() => deliverWebhook(inv, attempt + 1), attempt * 30_000);
-    else log(`webhook ${inv.id} GAVE UP after ${attempt} attempts; query GET /invoices/${inv.id} to reconcile`);
+    w.attempts = attempt;
+    w.lastError = err.message;
+    // Exponential backoff with a ceiling, persisted, so the next drain in this
+    // process or the next one picks it up from exactly here.
+    w.nextAttemptAt = Date.now() + Math.min(30 * 60_000, 30_000 * 2 ** (attempt - 1));
+    invoices.set(row.id, row);
+    await persist();
+    log(`webhook ${row.id} attempt ${attempt} failed: ${err.message}`);
+    if (attempt >= WEBHOOK_MAX_ATTEMPTS) {
+      log(`webhook ${row.id} GAVE UP after ${attempt} attempts; POST /invoices/${row.id}/redeliver to retry`);
+    }
   }
 }
 
@@ -208,8 +284,18 @@ async function createInvoice(body) {
   const amount = String(body.amount ?? "").trim();
   const target = toUnits(amount, decimals); // validates format
   if (target <= 0n) throw new Error("amount must be greater than zero");
-  if (body.expiresAt !== undefined && (!Number.isFinite(body.expiresAt) || body.expiresAt <= 0)) {
-    throw new Error("expiresAt must be a positive millisecond timestamp");
+  if (body.expiresAt !== undefined) {
+    if (!Number.isFinite(body.expiresAt) || body.expiresAt <= 0) {
+      throw new Error("expiresAt must be a positive millisecond timestamp");
+    }
+    // A deadline in the past mints a link that is dead before anyone opens it,
+    // and the row only says so at the next poll. Seconds instead of
+    // milliseconds is the usual way to get here by accident.
+    if (body.expiresAt <= Date.now()) {
+      throw new Error(
+        `expiresAt ${body.expiresAt} is already past (now ${Date.now()}); it must be milliseconds since the epoch, in the future`,
+      );
+    }
   }
 
   const id = body.id ?? `inv_${randomUUID().slice(0, 8)}`;
@@ -333,10 +419,55 @@ function authorized(req) {
   return got.length === want.length && timingSafeEqual(got, want);
 }
 
-function json(req, res, code, data) {
+/**
+ * The payer-facing route is readable from any origin, because the payer's page
+ * is not the merchant's dashboard and there is no token to protect. It carries
+ * no credentials, so a wildcard here grants nothing a plain fetch could not
+ * already get.
+ */
+const PUBLIC_CORS = { "Access-Control-Allow-Origin": "*" };
+
+function json(req, res, code, data, extraHeaders = {}) {
   const body = JSON.stringify(data, null, 2);
-  res.writeHead(code, { "Content-Type": "application/json", ...corsHeaders(req) });
+  res.writeHead(code, { "Content-Type": "application/json", ...corsHeaders(req), ...extraHeaders });
   res.end(body);
+}
+
+const CSV_COLUMNS = [
+  "id",
+  "status",
+  "token",
+  "amount",
+  "receiveAddress",
+  "createdAt",
+  "expiresAt",
+  "confirmedAt",
+  "receivedUnits",
+  "shortfallUnits",
+  "overpaidUnits",
+  "txHash",
+];
+
+/** RFC 4180 quoting, and a guard against spreadsheet formula injection. */
+function csvCell(value) {
+  if (value === undefined || value === null) return "";
+  let s = String(value);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  return /["\n,]/.test(s) ? '"' + s.replaceAll('"', '""') + '"' : s;
+}
+
+function invoicesCsv() {
+  const rows = [...invoices.values()].sort((a, b) => b.createdAt - a.createdAt);
+  const iso = (ms) => (typeof ms === "number" ? new Date(ms).toISOString() : "");
+  const lines = [CSV_COLUMNS.join(",")];
+  for (const inv of rows) {
+    lines.push(
+      CSV_COLUMNS.map((c) =>
+        csvCell(["createdAt", "expiresAt", "confirmedAt"].includes(c) ? iso(inv[c]) : inv[c]),
+      ).join(","),
+    );
+  }
+  return lines.join("\r\n") + "\r\n";
 }
 
 /** Read a bounded body: an unbounded one is a free memory-exhaustion attack. */
@@ -356,9 +487,40 @@ export function makeServer() {
       res.writeHead(204, corsHeaders(req));
       return res.end();
     }
-    // Health is the only unauthenticated route, and it reveals nothing.
+    // Health is unauthenticated and reveals nothing.
     if (req.method === "GET" && url.pathname === "/healthz") {
       return json(req, res, 200, { ok: true });
+    }
+    // The payer's view. Unauthenticated by necessity: the payer's browser has
+    // no merchant token. Knowing the id is not enough, the caller must also
+    // present the receive address, so this reveals nothing to someone guessing
+    // ids, and everything to someone holding the payment link. It exists so a
+    // hosted invoice page can take its terms from the merchant's server
+    // instead of from its own query string, which the payer controls.
+    const pub = url.pathname.match(/^\/public\/invoices\/([\w.-]{1,64})$/);
+    if (req.method === "GET" && pub) {
+      const inv = invoices.get(pub[1]);
+      const to = url.searchParams.get("to") ?? "";
+      if (!inv || inv.status === "reserving" || !sameAddress(inv.receiveAddress ?? "", to)) {
+        return json(req, res, 404, { error: "not found" }, PUBLIC_CORS);
+      }
+      return json(
+        req,
+        res,
+        200,
+        {
+          id: inv.id,
+          token: inv.token,
+          amount: inv.amount,
+          decimals: inv.decimals,
+          receiveAddress: inv.receiveAddress,
+          status: inv.status,
+          expiresAt: inv.expiresAt ?? null,
+          receivedUnits: inv.receivedUnits ?? "0",
+          txHash: inv.txHash ?? null,
+        },
+        PUBLIC_CORS,
+      );
     }
     if (!API_TOKEN) {
       return json(req, res, 503, { error: "WATCHER_TOKEN is not set; the API is disabled" });
@@ -370,11 +532,48 @@ export function makeServer() {
       if (req.method === "GET" && url.pathname === "/invoices") {
         return json(req, res, 200, [...invoices.values()].sort((a, b) => b.createdAt - a.createdAt));
       }
+      // Reconciliation. Every merchant eventually has to tie this ledger to
+      // their own books, and "read the JSON" is not an answer an accountant
+      // accepts.
+      if (req.method === "GET" && url.pathname === "/invoices.csv") {
+        res.writeHead(200, {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": 'attachment; filename="invoices.csv"',
+          ...corsHeaders(req),
+        });
+        return res.end(invoicesCsv());
+      }
       if (req.method === "POST" && url.pathname === "/invoices") {
+        const key = req.headers["idempotency-key"];
+        if (key !== undefined && (typeof key !== "string" || key.length > 200)) {
+          throw new Error("Idempotency-Key must be a string of at most 200 characters");
+        }
+        // A retried POST returns the row it already created, rather than the
+        // 409 that used to read as "creation failed".
+        if (key && idempotency.has(key)) {
+          const priorId = idempotency.get(key);
+          const prior = invoices.get(priorId);
+          if (prior) return json(req, res, 200, prior);
+          idempotency.delete(key); // the row is gone; let the caller create it again
+        }
         const inv = await createInvoice(JSON.parse((await readBody(req)) || "{}"));
+        if (key) idempotency.set(key, inv.id);
         await persist();
         log(`watching ${inv.id} -> ${inv.receiveAddress} for ${inv.amount} ${inv.token} (baseline ${inv.baselineUnits})`);
         return json(req, res, 201, inv);
+      }
+      const redeliver = url.pathname.match(/^\/invoices\/([\w.-]{1,64})\/redeliver$/);
+      if (req.method === "POST" && redeliver) {
+        const inv = invoices.get(redeliver[1]);
+        if (!inv) return json(req, res, 404, { error: "not found" });
+        if (!inv.webhook) return json(req, res, 409, { error: `invoice ${inv.id} has no webhook to redeliver` });
+        inv.webhook.attempts = 0;
+        inv.webhook.nextAttemptAt = Date.now();
+        delete inv.webhook.deliveredAt;
+        invoices.set(inv.id, inv);
+        await persist();
+        void drainWebhooks();
+        return json(req, res, 202, { queued: inv.id, deliveryId: inv.webhook.deliveryId });
       }
       const match = url.pathname.match(/^\/invoices\/([\w.-]+)$/);
       if (req.method === "GET" && match) {
@@ -388,7 +587,7 @@ export function makeServer() {
       if (req.method === "DELETE" && match) {
         const inv = invoices.get(match[1]);
         if (!inv) return json(req, res, 404, { error: "not found" });
-        if (!UNPAYABLE_STATES.has(inv.status)) {
+        if (!DELETABLE_STATES.has(inv.status)) {
           return json(req, res, 409, {
             error: `invoice ${inv.id} is ${inv.status}; only reserving, expired or needs_reregistration rows can be deleted`,
           });
@@ -405,7 +604,7 @@ export function makeServer() {
   });
 }
 
-export { createInvoice, pollOnce, invoices, deliverWebhook };
+export { createInvoice, pollOnce, invoices, deliverWebhook, drainWebhooks, queueWebhook, invoicesCsv, csvCell };
 
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replaceAll("\\", "/").split("/").pop());
 if (isMain) {

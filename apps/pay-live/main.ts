@@ -19,6 +19,26 @@ const app = document.getElementById("app")!;
 const params = new URLSearchParams(location.search);
 const to = params.get("to");
 
+/**
+ * The merchant's watcher, if the link names one. Everything in this page's
+ * query string is under the payer's control, including the amount, so a link
+ * edited to `amount=0.001` used to produce a real "Paid" screen for a
+ * thousandth of the price. When a watcher is named, the invoice's terms and
+ * its settlement both come from there instead, and this page is only a view.
+ */
+function watcherOrigin(): string | null {
+  const raw = params.get("watcher");
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+    if (url.protocol !== "https:" && !(url.protocol === "http:" && local)) return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
 if (!to) {
   renderCreator();
 } else if (!/^0x[0-9a-fA-F]{10,64}$/.test(to)) {
@@ -29,7 +49,7 @@ if (!to) {
   if (!/^\d+(\.\d{1,18})?$/.test(amount) || Number(amount) <= 0) {
     renderError("This invoice link has an invalid amount.");
   } else {
-    void renderPayer({
+    void start({
       id: (params.get("id") ?? `inv_${Date.now().toString(36)}`).slice(0, 64),
       token: params.get("token") === "STRK" ? "STRK" : "STRK",
       amount,
@@ -40,6 +60,74 @@ if (!to) {
       createdAt: Date.now(),
     });
   }
+}
+
+/** Terms as the merchant's server states them. */
+interface ServerInvoice {
+  id: string;
+  token: string;
+  amount: string;
+  receiveAddress: string;
+  status: string;
+  expiresAt: number | null;
+  txHash: string | null;
+}
+
+async function fetchServerInvoice(origin: string, invoice: Invoice): Promise<ServerInvoice | null> {
+  const url = `${origin}/public/invoices/${encodeURIComponent(invoice.id)}?to=${encodeURIComponent(invoice.receiveAddress!)}`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  if (!res.ok) return null;
+  const body = (await res.json()) as ServerInvoice;
+  // A server that answers about some other address is not talking about this
+  // invoice, whatever it claims.
+  if (!body || typeof body.amount !== "string") return null;
+  if (BigInt(body.receiveAddress) !== BigInt(invoice.receiveAddress!)) return null;
+  if (!/^\d+(\.\d{1,18})?$/.test(body.amount) || Number(body.amount) <= 0) return null;
+  return body;
+}
+
+/**
+ * Resolve who decides what this invoice costs, then render. Without a watcher
+ * the page still works, but it says plainly that its receipt is a payer-side
+ * observation and not the merchant's confirmation.
+ */
+async function start(fromUrl: Invoice): Promise<void> {
+  const origin = watcherOrigin();
+  if (!origin) return renderPayer(fromUrl, null);
+  let server: ServerInvoice | null = null;
+  let reachable = true;
+  try {
+    server = await fetchServerInvoice(origin, fromUrl);
+  } catch {
+    // A network failure and a rejection mean different things to the payer:
+    // one is "wait and reload", the other is "this link is not real".
+    reachable = false;
+    server = null;
+  }
+  if (!server) {
+    const host = new URL(origin).host;
+    return renderError(
+      reachable
+        ? `The merchant's server at ${host} does not recognise this invoice. Do not pay it: ask the merchant for a fresh link.`
+        : `The merchant's server at ${host} could not be reached, so the amount on this link cannot be verified. ` +
+          "Reload in a moment. Paying an unverified link risks paying the wrong amount.",
+    );
+  }
+  if (server.status !== "watching") {
+    return renderError(
+      server.status === "paid" || server.status === "paid_late"
+        ? "This invoice has already been paid. Nothing more is owed, so this page will not take another payment."
+        : `The merchant's server is no longer accepting payment for this invoice (${server.status.replace(/_/g, " ")}). Ask for a fresh link.`,
+    );
+  }
+  // The server's number wins. The URL's was only ever a hint.
+  renderPayer({ ...fromUrl, amount: server.amount, expiresAt: server.expiresAt ?? undefined }, { origin, server, urlAmount: fromUrl.amount });
+}
+
+interface Authority {
+  origin: string;
+  server: ServerInvoice;
+  urlAmount: string;
 }
 
 function renderError(message: string): void {
@@ -60,6 +148,11 @@ function renderCreator(): void {
     <label>Receive address (fresh, one per invoice)<input id="f-to" placeholder="0x…" /></label>
     <label>Amount (STRK)<input id="f-amount" value="2" /></label>
     <label>Memo (never goes on-chain)<input id="f-memo" placeholder="Order #42" /></label>
+    <label>Invoice id, as registered with your watcher (optional)<input id="f-id" placeholder="inv_9f2a" /></label>
+    <label>Watcher URL (optional, strongly recommended)<input id="f-watcher" placeholder="https://pay.example.com" /></label>
+    <p class="muted small">With a watcher, the payer's page reads the amount from your server and settles
+    against it. Without one, the amount lives in the link, and a payer who edits the link pays the edited
+    amount and still sees a receipt: treat that receipt as an observation, never as proof.</p>
     <button id="f-make">Create link</button>
     <div id="f-out" class="out" hidden></div>
   `;
@@ -73,8 +166,21 @@ function renderCreator(): void {
       out.textContent = "Enter a valid Starknet address.";
       return;
     }
+    const watcher = (document.getElementById("f-watcher") as HTMLInputElement).value.trim();
+    const invoiceId = (document.getElementById("f-id") as HTMLInputElement).value.trim();
+    if (watcher && !invoiceId) {
+      out.hidden = false;
+      out.textContent = "A watcher URL needs the invoice id it was registered under.";
+      return;
+    }
     const url = new URL(location.href);
-    url.search = new URLSearchParams({ to: toValue, amount, ...(memo ? { memo } : {}) }).toString();
+    url.search = new URLSearchParams({
+      to: toValue,
+      amount,
+      ...(memo ? { memo } : {}),
+      ...(invoiceId ? { id: invoiceId } : {}),
+      ...(watcher ? { watcher } : {}),
+    }).toString();
     out.hidden = false;
     out.replaceChildren();
     const link = document.createElement("a");
@@ -125,7 +231,7 @@ async function reportWalletSupport(wallet: WalletApiAdapter): Promise<void> {
   }
 }
 
-async function renderPayer(invoice: Invoice): Promise<void> {
+async function renderPayer(invoice: Invoice, authority: Authority | null): Promise<void> {
   // Built node by node with textContent. These values come from the URL, and
   // interpolating them into innerHTML would let any link run script on this
   // origin and rewrite the address being paid.
@@ -140,18 +246,35 @@ async function renderPayer(invoice: Invoice): Promise<void> {
   check.className = "check";
   const host = document.createElement("div");
   host.id = "checkout";
+  // Where the terms came from. A payer deserves to know whether the number
+  // above is the merchant's or merely this link's.
+  const source = document.createElement("p");
+  source.className = "check";
+  if (authority) {
+    source.classList.add("good");
+    source.textContent = `Terms confirmed by the merchant's server at ${new URL(authority.origin).host}.`;
+    if (authority.urlAmount !== invoice.amount) {
+      source.textContent += ` This link said ${authority.urlAmount} ${invoice.token}; the server says ${invoice.amount} ${invoice.token}, and the server is what counts.`;
+    }
+  } else {
+    source.textContent =
+      "The amount above comes from this link, not from a merchant server. This page can show you that " +
+      "the money arrived, but its receipt is not proof of payment to anyone else: the merchant confirms " +
+      "independently from the chain.";
+  }
+
   const foot = document.createElement("p");
   foot.className = "muted small";
-  foot.textContent =
-    "Confirmation runs in this page over public RPC (balance delta on the invoice address). " +
-    "Payer identity is severed by the STRK20 pool. ";
+  foot.textContent = authority
+    ? "Settlement is confirmed by the merchant's watcher, cross-checked here against public RPC. Payer identity is severed by the STRK20 pool. "
+    : "Confirmation runs in this page over public RPC (balance delta on the invoice address). Payer identity is severed by the STRK20 pool. ";
   const link = document.createElement("a");
   link.href = `https://voyager.online/contract/${encodeURIComponent(invoice.receiveAddress!)}`;
   link.target = "_blank";
   link.rel = "noreferrer";
   link.textContent = "address on Voyager";
   foot.append(link);
-  app.append(title, memo, check, host, foot);
+  app.append(title, memo, source, check, host, foot);
 
   const provider = new RpcProvider({ nodeUrl: RPC_URL });
   const token = resolveToken(invoice.token, TOKENS);
@@ -192,6 +315,18 @@ async function renderPayer(invoice: Invoice): Promise<void> {
       const target = amountToUnits(invoice.amount, token.decimals);
       const started = Date.now();
       while (Date.now() - started < 10 * 60_000) {
+        // The merchant's server is the one whose answer ships the order, so
+        // ask it first. Its baseline was captured when the invoice was
+        // registered, which is strictly better than this page's, captured
+        // whenever the payer happened to open the link.
+        if (authority) {
+          try {
+            const fresh = await fetchServerInvoice(authority.origin, invoice);
+            if (fresh && (fresh.status === "paid" || fresh.status === "paid_late")) return true;
+          } catch {
+            /* fall through to the chain */
+          }
+        }
         try {
           const received = (await readBalance()) - baseline;
           if (received >= target) return true;

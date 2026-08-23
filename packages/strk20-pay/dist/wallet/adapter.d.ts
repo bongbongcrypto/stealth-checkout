@@ -21,6 +21,20 @@ export interface WalletAdapter {
      */
     shieldedBalance(token: string): Promise<Amount | null>;
     /**
+     * The pool's flat fee per operation, in whole token units, or null when it
+     * cannot be read. Charged ON TOP of the amount and once per operation, so a
+     * payer who has to shield first pays it twice. Nothing may assume zero.
+     */
+    poolFee?(token: string): Promise<Amount | null>;
+    /**
+     * Where a human can look this up, or null when there is nowhere to look.
+     * The UI must not build explorer links itself: it does not know which chain
+     * the adapter is on, and a mock wallet's invented hashes have no explorer at
+     * all. Hardcoding mainnet Voyager produced receipts whose links 404'd, on
+     * sepolia and in every demo.
+     */
+    explorerUrl?(kind: "tx" | "address", value: string): string | null;
+    /**
      * Block until funds shielded by this adapter are spendable. Pool notes mature
      * after roughly ten blocks, so a payment attempted straight after a shield
      * cannot succeed. `onProgress` reports blocks remaining for the UI.

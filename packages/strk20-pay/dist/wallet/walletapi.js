@@ -4,14 +4,32 @@ import { TOKENS, amountToFelt, resolveToken, unitsToAmount } from "../tokens.js"
 export const MIN_STRK20_WALLET_API = "0.10.3";
 /** Pool notes become spendable this many blocks after the deposit lands. */
 export const MATURITY_BLOCKS = 10;
+/** The STRK20 privacy pool, which charges the flat per-operation fee. */
+/** Voyager has a separate host per network; one URL for both 404s on one. */
+export const EXPLORER_BASE = {
+    mainnet: "https://voyager.online",
+    sepolia: "https://sepolia.voyager.online",
+};
+export const POOL_ADDRESS = {
+    mainnet: "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a",
+    sepolia: "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a",
+};
 export class WalletApiAdapter {
     network;
+    /** Voyager, on the network this adapter is actually connected to. */
+    explorerUrl(kind, value) {
+        if (!/^0x[0-9a-fA-F]{1,64}$/.test(value))
+            return null;
+        const path = kind === "tx" ? "tx" : "contract";
+        return `${EXPLORER_BASE[this.network]}/${path}/${value}`;
+    }
     rpcUrl;
     registry;
     preferWallet;
     discoveryTimeoutMs;
     account = null;
     shieldedAtBlock = null;
+    feeCache = undefined;
     accountV6 = null;
     provider = null;
     constructor(opts) {
@@ -69,8 +87,14 @@ export class WalletApiAdapter {
             const wallets = await this.listWallets();
             const capable = wallets.filter((w) => w.strk20);
             if (capable.length === 0) {
-                const seen = wallets.map((w) => w.name).join(", ") || "none";
-                throw new Error(`No wallet here can make private payments (detected: ${seen}). Update your Ready extension to the latest version (it is now called Ready X) and enable Smart Wallet + Private.`);
+                // Two different problems, and telling someone to update software they
+                // have not installed is a dead end they cannot act on.
+                throw new Error(wallets.length === 0
+                    ? "No Starknet wallet was found in this browser. Install Ready X (Chrome Web Store or Edge Add-ons), " +
+                        "enable Smart Wallet and Private in its settings, then reload this page."
+                    : `None of the wallets here can make private payments (found: ${wallets.map((w) => w.name).join(", ")}). ` +
+                        "If yours still shows the old name \"Ready Wallet (Formerly Argent)\", it is the same extension out of date: " +
+                        "update it, enable Smart Wallet + Private, then reload.");
             }
             const pick = capable.find((w) => w.name.toLowerCase().includes(this.preferWallet)) ?? capable[0];
             this.accountV6 = await WalletAccountV6.connect(this.provider, pick.wallet);
@@ -109,6 +133,33 @@ export class WalletApiAdapter {
             // make the caller shield funds the user has already shielded.
             return null;
         }
+    }
+    /**
+     * Read the pool's flat fee. It is a real charge that no STRK20 documentation
+     * mentions: we found it by calling the contract. Cached because it does not
+     * move, and returned as null rather than zero when unreadable, so a caller
+     * can say "unknown" instead of quietly promising the payer too low a total.
+     */
+    async poolFee(token) {
+        const info = resolveToken(token, this.registry);
+        if (this.feeCache !== undefined)
+            return this.feeCache;
+        try {
+            const { RpcProvider } = (await import("starknet"));
+            this.provider ??= new RpcProvider({ nodeUrl: this.rpcUrl });
+            const res = await this.provider.callContract({
+                contractAddress: POOL_ADDRESS[this.network],
+                entrypoint: "get_fee_amount",
+                calldata: [],
+            });
+            const low = BigInt(res[0] ?? "0x0");
+            const high = BigInt(res[1] ?? "0x0");
+            this.feeCache = unitsToAmount(low + (high << 128n), info.decimals);
+        }
+        catch {
+            this.feeCache = null;
+        }
+        return this.feeCache;
     }
     async shield(token, amount) {
         const result = await this.invoke("shield", this.actionsShield(token, amount));

@@ -9,6 +9,12 @@ interface MockOptions {
   funded?: Record<string, string>;
   /** Force a failure at a given action, for UX-path testing. */
   failAt?: "connect" | "shield" | "privateTransfer" | "unshield";
+  /**
+   * Flat fee per pool operation, matching mainnet's 6 STRK. Charging nothing
+   * let tests pass flows that can never work on chain: shielding exactly the
+   * invoice amount credits amount-fee, which is then too little to pay with.
+   */
+  poolFeeStrk?: string;
 }
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -27,11 +33,13 @@ export class MockWallet implements WalletAdapter {
   private pub = new Map<string, bigint>();
   private shielded = new Map<string, bigint>();
   private txCounter = 0;
+  private readonly fee: bigint;
 
   constructor(opts: MockOptions = {}) {
     this.network = opts.network ?? "sepolia";
     this.latency = opts.latency ?? 600;
     this.failAt = opts.failAt;
+    this.fee = toUnits(opts.poolFeeStrk ?? "6");
     for (const [token, amount] of Object.entries(opts.funded ?? { STRK: "100" })) {
       this.pub.set(token, toUnits(amount));
     }
@@ -56,11 +64,17 @@ export class MockWallet implements WalletAdapter {
     return fromUnits(this.shielded.get(token) ?? 0n);
   }
 
+  async poolFee(): Promise<Amount> {
+    return fromUnits(this.fee);
+  }
+
   async shield(token: string, amount: Amount): Promise<{ txHash: string }> {
     this.assertConnected("shield");
     await wait(this.latency * 2); // screening + acceptance
     if (this.failAt === "shield") throw new WalletActionError("shield", "Deposit rejected by compliance screening.");
-    this.move(this.pub, this.shielded, token, amount, "shield");
+    // Public funds pay amount + fee; the pool credits the amount.
+    this.take(this.pub, token, fromUnits(toUnits(amount) + this.fee), "shield");
+    this.shielded.set(token, (this.shielded.get(token) ?? 0n) + toUnits(amount));
     return { txHash: this.hash() };
   }
 
@@ -69,7 +83,7 @@ export class MockWallet implements WalletAdapter {
     await wait(this.latency * 2); // proof generation happens in the wallet
     if (this.failAt === "privateTransfer")
       throw new WalletActionError("privateTransfer", "Wallet failed to prove the transfer.");
-    this.take(this.shielded, token, amount, "privateTransfer");
+    this.take(this.shielded, token, fromUnits(toUnits(amount) + this.fee), "privateTransfer");
     return { txHash: this.hash() };
   }
 
@@ -77,7 +91,9 @@ export class MockWallet implements WalletAdapter {
     this.assertConnected("unshield");
     await wait(this.latency * 2);
     if (this.failAt === "unshield") throw new WalletActionError("unshield", "Wallet failed to prove the withdrawal.");
-    this.take(this.shielded, token, amount, "unshield");
+    // The recipient gets the full amount; the fee comes out of the payer's
+    // shielded balance on top of it.
+    this.take(this.shielded, token, fromUnits(toUnits(amount) + this.fee), "unshield");
     return { txHash: this.hash() };
   }
 
@@ -91,11 +107,6 @@ export class MockWallet implements WalletAdapter {
 
   private assertConnected(action: "shield" | "privateTransfer" | "unshield"): void {
     if (!this.connected) throw new WalletActionError(action, "Wallet is not connected.");
-  }
-
-  private move(from: Map<string, bigint>, to: Map<string, bigint>, token: string, amount: Amount, action: "shield"): void {
-    this.take(from, token, amount, action);
-    to.set(token, (to.get(token) ?? 0n) + toUnits(amount));
   }
 
   private take(

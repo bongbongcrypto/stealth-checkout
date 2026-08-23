@@ -2,7 +2,19 @@
 // corresponds to a way real money was lost or forged before the fix.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evaluateInvoice, hasUsableBaseline, sameAddress, signPayload, toUnits, verifySignature } from "../lib.mjs";
+import {
+  DELETABLE_STATES,
+  LATE_GRACE_MS,
+  SETTLED_STATES,
+  UNPAYABLE_STATES,
+  evaluateInvoice,
+  hasUsableBaseline,
+  sameAddress,
+  shouldPoll,
+  signPayload,
+  toUnits,
+  verifySignature,
+} from "../lib.mjs";
 
 const invoice = (over = {}) => ({
   id: "inv",
@@ -33,15 +45,83 @@ test("an unrelated later withdrawal from the address cannot un-pay it", () => {
 
 test("a payment that landed beats an expiry evaluated afterwards", () => {
   // The payer settled before the deadline; the poll ran after it. Expiring
-  // here strands their funds at an address nobody watches.
+  // here strands their funds at an address nobody watches. It is recorded as
+  // late rather than on time, so the merchant can apply their own policy, but
+  // it is never recorded as unpaid.
   const inv = invoice({ expiresAt: 1_000 });
   const result = evaluateInvoice(inv, toUnits("5", 18), 9_999);
-  assert.equal(result.status, "paid");
+  assert.equal(result.status, "paid_late");
+  assert.ok(SETTLED_STATES.has(result.status));
+  assert.equal(result.receivedUnits, toUnits("5", 18).toString());
 });
 
-test("an unpaid invoice past its deadline still expires", () => {
+test("an invoice past its deadline with nothing received expires", () => {
   const inv = invoice({ expiresAt: 1_000 });
-  assert.equal(evaluateInvoice(inv, toUnits("1", 18), 9_999).status, "expired");
+  assert.equal(evaluateInvoice(inv, 0n, 9_999).status, "expired");
+});
+
+test("money at the address past the deadline is underpaid, never expired", () => {
+  // "expired" invited the dashboard's delete button, which frees the address
+  // for reuse: a later invoice would then settle on this payer's stranded 1 STRK.
+  const inv = invoice({ expiresAt: 1_000 });
+  const result = evaluateInvoice(inv, toUnits("1", 18), 9_999);
+  assert.equal(result.status, "underpaid");
+  assert.equal(result.receivedUnits, toUnits("1", 18).toString());
+  assert.equal(result.shortfallUnits, toUnits("4", 18).toString());
+  assert.ok(!DELETABLE_STATES.has(result.status), "an address holding money must not be released");
+  assert.ok(UNPAYABLE_STATES.has(result.status), "a payer must not be sent back to this link");
+});
+
+test("an underpaid invoice topped up inside the grace window settles", () => {
+  const inv = invoice({ expiresAt: 1_000 });
+  const short = evaluateInvoice(inv, toUnits("1", 18), 9_999);
+  const settled = evaluateInvoice(short, toUnits("5", 18), 20_000);
+  assert.equal(settled.status, "paid_late");
+  assert.equal(settled.receivedUnits, toUnits("5", 18).toString());
+});
+
+test("the grace window ends, and then nothing is polled or re-judged", () => {
+  const inv = invoice({ expiresAt: 1_000 });
+  const short = evaluateInvoice(inv, toUnits("1", 18), 9_999);
+  const tooLate = short.expiredAt + LATE_GRACE_MS + 1;
+  assert.equal(shouldPoll(short, tooLate), false);
+  assert.equal(evaluateInvoice(short, toUnits("5", 18), tooLate).status, "underpaid");
+});
+
+test("settled invoices are never polled again", () => {
+  const paid = evaluateInvoice(invoice(), toUnits("5", 18));
+  assert.equal(shouldPoll(paid), false);
+  assert.equal(shouldPoll(invoice({ status: "reserving" })), false);
+  assert.equal(shouldPoll(invoice({ status: "needs_reregistration" })), false);
+  assert.equal(shouldPoll(invoice()), true);
+});
+
+test("overpayment is reported, not quietly kept", () => {
+  const over = evaluateInvoice(invoice(), toUnits("7.5", 18));
+  assert.equal(over.status, "paid");
+  assert.equal(over.overpaidUnits, toUnits("2.5", 18).toString());
+  // An exact payment must not claim an overpayment of zero.
+  assert.equal(evaluateInvoice(invoice(), toUnits("5", 18)).overpaidUnits, undefined);
+});
+
+test("partial payment before the deadline keeps watching and shows progress", () => {
+  const inv = invoice({ expiresAt: 9_999_999 });
+  const partial = evaluateInvoice(inv, toUnits("2", 18), 1_000);
+  assert.equal(partial.status, "watching");
+  assert.equal(partial.receivedUnits, toUnits("2", 18).toString());
+  // Same balance again is not news: returning a new object every poll would
+  // rewrite the store forever.
+  assert.equal(evaluateInvoice(partial, toUnits("2", 18), 1_001), partial);
+});
+
+test("the two state sets answer different questions and must not be merged", () => {
+  // Every deletable state is unpayable, but not the reverse: underpaid and
+  // paid rows are unpayable AND must survive, because releasing their address
+  // would let a later invoice settle on money that is already there.
+  for (const s of DELETABLE_STATES) assert.ok(UNPAYABLE_STATES.has(s), `${s} should be unpayable`);
+  assert.ok(UNPAYABLE_STATES.has("underpaid") && !DELETABLE_STATES.has("underpaid"));
+  assert.ok(UNPAYABLE_STATES.has("paid") && !DELETABLE_STATES.has("paid"));
+  assert.ok(UNPAYABLE_STATES.has("paid_late") && !DELETABLE_STATES.has("paid_late"));
 });
 
 test("a zero or empty amount cannot be satisfied by an empty address", () => {

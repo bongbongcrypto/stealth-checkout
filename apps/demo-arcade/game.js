@@ -280,10 +280,22 @@ export function createGame(canvas, { onGameOver }) {
     requestAnimationFrame(frame);
   }
 
+  // Swallow arrows and space only while the game owns the input. Doing it
+  // unconditionally stopped Space from activating a focused button and stopped
+  // the arrow keys from scrolling the page, which broke the checkout beside it.
+  const TYPING = new Set(["BUTTON", "INPUT", "TEXTAREA", "SELECT", "A", "SUMMARY"]);
   window.addEventListener("keydown", (e) => {
-    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) e.preventDefault();
+    const target = e.target;
+    const typing = target instanceof HTMLElement && (TYPING.has(target.tagName) || target.isContentEditable);
+    if (state.running && !typing && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) {
+      e.preventDefault();
+    }
     state.keys.add(e.key.length === 1 ? e.key.toLowerCase() : e.key);
   });
+
+  // Held keys must not survive a tab switch: coming back mid-run with a stuck
+  // arrow key sent the runner into a wall.
+  window.addEventListener("blur", () => state.keys.clear());
   window.addEventListener("keyup", (e) => state.keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key));
 
   function drawIdle() {

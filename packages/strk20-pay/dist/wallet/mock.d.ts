@@ -8,6 +8,12 @@ interface MockOptions {
     funded?: Record<string, string>;
     /** Force a failure at a given action, for UX-path testing. */
     failAt?: "connect" | "shield" | "privateTransfer" | "unshield";
+    /**
+     * Flat fee per pool operation, matching mainnet's 6 STRK. Charging nothing
+     * let tests pass flows that can never work on chain: shielding exactly the
+     * invoice amount credits amount-fee, which is then too little to pay with.
+     */
+    poolFeeStrk?: string;
 }
 /**
  * In-memory wallet with the exact adapter surface, so the full checkout flow:
@@ -23,6 +29,7 @@ export declare class MockWallet implements WalletAdapter {
     private pub;
     private shielded;
     private txCounter;
+    private readonly fee;
     constructor(opts?: MockOptions);
     connect(): Promise<{
         address: string;
@@ -30,6 +37,7 @@ export declare class MockWallet implements WalletAdapter {
     isConnected(): boolean;
     publicBalance(token: string): Promise<Amount>;
     shieldedBalance(token: string): Promise<Amount>;
+    poolFee(): Promise<Amount>;
     shield(token: string, amount: Amount): Promise<{
         txHash: string;
     }>;
@@ -42,7 +50,6 @@ export declare class MockWallet implements WalletAdapter {
     /** Simulates the ~10-block note maturation delay. */
     awaitMaturity(onProgress?: (blocksLeft: number) => void): Promise<void>;
     private assertConnected;
-    private move;
     private take;
     private hash;
 }

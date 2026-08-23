@@ -40,10 +40,58 @@ export function normFelt(value) {
   return "0x" + BigInt(value).toString(16);
 }
 
-export const INVOICE_STATES = ["reserving", "watching", "paid", "expired", "needs_reregistration"];
+export const INVOICE_STATES = [
+  "reserving", // POST in flight: the id and address are claimed, nothing is watched yet
+  "watching", // live, accepting payment
+  "paid", // settled in full, before the deadline
+  "paid_late", // settled in full, after the deadline but inside the grace window
+  "underpaid", // deadline passed with some money received, but not enough
+  "expired", // deadline passed with nothing received
+  "needs_reregistration", // pre-baseline row: cannot be judged safely
+];
 
-/** States whose row is not payable and must never be offered to a payer. */
-export const UNPAYABLE_STATES = new Set(["reserving", "expired", "needs_reregistration"]);
+/** Money is in and the order can ship. */
+export const SETTLED_STATES = new Set(["paid", "paid_late"]);
+
+/**
+ * Two questions that look alike and are not, kept apart on purpose. Merging
+ * them is how "fixed in one place, still broken in the other" happens: the
+ * first is about handing a link to a payer, the second about freeing an id and
+ * address for reuse. An underpaid invoice answers them differently, because
+ * real money is already sitting at its address.
+ */
+
+/** Never offer these to a payer: the watcher will not confirm them. */
+export const UNPAYABLE_STATES = new Set([
+  "reserving",
+  "expired",
+  "needs_reregistration",
+  "underpaid",
+  "paid",
+  "paid_late",
+]);
+
+/** Only these may be deleted. Deleting a row with funds at its address would
+ * release that address for reuse and let the stranded money settle a later
+ * invoice. */
+export const DELETABLE_STATES = new Set(["reserving", "expired", "needs_reregistration"]);
+
+/**
+ * How long after the deadline a payment still counts. Payers hit "pay" at
+ * 23:59, wallets queue, chains reorg: dropping the money on the floor at the
+ * stroke of the deadline is the single most expensive way to be right.
+ */
+export const LATE_GRACE_MS = 24 * 60 * 60 * 1000;
+
+/** Should the poller still spend an RPC call on this row? */
+export function shouldPoll(invoice, now = Date.now()) {
+  if (invoice?.status === "watching") return true;
+  if (invoice?.status !== "expired" && invoice?.status !== "underpaid") return false;
+  // Keep looking during the grace window, and only there: polling settled or
+  // abandoned rows forever turns one busy merchant into an RPC bill.
+  const since = invoice.expiredAt ?? invoice.expiresAt ?? 0;
+  return now - since <= LATE_GRACE_MS;
+}
 
 /**
  * The single test for "can this row be judged safely?". restore() and
@@ -79,7 +127,7 @@ export function sameAddress(a, b) {
  * the merchant ships goods nobody paid for.
  */
 export function evaluateInvoice(invoice, balanceUnits, now = Date.now()) {
-  if (invoice.status !== "watching") return invoice;
+  if (!shouldPoll(invoice, now)) return invoice;
 
   // A missing baseline must never mean zero. Rows written by an older build
   // have no baseline at all, and defaulting them to zero silently restores
@@ -94,22 +142,51 @@ export function evaluateInvoice(invoice, balanceUnits, now = Date.now()) {
   const received = balanceUnits - baseline;
   const target = toUnits(invoice.amount, invoice.decimals);
   if (target <= 0n) throw new Error(`invoice ${invoice.id} has a non-positive amount and can never be paid`);
-  const paid = received >= target;
+  const overdue = Boolean(invoice.expiresAt) && now > invoice.expiresAt;
 
   // A payment that landed before the deadline wins, even if this poll runs
   // after it. Expiring an invoice the payer already settled strands their
   // funds at an address the merchant never learns to watch.
-  if (paid) {
+  if (received >= target) {
     return {
       ...invoice,
-      status: "paid",
+      // Late still means paid, and saying which lets a merchant apply their own
+      // policy instead of the watcher inventing one.
+      status: overdue || invoice.status !== "watching" ? "paid_late" : "paid",
       confirmedAt: now,
       balanceUnits: balanceUnits.toString(),
       receivedUnits: received.toString(),
+      // Excess is the merchant's problem to resolve, but only if they are told
+      // about it. Silently pocketing an overpayment is how chargebacks start.
+      overpaidUnits: received > target ? (received - target).toString() : undefined,
     };
   }
-  if (invoice.expiresAt && now > invoice.expiresAt) {
-    return { ...invoice, status: "expired", expiredAt: now };
+
+  // Partial money must be visible while the invoice is still open: the payer
+  // may be topping up, and the merchant should see it coming rather than
+  // discover it at expiry.
+  const seen = invoice.receivedUnits ?? "0";
+  const progressed = received > 0n && received.toString() !== seen;
+
+  if (overdue) {
+    return received > 0n
+      ? {
+          ...invoice,
+          // Money is at this address. "expired" would invite deleting the row,
+          // and the address with it.
+          status: "underpaid",
+          expiredAt: invoice.expiredAt ?? now,
+          balanceUnits: balanceUnits.toString(),
+          receivedUnits: received.toString(),
+          shortfallUnits: (target - received).toString(),
+        }
+      : invoice.status === "expired"
+        ? invoice
+        : { ...invoice, status: "expired", expiredAt: now };
+  }
+
+  if (progressed) {
+    return { ...invoice, balanceUnits: balanceUnits.toString(), receivedUnits: received.toString() };
   }
   return invoice;
 }

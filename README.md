@@ -1,57 +1,83 @@
 # Stealth Checkout
 
-**Accept private payments on Starknet.** A drop-in checkout for STRK20: embeddable payment widget, hosted invoice pages, headless payment confirmation with webhooks, receipts, and a pre-sign panel that tells the payer exactly what the payment does and does not reveal.
+**Accept private payments on Starknet.** A drop-in checkout for STRK20: an embeddable payment widget, hosted invoice links, headless confirmation with signed webhooks, receipts, and a pre-sign panel that tells the payer exactly what the payment does and does not reveal.
 
 Built for the [STRK20 Private Sprint](https://strk20.starknet.io/hackathon).
 
 **Try it now:**
 [coin-op arcade demo](https://bongbongcrypto.github.io/stealth-checkout/apps/demo-arcade/index.html) (full flow on a mock wallet, no setup) ·
-[invoice creator / hosted checkout](https://bongbongcrypto.github.io/stealth-checkout/apps/pay-live/index.html) (real wallet, mainnet) ·
-[integration guide](docs/INTEGRATION.md) (three tiers, from zero code to webhooks)
+[hosted invoice page](https://bongbongcrypto.github.io/stealth-checkout/apps/pay-live/index.html) (real wallet, mainnet) ·
+[merchant dashboard](https://bongbongcrypto.github.io/stealth-checkout/apps/dashboard/index.html) ·
+[integration guide](docs/INTEGRATION.md)
+
+```bash
+npm install strk20-pay
+```
 
 ## Why
 
-STRK20 gives Starknet shielded balances and private transfers. The ecosystem around it is growing fast on the **sending** side: claim links, red packets, payroll rails. But if you run a storefront, a dapp, or a DAO and want to **accept** a private payment, there is nothing to install: no checkout component, no invoices, no receipts, and no way for your backend to learn "you got paid" without opening a wallet and scanning.
+STRK20 gives Starknet shielded balances and private transfers. The ecosystem around it is growing fast on the **sending** side: claim links, red packets, payroll rails. But if you run a storefront, a dapp, or a DAO and want to **accept** a private payment, there is nothing to install: no checkout component, no invoices, no receipts, and no way for your backend to learn "you got paid" without opening a wallet and looking.
 
-Stealth Checkout is that missing accepting side: the Stripe Checkout of private payments.
+Stealth Checkout is that missing accepting side.
 
 ## What's in the box
 
 | Piece | What it does |
 |---|---|
-| `strk20-pay` | Framework-agnostic TS widget + React wrapper. One import → "Pay privately" button with full flow UX (connect → shield if needed → pay → confirmed). |
-| Hosted invoice pages | Sharable `pay/<invoice-id>` pages with amount, memo, status: like a payment link, but the payer side stays private. |
-| Watcher + webhooks | Merchant backend confirms payments by watching public RPC for per-invoice receive addresses. No proving dependency, fully headless. Fires `payment.confirmed` webhooks. |
-| Receipts | Per-payment receipt the payer can keep and selectively show: "this invoice was paid" without exposing their wallet history. |
-| Honesty panel | Before signing, the widget shows what this payment reveals on-chain and what it hides. No privacy overclaiming, ever. |
-| Demo store | A coin-op arcade: insert a coin (1 STRK, privately) → play. The full loop, experienceable solo in ~2 minutes. |
+| [`strk20-pay`](packages/strk20-pay) | Framework-agnostic TS widget, plus a React binding. One call renders the whole flow: connect → shield if needed → pay → confirmed → receipt. |
+| Hosted invoice page | `apps/pay-live/?to=0x…&amount=25&id=…&watcher=https://…` — a shareable payment link. With a `watcher`, the page reads the amount from the merchant's server instead of from its own query string. |
+| Watcher + webhooks | Confirms payments by watching per-invoice receive addresses over public RPC. No proving dependency, fully headless. Signed webhooks with a persisted retry queue. |
+| Merchant dashboard | Create invoices, watch them settle, release stuck rows, export the ledger as CSV. |
+| Honesty panel | Before signing, what this payment reveals on-chain and what it hides. Open by default. |
+| Demo arcade | A coin-op arcade that sells credits through the widget. The full loop in about two minutes, with nothing installed. |
 
-## Design constraints we honor
+## Two findings worth more than the code
+
+**1. The pool charges a flat 6 STRK per operation, and documents it nowhere.**
+Not a percentage: the same 6 STRK whether you move 1 STRK or 1,000. It is read live from the pool's `get_fee_amount()`. A checkout that shows a price and hides that is lying by omission, so the widget adds it to the total before the payer signs, and warns when it is larger than the invoice. It also means private payments have an economic floor: below roughly 60 STRK, the fee is more than 10% of the purchase.
+
+**2. Confirmation must be a delta, never a balance.**
+Invoice addresses can already hold funds — they need STRK to deploy before a merchant can sweep them, merchants reuse addresses by mistake, and airdrops happen. Confirming on the absolute balance marks such an invoice paid the moment it is created. The watcher captures a baseline at registration and confirms only on growth, and refuses to judge any row whose baseline is missing.
+
+## Design constraints honoured
 
 - **Composes only shipped wallet actions** (shield / private transfer / unshield / swap via the Privacy Wallet API). Nothing in the core loop depends on unpublished mainnet infrastructure.
-- **Honest privacy accounting.** Deposits into the pool are public and compliance-screened. Note-to-note transfers hide amounts and parties. An unshield shows destination and amount, while the payer's identity stays severed by the pool. The widget says exactly this to the payer, every time.
-- **Pending states are first-class.** Pool notes take ~10 blocks to mature; every wait is shown next to the button that caused it, with the wallet popup announced before it appears.
+- **Honest privacy accounting.** Deposits into the pool are public and compliance-screened. Note-to-note transfers hide amounts and parties. An unshield shows destination and amount, while the payer's identity stays severed by the pool. The widget says exactly this, every time, before signing.
+- **Pending states are first-class.** Pool notes take about 10 blocks to mature; every wait is shown next to the button that caused it, and wallet popups are announced before they appear.
+- **Money is never dropped on a technicality.** A partial payment becomes `underpaid`, not `expired`. A payment that lands after the deadline becomes `paid_late`, not lost. An address is never released for reuse once anything has arrived on it.
 
 ## Payment modes
 
-1. **Invoice address (default)**: the payer unshields to a fresh per-invoice address. The merchant backend confirms it headlessly over public RPC and fires a webhook. Payer identity: severed by the pool. Amount + invoice address: visible (that's the receipt working for you).
-2. **Note transfer**: the payer sends a private note to the merchant's pool account. Fully private on-chain; confirmation happens wallet-side.
+1. **Invoice address (default)**: the payer unshields to a fresh per-invoice address. The merchant confirms headlessly over public RPC and fires a webhook. Payer identity: severed by the pool. Amount and invoice address: visible.
+2. **Note transfer**: the payer sends a private note to the merchant's pool account. Fully private on-chain; confirmation happens wallet-side, because note discovery is not available on mainnet.
+
+## Run it locally
+
+```bash
+npm install
+npm test                 # 95 tests: widget, checkout core, watcher logic, HTTP API
+npm run build:all        # widget dist + hosted-page bundle
+npm run dev              # demos at http://127.0.0.1:4173
+WATCHER_TOKEN=dev node server/watcher/watcher.mjs
+```
+
+`npm run e2e:watcher` runs against mainnet without spending anything. It proves the watcher reads a real balance over public RPC, captures a baseline, and **refuses to confirm an address that merely holds funds**, then exercises the signed webhook path including timestamp binding and the persisted delivery queue. It deliberately does not prove that a real payment was detected: that needs someone to actually pay, and this script will not do that with your money.
 
 ## Repository layout
 
 ```
-packages/strk20-pay/   # the embeddable checkout (core + adapters + honesty report)
+packages/strk20-pay/   # the embeddable checkout (core, adapters, React binding, honesty report)
 apps/demo-arcade/      # coin-op arcade demo store
-apps/dashboard/        # merchant dashboard (invoices, payments, receipts)
-server/watcher/        # RPC watcher + webhook dispatcher
+apps/pay-live/         # hosted invoice page (link creator + payer view)
+apps/dashboard/        # merchant dashboard
+server/watcher/        # RPC watcher, webhook dispatcher, invoice ledger
+server/dev-static.mjs  # no-cache static server for local demos
 strk20.json            # sprint manifest (txs, demo, video)
 ```
 
 ## Verified on mainnet
 
-`strk20.json` lists seven Starknet mainnet transactions against the live STRK20 pool.
-Every one exists, SUCCEEDED, and carries pool events for the same account. Two of them
-are payments this checkout itself made:
+`strk20.json` lists seven Starknet mainnet transactions against the live STRK20 pool. Every one exists, SUCCEEDED, and carries pool events for the same account. Two of them are payments this checkout itself made:
 
 | Block | What it is | Tx |
 |---|---|---|
@@ -63,24 +89,17 @@ are payments this checkout itself made:
 | 13645574 | **`Withdrawal`: a private payment made through this checkout** | `0x683df5a6...2c14` |
 | 13645946 | `Deposit` | `0x5a054090...629d` |
 
-The ledger balances exactly: 55 STRK deposited, 10 withdrawn, 42 taken by the pool's
-flat per-operation fee (7 x 6 STRK), leaving 3 STRK shielded. That flat fee is why this
-widget refuses to shield small amounts for a payer, and says so instead.
+The ledger balances exactly: 55 STRK deposited, 10 withdrawn, 42 taken by the pool's flat per-operation fee (7 × 6 STRK), leaving 3 STRK shielded. That arithmetic is where the flat fee was found.
 
-We deployed no contracts, so these are judged against the pool alone.
-
-Re-verify any of them yourself, and prove the headless confirmation path at the same
-time, with `npm run e2e:watcher`: it confirms a payment against mainnet over public RPC
-and fires a signed webhook, without spending anything.
+No contracts were deployed, so these are judged against the pool alone.
 
 ## Status
-
-Sprint build in progress (Aug 14 to 31). Scored checklist:
 
 - [x] Public repo, MIT licensed
 - [x] Live demo URL
 - [x] 3+ mainnet transactions against the STRK20 pool in `strk20.json`
 - [ ] 3-minute demo video
+- [ ] `strk20-pay` published to npm (packaged and ready; publishing is the owner's to run)
 
 ## License
 

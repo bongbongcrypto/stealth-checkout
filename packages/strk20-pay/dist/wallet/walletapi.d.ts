@@ -5,6 +5,10 @@ import { type TokenInfo } from "../tokens.js";
 export declare const MIN_STRK20_WALLET_API = "0.10.3";
 /** Pool notes become spendable this many blocks after the deposit lands. */
 export declare const MATURITY_BLOCKS = 10;
+/** The STRK20 privacy pool, which charges the flat per-operation fee. */
+/** Voyager has a separate host per network; one URL for both 404s on one. */
+export declare const EXPLORER_BASE: Record<Network, string>;
+export declare const POOL_ADDRESS: Record<Network, string>;
 export interface WalletApiOptions {
     network: Network;
     /** JSON-RPC endpoint; required on Sepolia, defaults to a public one on mainnet. */
@@ -23,12 +27,15 @@ interface DiscoveredWallet {
 }
 export declare class WalletApiAdapter implements WalletAdapter {
     readonly network: Network;
+    /** Voyager, on the network this adapter is actually connected to. */
+    explorerUrl(kind: "tx" | "address", value: string): string | null;
     private readonly rpcUrl;
     private readonly registry;
     private readonly preferWallet;
     private readonly discoveryTimeoutMs;
     private account;
     private shieldedAtBlock;
+    private feeCache;
     private accountV6;
     private provider;
     constructor(opts: WalletApiOptions);
@@ -40,6 +47,13 @@ export declare class WalletApiAdapter implements WalletAdapter {
     }>;
     publicBalance(token: string): Promise<Amount>;
     shieldedBalance(token: string): Promise<Amount | null>;
+    /**
+     * Read the pool's flat fee. It is a real charge that no STRK20 documentation
+     * mentions: we found it by calling the contract. Cached because it does not
+     * move, and returned as null rather than zero when unreadable, so a caller
+     * can say "unknown" instead of quietly promising the payer too low a total.
+     */
+    poolFee(token: string): Promise<Amount | null>;
     shield(token: string, amount: Amount): Promise<{
         txHash: string;
     }>;

@@ -30,6 +30,15 @@
     .b-paid { background:#22321f; color:var(--green); }
     .b-expired { background:#3d2a2a; color:var(--red); }
     .b-attention { background:#3a2f18; color:var(--yellow); border:1px solid var(--yellow); }
+    button:focus-visible, input:focus-visible, a:focus-visible { outline:2px solid var(--green); outline-offset:2px; }
+    button:disabled { opacity:.5; cursor:progress; }
+    .scroll { overflow-x:auto; }
+    @media (max-width:640px) {
+      body { padding:16px 10px; }
+      .bar > div, .bar input { width:100%; }
+      #f-id, #f-token, #f-amount, #f-to, #f-watcher, #f-expires { width:100%; }
+      .bar button { flex:1 1 45%; min-height:44px; }
+    }
     .note { margin-top:14px; padding:10px 12px; border:1px dashed var(--line); border-radius:8px;
       color:var(--muted); font-size:12px; }
     a { color:var(--green); }
@@ -46,15 +55,19 @@
       <div><label>Invoice id</label><input id="f-id" placeholder="auto" /></div>
       <div><label>Amount (STRK)</label><input id="f-amount" value="2" /></div>
       <div><label>Receive address (fresh per invoice)</label><input id="f-to" placeholder="0x…" /></div>
+      <div><label>Expires in (hours, blank = never)</label><input id="f-expires" placeholder="24" /></div>
       <button id="f-create">Create invoice</button>
       <button id="f-refresh" class="ghost">Refresh</button>
+      <button id="f-export" class="ghost">Export CSV</button>
     </div>
 
-    <div id="status" class="muted"></div>
-    <table>
-      <thead><tr><th>ID</th><th>AMOUNT</th><th>RECEIVE ADDRESS</th><th>STATUS</th><th>TX</th><th>PAY LINK</th></tr></thead>
-      <tbody id="rows"></tbody>
-    </table>
+    <div id="status" class="muted" role="status" aria-live="polite"></div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>ID</th><th>AMOUNT</th><th>RECEIVED</th><th>RECEIVE ADDRESS</th><th>STATUS</th><th>TX</th><th>PAY LINK</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
     <div class="note" id="demo-note" hidden>
       Watcher unreachable: showing <strong>demo data</strong>. Start it with
       <code>node server/watcher/watcher.mjs</code> and refresh.

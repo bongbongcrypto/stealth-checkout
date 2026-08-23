@@ -71,8 +71,9 @@ const received = new Promise((resolve) => {
 
 const paid = { ...after, status: "paid", confirmedAt: Date.now(), receivedUnits: "1" };
 invoices.set(paid.id, paid);
-const { deliverWebhook } = await import("./watcher.mjs");
-await deliverWebhook(paid);
+const { deliverWebhook, queueWebhook, drainWebhooks } = await import("./watcher.mjs");
+queueWebhook(paid, "payment.confirmed");
+await drainWebhooks();
 
 const hook = await Promise.race([received, new Promise((r) => setTimeout(() => r(null), 15_000))]);
 if (!hook) {
@@ -84,6 +85,12 @@ if (!hook) {
   check("signature verifies with the timestamp", verifySignature("whsec_e2e", hook.raw, hook.signature, hook.timestamp));
   const stale = Number(hook.timestamp) - 3600;
   check("the same signature is rejected an hour later", !verifySignature("whsec_e2e", hook.raw, hook.signature, stale));
+
+  // The queue is the thing that survives a restart, so check it recorded the
+  // delivery rather than trusting that the HTTP call happened to work.
+  const row = invoices.get(paid.id);
+  check("the delivery is marked done on the invoice row", typeof row.webhook?.deliveredAt === "number");
+  check("the queue kept the id it delivered under", row.webhook?.deliveryId === body.deliveryId);
 }
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) failed`);

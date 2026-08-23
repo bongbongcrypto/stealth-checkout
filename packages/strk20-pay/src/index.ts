@@ -1,4 +1,5 @@
-export { StealthCheckout, compareAmounts, isInsufficientFunds } from "./checkout.js";
+export { StealthCheckout, compareAmounts, isInsufficientFunds, matchesInvoice } from "./checkout.js";
+export type { SentPayment, PaymentStore } from "./checkout.js";
 export { mountCheckout } from "./ui.js";
 export type { MountOptions, MountedCheckout } from "./ui.js";
 export { revealReport } from "./honesty.js";

@@ -107,7 +107,8 @@ Your endpoint receives:
 balance delta, so never require the hash to be present.
 
 Verify with `verifySignature(secret, rawBody, signature, timestamp)` from
-`server/watcher/lib.mjs`. The signature covers `timestamp.body`, sent in
+`server/watcher/lib.mjs`. It returns false for an empty secret, so a missing
+env var fails closed rather than accepting anything. The signature covers `timestamp.body`, sent in
 `X-Spay-Signature` and `X-Spay-Timestamp`, and anything older than five minutes
 is rejected, so a captured delivery cannot be replayed later. Retries reuse the
 same `deliveryId`: dedupe on it.
@@ -127,6 +128,13 @@ cheaper, because the pool charges a fee per deposit.
 
 Pass `allowInlineShield: true` if you would rather trade that away for a single
 click; our arcade demo does, because a mock wallet has no wallet UI to send players to.
+
+## Upgrading from an earlier build
+
+Invoices written before this version carry no baseline, and a baseline is what
+makes confirmation safe. The watcher will not resume them: they come back as
+`needs_reregistration` and are logged at startup. Re-register each open invoice
+against the same address, and the current balance becomes its baseline.
 
 ## The honesty contract
 

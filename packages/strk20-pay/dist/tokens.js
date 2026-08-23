@@ -4,8 +4,12 @@ export const TOKENS = {
     ETH: { address: "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7", decimals: 18 },
 };
 export function resolveToken(symbolOrAddress, registry = TOKENS) {
-    const known = registry[symbolOrAddress];
-    if (known)
+    // Own properties only: a plain lookup finds "toString" and "__proto__" on
+    // Object.prototype and hands back a TokenInfo with undefined fields.
+    const known = Object.prototype.hasOwnProperty.call(registry, symbolOrAddress)
+        ? registry[symbolOrAddress]
+        : undefined;
+    if (known && typeof known.address === "string" && Number.isInteger(known.decimals))
         return known;
     // Never guess decimals. Assuming 18 for a 6-decimal token such as USDC
     // builds a transfer for a million million times the intended amount, and

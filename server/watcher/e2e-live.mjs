@@ -18,12 +18,17 @@
 // bug it was hiding is fixed, and this script now asserts the opposite.
 
 import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { verifySignature } from "./lib.mjs";
 
 process.env.WATCHER_TOKEN ??= "e2e-token";
 process.env.WEBHOOK_SECRET = "whsec_e2e";
 process.env.WEBHOOK_URL = "http://127.0.0.1:8788/hook";
 process.env.WATCHER_RPC ??= "https://rpc.starknet.lava.build";
+// Never write into a real merchant ledger: an earlier version of this script
+// left a forged "paid" row in the repo's own store.
+process.env.WATCHER_STORE = join(tmpdir(), `spay-e2e-${Date.now()}.json`);
 
 const { createInvoice, pollOnce, invoices } = await import("./watcher.mjs");
 

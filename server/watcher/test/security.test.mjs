@@ -73,3 +73,26 @@ test("signatures still reject tampering, a wrong secret, and a missing timestamp
 test("signing without a timestamp is a programming error, not a silent downgrade", () => {
   assert.throws(() => signPayload("whsec", "{}"), /requires a timestamp/);
 });
+
+test("a row with no baseline is refused, not treated as baseline zero", () => {
+  // Rows written before baselines existed. Defaulting them to zero silently
+  // restores absolute-balance confirmation on every open invoice at upgrade.
+  const legacy = { id: "legacy", decimals: 18, amount: "1", status: "watching" };
+  assert.throws(() => evaluateInvoice(legacy, toUnits("1000", 18)), /no usable baseline/);
+  assert.throws(() => evaluateInvoice({ ...legacy, baselineUnits: "" }, 10n ** 21n), /no usable baseline/);
+  assert.throws(() => evaluateInvoice({ ...legacy, baselineUnits: null }, 10n ** 21n), /no usable baseline/);
+  assert.throws(() => evaluateInvoice({ ...legacy, baselineUnits: 5 }, 10n ** 21n), /no usable baseline/);
+});
+
+test("an invoice for zero can never be satisfied", () => {
+  const inv = invoice({ amount: "0", baselineUnits: "0" });
+  assert.throws(() => evaluateInvoice(inv, 0n), /non-positive amount/);
+  assert.throws(() => evaluateInvoice(invoice({ amount: "0.0" }), 0n), /non-positive amount/);
+});
+
+test("an empty secret verifies nothing", () => {
+  const body = "{}";
+  const ts = Math.floor(Date.now() / 1000);
+  assert.ok(!verifySignature("", body, signPayload("x", body, ts), ts));
+  assert.ok(!verifySignature(undefined, body, "aa", ts));
+});

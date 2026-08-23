@@ -31590,17 +31590,19 @@ var WalletActionError = class extends Error {
 
 // packages/strk20-pay/src/checkout.ts
 var StealthCheckout = class {
-  constructor(wallet, confirmPayment = async () => true, allowInlineShield = false) {
+  constructor(wallet, confirmPayment = async () => true, allowInlineShield = false, store = defaultStore()) {
     this.wallet = wallet;
     this.confirmPayment = confirmPayment;
     this.allowInlineShield = allowInlineShield;
+    this.store = store;
   }
   listeners = /* @__PURE__ */ new Set();
   phase = "idle";
   /**
-   * Hash of a payment already broadcast for this invoice. Confirmation can
+   * Record of a payment already broadcast, keyed by invoice. Confirmation can
    * fail while the money is genuinely gone (slow chain, flaky RPC), and the
-   * widget then offers a Retry button. Without this the retry pays twice.
+   * payer then retries, or reloads the page. Either way the payment must not
+   * be sent again, so this is persisted through `store` and survives a reload.
    */
   sentPayment = null;
   on(listener) {
@@ -31631,8 +31633,8 @@ var StealthCheckout = class {
         this.emit("connecting", "Your wallet will pop up to connect.", true);
         await this.wallet.connect();
       }
-      if (this.sentPayment && this.sentPayment.invoiceId === invoice.id) {
-        const prior = this.sentPayment;
+      const prior = this.sentPayment ?? this.loadSent(invoice);
+      if (prior && matchesInvoice(prior, invoice)) {
         this.emit("confirming", "Payment already sent. Waiting for on-chain confirmation\u2026", false, prior.txHash);
         const ok = await this.confirmPayment(invoice, prior.txHash);
         if (!ok) throw new Error("Still not confirmed on-chain. Your payment was sent once and has not been repeated.");
@@ -31656,7 +31658,15 @@ var StealthCheckout = class {
         }
         ({ txHash } = await this.payStep(invoice));
       }
-      this.sentPayment = { invoiceId: invoice.id, txHash, shieldTxHash };
+      this.sentPayment = {
+        invoiceId: invoice.id,
+        amount: invoice.amount,
+        token: invoice.token,
+        recipient: invoice.receiveAddress ?? invoice.merchantPoolAddress ?? "",
+        txHash,
+        shieldTxHash
+      };
+      this.saveSent(this.sentPayment);
       this.emit("confirming", "Payment sent. Waiting for on-chain confirmation\u2026", false, txHash);
       const confirmed = await this.confirmPayment(invoice, txHash);
       if (!confirmed) throw new Error("The payment was not confirmed on-chain. It was sent once and will not be sent again.");
@@ -31666,6 +31676,23 @@ var StealthCheckout = class {
       this.emit("failed", message, false, void 0, message);
       this.listeners.forEach((l) => l({ type: "failed", error: message, phase: this.phase }));
       throw err;
+    }
+  }
+  storeKey(invoiceId) {
+    return `strk20-pay.sent.${this.wallet.network}.${invoiceId}`;
+  }
+  loadSent(invoice) {
+    try {
+      const raw = this.store?.getItem(this.storeKey(invoice.id));
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+  saveSent(record) {
+    try {
+      this.store?.setItem(this.storeKey(record.invoiceId), JSON.stringify(record));
+    } catch {
     }
   }
   /**
@@ -31752,6 +31779,17 @@ function compareAmounts(a, b) {
 function isInsufficientFunds(err) {
   const raw = err instanceof Error ? err.message : String(err ?? "");
   return /insufficient|not enough|no (unspent )?notes|balance too low|NOT_ENOUGH/i.test(raw);
+}
+function defaultStore() {
+  try {
+    return typeof sessionStorage === "undefined" ? null : sessionStorage;
+  } catch {
+    return null;
+  }
+}
+function matchesInvoice(sent, invoice) {
+  const recipient = invoice.receiveAddress ?? invoice.merchantPoolAddress ?? "";
+  return sent.invoiceId === invoice.id && sent.token === invoice.token && sent.recipient === recipient && compareAmounts(sent.amount, invoice.amount) === 0;
 }
 
 // packages/strk20-pay/src/ui.ts
@@ -31907,8 +31945,8 @@ var TOKENS = {
   ETH: { address: "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7", decimals: 18 }
 };
 function resolveToken(symbolOrAddress, registry = TOKENS) {
-  const known = registry[symbolOrAddress];
-  if (known) return known;
+  const known = Object.prototype.hasOwnProperty.call(registry, symbolOrAddress) ? registry[symbolOrAddress] : void 0;
+  if (known && typeof known.address === "string" && Number.isInteger(known.decimals)) return known;
   throw new Error(
     `Unknown token "${symbolOrAddress}". Register it first: resolveToken("${symbolOrAddress}", { ...TOKENS, MYTOKEN: { address, decimals } }), or pass a registry entry via the tokens option. Decimals are never assumed.`
   );

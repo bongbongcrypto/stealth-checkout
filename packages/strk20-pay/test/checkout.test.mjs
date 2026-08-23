@@ -224,3 +224,41 @@ test("paying a mainnet invoice from a sepolia wallet is refused before any promp
   await assert.rejects(() => checkout.pay(invoice({ network: "mainnet" })), /invoice is for mainnet.*wallet is on sepolia/);
   assert.equal(await wallet.publicBalance("STRK"), "10", "no funds moved");
 });
+
+test("a reload cannot re-send a payment: the record is persisted", async () => {
+  // The payer's confirmation timed out and they pressed F5. A fresh page means
+  // a fresh StealthCheckout, and without a persisted record it pays again.
+  const store = new Map();
+  const shared = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+  const wallet = fastWallet();
+  await wallet.connect();
+  await wallet.shield("STRK", "5");
+
+  const page1 = new StealthCheckout(wallet, async () => false, false, shared);
+  await assert.rejects(() => page1.pay(invoice()), /sent once/);
+  const afterFirst = await wallet.shieldedBalance("STRK");
+
+  // A brand new instance, as after a reload.
+  const page2 = new StealthCheckout(wallet, async () => true, false, shared);
+  const receipt = await page2.pay(invoice());
+  assert.equal(await wallet.shieldedBalance("STRK"), afterFirst, "reload must not spend again");
+  assert.equal(receipt.invoiceId, "inv-1");
+});
+
+test("a remembered payment cannot be claimed by a different invoice reusing its id", async () => {
+  const store = new Map();
+  const shared = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+  const wallet = fastWallet({ funded: { STRK: "100" } });
+  await wallet.connect();
+  await wallet.shield("STRK", "60");
+
+  const first = new StealthCheckout(wallet, async () => false, false, shared);
+  await assert.rejects(() => first.pay(invoice({ amount: "1" })), /sent once/);
+
+  // Same id, far larger amount: must NOT be waved through as already paid.
+  const second = new StealthCheckout(wallet, async () => true, false, shared);
+  const before = await wallet.shieldedBalance("STRK");
+  const receipt = await second.pay(invoice({ amount: "50" }));
+  assert.equal(receipt.amount, "50");
+  assert.notEqual(await wallet.shieldedBalance("STRK"), before, "a genuinely different payment must be made");
+});

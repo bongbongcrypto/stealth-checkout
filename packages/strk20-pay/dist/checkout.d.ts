@@ -22,12 +22,19 @@ export declare class StealthCheckout {
      * cheaper, since the pool charges a fee per deposit.
      */
     private readonly allowInlineShield;
+    /**
+     * Where broadcast payments are remembered. Defaults to sessionStorage in a
+     * browser so a reload cannot re-send; pass your own for other hosts, or
+     * `null` to opt out (a reload then risks paying twice).
+     */
+    private readonly store;
     private listeners;
     private phase;
     /**
-     * Hash of a payment already broadcast for this invoice. Confirmation can
+     * Record of a payment already broadcast, keyed by invoice. Confirmation can
      * fail while the money is genuinely gone (slow chain, flaky RPC), and the
-     * widget then offers a Retry button. Without this the retry pays twice.
+     * payer then retries, or reloads the page. Either way the payment must not
+     * be sent again, so this is persisted through `store` and survives a reload.
      */
     private sentPayment;
     constructor(wallet: WalletAdapter, confirmPayment?: (invoice: Invoice, txHash: string) => Promise<boolean>, 
@@ -39,11 +46,20 @@ export declare class StealthCheckout {
      * time, separately, is what makes the payment unlinkable. It is also
      * cheaper, since the pool charges a fee per deposit.
      */
-    allowInlineShield?: boolean);
+    allowInlineShield?: boolean, 
+    /**
+     * Where broadcast payments are remembered. Defaults to sessionStorage in a
+     * browser so a reload cannot re-send; pass your own for other hosts, or
+     * `null` to opt out (a reload then risks paying twice).
+     */
+    store?: PaymentStore | null);
     on(listener: (e: CheckoutEvent) => void): Unsubscribe;
     /** Honesty panel rows for this invoice, given current balances. */
     preview(invoice: Invoice): Promise<RevealItem[]>;
     pay(invoice: Invoice): Promise<Receipt>;
+    private storeKey;
+    private loadSent;
+    private saveSent;
     /**
      * Either shield inline (opt-in) or stop and say why not. Refusing is the
      * privacy-preserving answer, so the message has to be genuinely useful.
@@ -64,3 +80,23 @@ export declare class StealthCheckout {
 export declare function compareAmounts(a: string, b: string): -1 | 0 | 1;
 /** Does this wallet error mean "you do not have enough shielded funds"? */
 export declare function isInsufficientFunds(err: unknown): boolean;
+/** A payment already broadcast. Persisted so a reload cannot re-send it. */
+export interface SentPayment {
+    invoiceId: string;
+    amount: string;
+    token: string;
+    recipient: string;
+    txHash: string;
+    shieldTxHash?: string;
+}
+/** The slice of Storage this needs. sessionStorage and localStorage both fit. */
+export interface PaymentStore {
+    getItem(key: string): string | null;
+    setItem(key: string, value: string): void;
+}
+/**
+ * Does a remembered payment settle THIS invoice? Same id is not enough: an id
+ * can be reused with a different amount or recipient, and treating that as
+ * already-paid would hand over goods for a payment that never covered them.
+ */
+export declare function matchesInvoice(sent: SentPayment, invoice: Invoice): boolean;

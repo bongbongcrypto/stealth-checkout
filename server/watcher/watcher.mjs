@@ -152,14 +152,29 @@ async function deliverWebhook(inv, attempt = 1) {
   }
 }
 
+function knownToken(symbol) {
+  // Own properties only: "toString" and "__proto__" otherwise resolve to junk.
+  return Object.prototype.hasOwnProperty.call(TOKENS, symbol) ? TOKENS[symbol] : undefined;
+}
+
 function resolveToken(body) {
-  if (body.tokenAddress) {
+  if (body.tokenAddress !== undefined) {
+    if (typeof body.tokenAddress !== "string" || !/^0x[0-9a-fA-F]{10,64}$/.test(body.tokenAddress)) {
+      throw new Error("tokenAddress must be a hex Starknet address");
+    }
     if (!Number.isInteger(body.decimals) || body.decimals < 0 || body.decimals > 36) {
       throw new Error("decimals must be an integer between 0 and 36");
     }
+    // Declaring the wrong decimals for a token we know would confirm an
+    // invoice for "1 STRK" on a millionth of one, while the webhook still
+    // reports "1 STRK". Refuse the contradiction.
+    const named = knownToken(body.token);
+    if (named && BigInt(named.address) === BigInt(body.tokenAddress) && named.decimals !== body.decimals) {
+      throw new Error(`${body.token} has ${named.decimals} decimals, not ${body.decimals}`);
+    }
     return { token: body.token ?? "CUSTOM", tokenAddress: body.tokenAddress, decimals: body.decimals };
   }
-  const known = TOKENS[body.token];
+  const known = knownToken(body.token);
   if (!known) throw new Error(`Unknown token ${body.token}; pass tokenAddress + decimals`);
   return { token: body.token, tokenAddress: known.address, decimals: known.decimals };
 }
@@ -175,7 +190,7 @@ async function createInvoice(body) {
     throw new Error("receiveAddress (hex, 10+ digits) is required: one fresh address per invoice");
   }
   const { token, tokenAddress, decimals } = resolveToken(body);
-  const amount = String(body.amount ?? "");
+  const amount = String(body.amount ?? "").trim();
   const target = toUnits(amount, decimals); // validates format
   if (target <= 0n) throw new Error("amount must be greater than zero");
   if (body.expiresAt !== undefined && !Number.isFinite(Number(body.expiresAt))) {
@@ -189,12 +204,22 @@ async function createInvoice(body) {
   // One address, one invoice. Sharing an address lets a single payment
   // confirm several orders.
   for (const other of invoices.values()) {
-    if (other.status === "watching" && BigInt(other.receiveAddress) === BigInt(body.receiveAddress)) {
+    if ((other.status === "watching" || other.status === "reserving") && BigInt(other.receiveAddress) === BigInt(body.receiveAddress)) {
       throw new Error(`receiveAddress is already watched by invoice ${other.id}; use a fresh address`);
     }
   }
 
-  const baseline = u256FromCallResult(await rpc(balanceOfRequest(tokenAddress, body.receiveAddress, ++rpcId)));
+  // Reserve before awaiting: two concurrent POSTs would otherwise both pass
+  // the checks above, and the second would overwrite the first, leaving the
+  // first order's address unwatched.
+  invoices.set(id, { id, status: "reserving", receiveAddress: body.receiveAddress, createdAt: Date.now() });
+  let baseline;
+  try {
+    baseline = u256FromCallResult(await rpc(balanceOfRequest(tokenAddress, body.receiveAddress, ++rpcId)));
+  } catch (err) {
+    invoices.delete(id); // never leave a half-created row behind
+    throw err;
+  }
   const inv = {
     id,
     token,
@@ -230,8 +255,22 @@ async function restore() {
   }
   try {
     const rows = JSON.parse(raw);
-    for (const row of rows) invoices.set(row.id, row);
+    let quarantined = 0;
+    for (const row of rows) {
+      // Rows from a build that predates baselines cannot be judged safely.
+      // Park them rather than watching them: watching would confirm on the
+      // absolute balance and pay out orders nobody paid for.
+      if (row.status === "watching" && !/^\d+$/.test(String(row.baselineUnits ?? ""))) {
+        invoices.set(row.id, { ...row, status: "needs_reregistration" });
+        quarantined++;
+        continue;
+      }
+      invoices.set(row.id, row);
+    }
     log(`restored ${rows.length} invoice(s)`);
+    if (quarantined > 0) {
+      log(`${quarantined} invoice(s) have no baseline and were NOT resumed: re-register them to watch again`);
+    }
   } catch (err) {
     // Never silently start empty on a corrupt store: that looks identical to
     // a first run and quietly drops every open invoice.

@@ -27,3 +27,7 @@ Thumbs.db
 # Binaries
 *.exe
 *.dll
+
+# Watcher state: real invoice ledgers, never committed
+server/watcher/invoices.json
+*.invoices.json

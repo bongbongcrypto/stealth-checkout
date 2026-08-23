@@ -19,6 +19,7 @@ const baseInvoice = {
   amount: "1.5",
   receiveAddress: "0x0abc",
   status: "watching",
+  baselineUnits: "0", // every invoice records what the address held first
 };
 
 test("toUnits: decimal strings to integer units, no floats", () => {
@@ -45,7 +46,9 @@ test("evaluateInvoice: pays only at or above the invoiced amount", () => {
   assert.equal(over.status, "paid");
 });
 
-test("evaluateInvoice: expiry wins over a later payment, paid is terminal", () => {
+test("evaluateInvoice: an unpaid invoice expires, and paid is terminal", () => {
+  // Named for what it checks. The opposite case, a payment that landed before
+  // the deadline beating a later evaluation, lives in security.test.mjs.
   const now = 1_000_000;
   const expired = evaluateInvoice({ ...baseInvoice, expiresAt: now - 1 }, 0n, now);
   assert.equal(expired.status, "expired");

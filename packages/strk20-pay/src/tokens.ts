@@ -12,8 +12,12 @@ export const TOKENS: Record<string, TokenInfo> = {
 };
 
 export function resolveToken(symbolOrAddress: string, registry: Record<string, TokenInfo> = TOKENS): TokenInfo {
-  const known = registry[symbolOrAddress];
-  if (known) return known;
+  // Own properties only: a plain lookup finds "toString" and "__proto__" on
+  // Object.prototype and hands back a TokenInfo with undefined fields.
+  const known = Object.prototype.hasOwnProperty.call(registry, symbolOrAddress)
+    ? registry[symbolOrAddress]
+    : undefined;
+  if (known && typeof known.address === "string" && Number.isInteger(known.decimals)) return known;
   // Never guess decimals. Assuming 18 for a 6-decimal token such as USDC
   // builds a transfer for a million million times the intended amount, and
   // the payer signs it. Make the caller declare it.

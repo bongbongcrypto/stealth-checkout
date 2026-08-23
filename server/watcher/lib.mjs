@@ -55,9 +55,19 @@ export const INVOICE_STATES = ["watching", "paid", "expired"];
 export function evaluateInvoice(invoice, balanceUnits, now = Date.now()) {
   if (invoice.status !== "watching") return invoice;
 
-  const baseline = BigInt(invoice.baselineUnits ?? "0");
+  // A missing baseline must never mean zero. Rows written by an older build
+  // have no baseline at all, and defaulting them to zero silently restores
+  // absolute-balance semantics: the very bug this function exists to prevent.
+  if (typeof invoice.baselineUnits !== "string" || !/^\d+$/.test(invoice.baselineUnits)) {
+    throw new Error(
+      `invoice ${invoice.id} has no usable baseline (${JSON.stringify(invoice.baselineUnits)}); ` +
+        "re-register it so a baseline is captured before it can be confirmed",
+    );
+  }
+  const baseline = BigInt(invoice.baselineUnits);
   const received = balanceUnits - baseline;
   const target = toUnits(invoice.amount, invoice.decimals);
+  if (target <= 0n) throw new Error(`invoice ${invoice.id} has a non-positive amount and can never be paid`);
   const paid = received >= target;
 
   // A payment that landed before the deadline wins, even if this poll runs
@@ -93,6 +103,9 @@ export function signPayload(secret, body, timestamp) {
  * constant time. Callers should ALSO dedupe on the delivery id.
  */
 export function verifySignature(secret, body, signature, timestamp, nowSec = Math.floor(Date.now() / 1000), toleranceSec = 300) {
+  // A merchant whose WEBHOOK_SECRET env var is missing would otherwise accept
+  // anything an attacker signs with the empty string.
+  if (typeof secret !== "string" || secret.length === 0) return false;
   const ts = Number(timestamp);
   if (!Number.isFinite(ts)) return false;
   if (Math.abs(nowSec - ts) > toleranceSec) return false;

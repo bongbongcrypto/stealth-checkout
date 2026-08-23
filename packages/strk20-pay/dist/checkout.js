@@ -14,12 +14,14 @@ export class StealthCheckout {
     wallet;
     confirmPayment;
     allowInlineShield;
+    store;
     listeners = new Set();
     phase = "idle";
     /**
-     * Hash of a payment already broadcast for this invoice. Confirmation can
+     * Record of a payment already broadcast, keyed by invoice. Confirmation can
      * fail while the money is genuinely gone (slow chain, flaky RPC), and the
-     * widget then offers a Retry button. Without this the retry pays twice.
+     * payer then retries, or reloads the page. Either way the payment must not
+     * be sent again, so this is persisted through `store` and survives a reload.
      */
     sentPayment = null;
     constructor(wallet, confirmPayment = async () => true, 
@@ -31,10 +33,17 @@ export class StealthCheckout {
      * time, separately, is what makes the payment unlinkable. It is also
      * cheaper, since the pool charges a fee per deposit.
      */
-    allowInlineShield = false) {
+    allowInlineShield = false, 
+    /**
+     * Where broadcast payments are remembered. Defaults to sessionStorage in a
+     * browser so a reload cannot re-send; pass your own for other hosts, or
+     * `null` to opt out (a reload then risks paying twice).
+     */
+    store = defaultStore()) {
         this.wallet = wallet;
         this.confirmPayment = confirmPayment;
         this.allowInlineShield = allowInlineShield;
+        this.store = store;
     }
     on(listener) {
         this.listeners.add(listener);
@@ -65,8 +74,10 @@ export class StealthCheckout {
                 await this.wallet.connect();
             }
             // Already broadcast for this invoice? Never send again: only wait.
-            if (this.sentPayment && this.sentPayment.invoiceId === invoice.id) {
-                const prior = this.sentPayment;
+            // The record is matched on the terms of the payment, not just its id, so
+            // a mutated invoice reusing an id cannot claim someone else's payment.
+            const prior = this.sentPayment ?? this.loadSent(invoice);
+            if (prior && matchesInvoice(prior, invoice)) {
                 this.emit("confirming", "Payment already sent. Waiting for on-chain confirmation…", false, prior.txHash);
                 const ok = await this.confirmPayment(invoice, prior.txHash);
                 if (!ok)
@@ -97,7 +108,15 @@ export class StealthCheckout {
                 }
                 ({ txHash } = await this.payStep(invoice));
             }
-            this.sentPayment = { invoiceId: invoice.id, txHash, shieldTxHash };
+            this.sentPayment = {
+                invoiceId: invoice.id,
+                amount: invoice.amount,
+                token: invoice.token,
+                recipient: invoice.receiveAddress ?? invoice.merchantPoolAddress ?? "",
+                txHash,
+                shieldTxHash,
+            };
+            this.saveSent(this.sentPayment);
             this.emit("confirming", "Payment sent. Waiting for on-chain confirmation…", false, txHash);
             const confirmed = await this.confirmPayment(invoice, txHash);
             if (!confirmed)
@@ -113,6 +132,26 @@ export class StealthCheckout {
             this.emit("failed", message, false, undefined, message);
             this.listeners.forEach((l) => l({ type: "failed", error: message, phase: this.phase }));
             throw err;
+        }
+    }
+    storeKey(invoiceId) {
+        return `strk20-pay.sent.${this.wallet.network}.${invoiceId}`;
+    }
+    loadSent(invoice) {
+        try {
+            const raw = this.store?.getItem(this.storeKey(invoice.id));
+            return raw ? JSON.parse(raw) : null;
+        }
+        catch {
+            return null;
+        }
+    }
+    saveSent(record) {
+        try {
+            this.store?.setItem(this.storeKey(record.invoiceId), JSON.stringify(record));
+        }
+        catch {
+            // A blocked store is not a reason to fail a payment that already landed.
         }
     }
     /**
@@ -209,4 +248,24 @@ export function compareAmounts(a, b) {
 export function isInsufficientFunds(err) {
     const raw = err instanceof Error ? err.message : String(err ?? "");
     return /insufficient|not enough|no (unspent )?notes|balance too low|NOT_ENOUGH/i.test(raw);
+}
+function defaultStore() {
+    try {
+        return typeof sessionStorage === "undefined" ? null : sessionStorage;
+    }
+    catch {
+        return null; // blocked by the browser
+    }
+}
+/**
+ * Does a remembered payment settle THIS invoice? Same id is not enough: an id
+ * can be reused with a different amount or recipient, and treating that as
+ * already-paid would hand over goods for a payment that never covered them.
+ */
+export function matchesInvoice(sent, invoice) {
+    const recipient = invoice.receiveAddress ?? invoice.merchantPoolAddress ?? "";
+    return (sent.invoiceId === invoice.id &&
+        sent.token === invoice.token &&
+        sent.recipient === recipient &&
+        compareAmounts(sent.amount, invoice.amount) === 0);
 }

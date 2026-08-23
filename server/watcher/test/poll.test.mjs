@@ -650,3 +650,37 @@ test("a late payment on a held row is still recorded as late", () => {
   assert.equal(unpaid.status, "watching", "not expired while the numbers are in doubt");
   assert.equal(evaluateInvoice(inv, 0n, 9_999, 0n, false).status, "expired", "and retired once they are not");
 });
+
+test("a create that fails cannot delete the live invoice now holding its id", () => {
+  // Both failure paths deleted by id with no identity check, while the write
+  // path 20 lines below carried the guard. A failed create therefore removed
+  // whatever had legitimately taken the id in the meantime - freeing its
+  // address, and leaving a payer's link pointing at a row that no longer
+  // existed.
+  chain.reset();
+  return (async () => {
+    const { invoices } = watcher;
+    const addr = freshAddress();
+    // Stand in for the reservation a failed create left behind, then let a
+    // legitimate invoice take that id.
+    const live = await createInvoice("5", addr, { id: "contested" });
+    assert.equal(invoices.get("contested").status, "watching");
+
+    // Now replay what the failed create's cleanup does.
+    const { releaseReservationForTest } = watcher;
+    if (typeof releaseReservationForTest === "function") releaseReservationForTest("contested");
+    assert.ok(invoices.get("contested"), "a live invoice must survive another create's cleanup");
+    assert.equal(invoices.get("contested").status, "watching");
+    assert.equal(invoices.get("contested").receiveAddress, live.receiveAddress);
+  })();
+});
+
+test("a reservation that is genuinely stuck can still be released", () => {
+  chain.reset();
+  return (async () => {
+    const { invoices, releaseReservationForTest } = watcher;
+    invoices.set("stuck", { id: "stuck", status: "reserving", receiveAddress: freshAddress(), createdAt: Date.now() });
+    if (typeof releaseReservationForTest === "function") releaseReservationForTest("stuck");
+    assert.equal(invoices.get("stuck"), undefined, "a reserving row is exactly what this may remove");
+  })();
+});

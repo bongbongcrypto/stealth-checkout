@@ -31902,23 +31902,34 @@ var PRE_SUBMISSION_CODES = /* @__PURE__ */ new Set([
   WALLET_ERROR_CODES.PRIVACY_LEAK,
   WALLET_ERROR_CODES.API_VERSION_NOT_SUPPORTED
 ]);
+var SYMBOLIC_CODES = {
+  USER_REFUSED_OP: 113,
+  USER_REFUSED: 113,
+  USER_REJECTED: 4001,
+  ACTION_REJECTED: 4001,
+  NOT_REGISTERED: 118,
+  INSUFFICIENT_PRIVATE_BALANCE: 119,
+  PRIVACY_LEAK: 120
+};
 var KNOWN_CODES = /* @__PURE__ */ new Set([
   ...Object.values(WALLET_ERROR_CODES),
   EIP1193_USER_REJECTED
 ]);
-function walletErrorMessage(err) {
-  if (err instanceof Error) return err.message;
+function walletErrorMessage(err, seen = /* @__PURE__ */ new Set()) {
   if (typeof err === "string") return err;
-  if (err && typeof err === "object") {
+  if (!err || typeof err !== "object") return err === void 0 || err === null ? "" : String(err);
+  if (seen.has(err)) return "";
+  seen.add(err);
+  try {
     const message = err.message;
-    if (typeof message === "string") return message;
+    if (typeof message === "string" && message) return message;
     for (const key of ["cause", "error", "data"]) {
-      const nested = walletErrorMessage(err[key]);
+      const nested = walletErrorMessage(err[key], seen);
       if (nested) return nested;
     }
-    return "";
+  } catch {
   }
-  return err === void 0 || err === null ? "" : String(err);
+  return "";
 }
 function walletErrorCodes(err) {
   const found = [];
@@ -31928,11 +31939,23 @@ function walletErrorCodes(err) {
     const node = queue.shift();
     if (!node || typeof node !== "object" || seen.has(node)) continue;
     seen.add(node);
-    const code = node.code;
+    let code;
+    try {
+      code = node.code;
+    } catch {
+      continue;
+    }
     if (typeof code === "number" && Number.isInteger(code)) found.push(code);
     else if (typeof code === "string" && /^-?\d+$/.test(code)) found.push(Number(code));
+    else if (typeof code === "string") {
+      const named = SYMBOLIC_CODES[code.toUpperCase()];
+      if (named !== void 0) found.push(named);
+    }
     for (const key of ["cause", "error", "data"]) {
-      queue.push(node[key]);
+      try {
+        queue.push(node[key]);
+      } catch {
+      }
     }
   }
   return found;
@@ -31942,8 +31965,10 @@ function walletErrorCode(err) {
   return codes.find((c) => KNOWN_CODES.has(c)) ?? codes[0] ?? null;
 }
 function didNotSubmit(err) {
-  for (const code of walletErrorCodes(err)) {
-    if (KNOWN_CODES.has(code)) return PRE_SUBMISSION_CODES.has(code);
+  const codes = walletErrorCodes(err);
+  if (codes.some((c) => PRE_SUBMISSION_CODES.has(c))) return true;
+  for (const code of codes) {
+    if (KNOWN_CODES.has(code)) return false;
   }
   return userRefused(err);
 }
@@ -32115,7 +32140,12 @@ var StealthCheckout = class {
       normalised = recipient ? `0x${BigInt(recipient).toString(16)}` : "";
     } catch {
     }
-    const terms = `${invoice.id}|${invoice.token}|${invoice.amount}|${normalised}`;
+    let amount = invoice.amount;
+    try {
+      amount = addAmounts(invoice.amount, "0", decimalsOf(invoice.token));
+    } catch {
+    }
+    const terms = `${invoice.id}|${invoice.token}|${amount}|${normalised}`;
     let h1 = 2166136261;
     let h2 = 16777619;
     for (let i = 0; i < terms.length; i++) {
@@ -32132,7 +32162,17 @@ var StealthCheckout = class {
    */
   loadSent(invoice) {
     try {
-      const raw = this.store?.getItem(this.storeKey(invoice));
+      let raw = this.store?.getItem(this.storeKey(invoice));
+      if (raw === null || raw === void 0) {
+        const legacy = this.store?.getItem(`strk20-pay.sent.${this.wallet.network}.${invoice.id}`);
+        if (legacy) {
+          raw = legacy;
+          try {
+            this.store?.setItem(this.storeKey(invoice), legacy);
+          } catch {
+          }
+        }
+      }
       if (!raw) return null;
       const record = JSON.parse(raw);
       return matchesInvoice(record, invoice) ? record : null;
@@ -32740,6 +32780,18 @@ function linkId(to2, amount, memo) {
   }
   return `lnk_${h1.toString(36)}${h2.toString(36)}`;
 }
+async function watcherPresent(origin) {
+  for (const path2 of ["/public/healthz", "/healthz"]) {
+    try {
+      const res2 = await fetch(`${origin}${path2}`, { signal: AbortSignal.timeout(4e3) });
+      if (!res2.ok) continue;
+      const body = await res2.json().catch(() => null);
+      if (body?.ok === true) return true;
+    } catch {
+    }
+  }
+  return false;
+}
 async function lookupInvoice(origin, invoice) {
   const url2 = `${origin}/public/invoices/${encodeURIComponent(invoice.id)}?to=${encodeURIComponent(invoice.receiveAddress)}`;
   let res2;
@@ -32748,10 +32800,11 @@ async function lookupInvoice(origin, invoice) {
   } catch {
     return { kind: "unreachable" };
   }
-  if (res2.status === 404) return { kind: "unknown" };
+  if (res2.status === 404) return await watcherPresent(origin) ? { kind: "unknown" } : { kind: "unreachable" };
   if (!res2.ok) return { kind: "unreachable" };
   const parsed = await parseServerInvoice(res2, invoice);
-  return parsed ? { kind: "found", invoice: parsed } : { kind: "unknown" };
+  if (parsed) return { kind: "found", invoice: parsed };
+  return await watcherPresent(origin) ? { kind: "unknown" } : { kind: "unreachable" };
 }
 async function parseServerInvoice(res2, invoice) {
   const body = await res2.json().catch(() => null);

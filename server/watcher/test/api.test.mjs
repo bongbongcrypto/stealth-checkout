@@ -187,10 +187,21 @@ test("malformed invoices are refused", async () => {
   );
 });
 
-test("health needs no token and leaks nothing", async () => {
-  const res = await call("/healthz");
-  assert.equal(res.status, 200);
-  assert.deepEqual(await res.json(), { ok: true });
+test("health needs no token, leaks nothing, and is readable by the payer's page", async () => {
+  // The payer's page has to be able to ask "is there a watcher here?" from
+  // whatever origin it is served on. Without the CORS grant that probe was
+  // blocked in exactly the split-host deployment it exists for, and a static
+  // host's 404 was then read as "your server denies this invoice" - so every
+  // link on the hosted page was refused with an accusation of forgery.
+  for (const path of ["/healthz", "/public/healthz"]) {
+    const res = await call(path, { headers: { Origin: "https://bongbongcrypto.github.io" } });
+    assert.equal(res.status, 200, path);
+    assert.deepEqual(await res.json(), { ok: true, watcher: true }, path);
+    assert.equal(res.headers.get("access-control-allow-origin"), "*", `${path} must be readable cross-origin`);
+  }
+  // And it still says nothing about the ledger.
+  const body = await (await call("/healthz")).text();
+  assert.doesNotMatch(body, /invoice|baseline|address|token/i);
 });
 
 // ---------------------------------------------------------------------------

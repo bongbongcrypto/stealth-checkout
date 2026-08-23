@@ -144,7 +144,7 @@ export declare const WALLET_ERROR_CODES: {
  * String(err)` therefore produced the literal text "[object Object]", which
  * showed that to the payer and killed every prose branch below it at once.
  */
-export declare function walletErrorMessage(err: unknown): string;
+export declare function walletErrorMessage(err: unknown, seen?: Set<unknown>): string;
 /**
  * Every numeric code anywhere in the error, outermost first.
  *

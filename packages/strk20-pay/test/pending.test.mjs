@@ -487,3 +487,113 @@ test("a payer sees a usable message for every documented error shape", async () 
   // And an error with no message at all still yields a sentence.
   assert.doesNotMatch(explainWalletError({}, "shield"), /\[object Object\]|^$/);
 });
+
+test("a refusal wrapped in a generic envelope is still a refusal", async () => {
+  // Taking the FIRST known code short-circuited on the envelope, so
+  // UNKNOWN_ERROR wrapping USER_REFUSED_OP was read as "may have been
+  // submitted" while the payer was simultaneously told they had dismissed the
+  // prompt. The previous round removed that for UNRECOGNISED codes and left it
+  // live for known-but-not-pre-submission ones.
+  const { didNotSubmit, explainWalletError } = await import("../dist/index.js");
+  const wrapped = [
+    { code: 163, message: "An error occurred (UNKNOWN_ERROR)", data: { code: 113, message: "refused" } },
+    { code: 115, message: "already deployed", cause: { code: 113 } },
+    { code: -32603, message: "Internal error", error: { code: 120 } },
+  ];
+  for (const err of wrapped) {
+    assert.equal(didNotSubmit(err), true, `${JSON.stringify(err.code)} wrapping a pre-submission code`);
+  }
+  // A generic code with nothing inside it keeps the safe answer.
+  assert.equal(didNotSubmit({ code: 163, message: "An error occurred (UNKNOWN_ERROR)" }), false);
+  // And the message the payer sees agrees with the verdict.
+  assert.match(explainWalletError(wrapped[0], "unshield"), /dismissed the wallet prompt/);
+});
+
+test("codes sent by name are understood, not dropped", async () => {
+  const { didNotSubmit } = await import("../dist/index.js");
+  for (const code of ["USER_REFUSED_OP", "ACTION_REJECTED", "USER_REJECTED", "INSUFFICIENT_PRIVATE_BALANCE"]) {
+    assert.equal(didNotSubmit({ code, message: "The operation failed." }), true, code);
+  }
+  assert.equal(didNotSubmit({ code: "SOMETHING_ELSE", message: "The operation failed." }), false);
+});
+
+test("a hostile error object cannot escape the classifier", async () => {
+  // Both used to throw from INSIDE invoke's catch, so WalletActionError was
+  // never constructed and the submitted flag was lost - which locked the payer
+  // out and pointed them at the pay-anyway button.
+  const { didNotSubmit, walletErrorMessage, explainWalletError } = await import("../dist/index.js");
+  const cyclic = { code: 999, message: undefined };
+  cyclic.cause = cyclic;
+  const throwing = {
+    code: 113,
+    get message() {
+      throw new Error("boom");
+    },
+  };
+  for (const err of [cyclic, throwing]) {
+    assert.doesNotThrow(() => walletErrorMessage(err));
+    assert.doesNotThrow(() => didNotSubmit(err));
+    assert.doesNotThrow(() => explainWalletError(err, "unshield"));
+  }
+  assert.equal(didNotSubmit(throwing), true, "the code is still readable even when the message is not");
+
+  // Not throwing is not enough: a catch-all can hide a stack overflow, and
+  // then the cycle guard is untested. Count the visits instead - each object
+  // in the cycle must be looked at once, not until the stack gives out.
+  let visits = 0;
+  const a = {
+    get message() {
+      visits++;
+      return undefined;
+    },
+  };
+  const b = { get message() { visits++; return undefined; } };
+  a.cause = b;
+  b.cause = a;
+  walletErrorMessage(a);
+  assert.ok(visits <= 4, `each node visited once, not ${visits} times`);
+});
+
+test("a record written by an older build is found, not paid over", async () => {
+  // The key gained a terms digest with no migration read, so a payer mid-flow
+  // when the widget updates found no record of a broadcast that had already
+  // happened.
+  const store = freshStore();
+  const wallet = new MockWallet({ latency: 0, funded: { STRK: "900" }, shielded: { STRK: "900" } });
+  let sends = 0;
+  const realUnshield = wallet.unshield.bind(wallet);
+  wallet.unshield = async (...args) => {
+    sends++;
+    return realUnshield(...args);
+  };
+  const inv = invoice({ id: "legacy-1", amount: "5", receiveAddress: "0x0abc" });
+
+  // A record in the OLD format, as an earlier build would have left it.
+  store.setItem(
+    "strk20-pay.sent.sepolia.legacy-1",
+    JSON.stringify({ invoiceId: "legacy-1", amount: "5", token: "STRK", recipient: "0x0abc", txHash: "0xoldpay" }),
+  );
+
+  const receipt = await new StealthCheckout(wallet, async () => true, false, store).pay(inv);
+  assert.equal(sends, 0, "the old record must be honoured, not paid over");
+  assert.equal(receipt.txHash, "0xoldpay");
+});
+
+test("the same invoice written two ways is one record", async () => {
+  // The hosted page renders the server's amount string when it has one and the
+  // link's when it does not, so "2.50" and "2.5" reached the store as two keys
+  // while matchesInvoice treated them as one invoice.
+  const store = freshStore();
+  const wallet = new MockWallet({ latency: 0, funded: { STRK: "900" }, shielded: { STRK: "900" } });
+  let sends = 0;
+  const realUnshield = wallet.unshield.bind(wallet);
+  wallet.unshield = async (...args) => {
+    sends++;
+    return realUnshield(...args);
+  };
+
+  await new StealthCheckout(wallet, async () => true, false, store).pay(invoice({ amount: "2.50" }));
+  assert.equal(sends, 1);
+  await new StealthCheckout(wallet, async () => true, false, store).pay(invoice({ amount: "2.5" }));
+  assert.equal(sends, 1, "same invoice, spelled differently: must not pay twice");
+});

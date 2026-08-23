@@ -337,6 +337,16 @@ const PRE_SUBMISSION_CODES = new Set([
     WALLET_ERROR_CODES.PRIVACY_LEAK,
     WALLET_ERROR_CODES.API_VERSION_NOT_SUPPORTED,
 ]);
+/** Codes some wallets send by name rather than by number. */
+const SYMBOLIC_CODES = {
+    USER_REFUSED_OP: 113,
+    USER_REFUSED: 113,
+    USER_REJECTED: 4001,
+    ACTION_REJECTED: 4001,
+    NOT_REGISTERED: 118,
+    INSUFFICIENT_PRIVATE_BALANCE: 119,
+    PRIVACY_LEAK: 120,
+};
 /** Codes this file has an opinion about. Anything else falls back to prose. */
 const KNOWN_CODES = new Set([
     ...Object.values(WALLET_ERROR_CODES),
@@ -350,23 +360,31 @@ const KNOWN_CODES = new Set([
  * String(err)` therefore produced the literal text "[object Object]", which
  * showed that to the payer and killed every prose branch below it at once.
  */
-export function walletErrorMessage(err) {
-    if (err instanceof Error)
-        return err.message;
+export function walletErrorMessage(err, seen = new Set()) {
     if (typeof err === "string")
         return err;
-    if (err && typeof err === "object") {
+    if (!err || typeof err !== "object")
+        return err === undefined || err === null ? "" : String(err);
+    // A cycle, or a getter that throws, used to escape from inside `invoke`'s
+    // own catch block - so WalletActionError was never constructed and the
+    // submitted flag was lost entirely, which locked the payer out.
+    if (seen.has(err))
+        return "";
+    seen.add(err);
+    try {
         const message = err.message;
-        if (typeof message === "string")
+        if (typeof message === "string" && message)
             return message;
         for (const key of ["cause", "error", "data"]) {
-            const nested = walletErrorMessage(err[key]);
+            const nested = walletErrorMessage(err[key], seen);
             if (nested)
                 return nested;
         }
-        return "";
     }
-    return err === undefined || err === null ? "" : String(err);
+    catch {
+        /* a hostile or exotic error object is still an error, not a crash */
+    }
+    return "";
 }
 /**
  * Every numeric code anywhere in the error, outermost first.
@@ -385,13 +403,32 @@ export function walletErrorCodes(err) {
         if (!node || typeof node !== "object" || seen.has(node))
             continue;
         seen.add(node);
-        const code = node.code;
+        let code;
+        try {
+            code = node.code;
+        }
+        catch {
+            continue; // a throwing getter is not worth the whole classification
+        }
         if (typeof code === "number" && Number.isInteger(code))
             found.push(code);
         else if (typeof code === "string" && /^-?\d+$/.test(code))
             found.push(Number(code));
+        else if (typeof code === "string") {
+            // Symbolic codes: wallets and bridges send USER_REFUSED_OP and
+            // ACTION_REJECTED as strings, and dropping them left the payer with an
+            // unusable message and no verdict.
+            const named = SYMBOLIC_CODES[code.toUpperCase()];
+            if (named !== undefined)
+                found.push(named);
+        }
         for (const key of ["cause", "error", "data"]) {
-            queue.push(node[key]);
+            try {
+                queue.push(node[key]);
+            }
+            catch {
+                /* same */
+            }
         }
     }
     return found;
@@ -414,10 +451,19 @@ export function walletErrorCode(err) {
  * extra confirmation and never costs them a second payment.
  */
 export function didNotSubmit(err) {
-    // A code we recognise is the best evidence there is, in both directions.
-    for (const code of walletErrorCodes(err)) {
+    const codes = walletErrorCodes(err);
+    // A pre-submission code ANYWHERE in the error wins, even when a generic one
+    // sits outside it. Taking the first known code short-circuited on the
+    // envelope: UNKNOWN_ERROR wrapping USER_REFUSED_OP was read as "may have
+    // been submitted" while the payer was told they had dismissed the prompt -
+    // the very lock-out the previous round's fix claimed to remove, still live
+    // for codes that were known but not pre-submission.
+    if (codes.some((c) => PRE_SUBMISSION_CODES.has(c)))
+        return true;
+    // Otherwise a known code is still the best evidence there is.
+    for (const code of codes) {
         if (KNOWN_CODES.has(code))
-            return PRE_SUBMISSION_CODES.has(code);
+            return false;
     }
     // An UNRECOGNISED code must not silence the message. Returning
     // `PRE_SUBMISSION_CODES.has(code)` for any code at all meant a wallet
@@ -436,6 +482,8 @@ export function didNotSubmit(err) {
  * silently failed on the one string the spec actually defines.
  */
 export function userRefused(err) {
+    // Anywhere in the error, not just outermost: a refusal wrapped in a generic
+    // envelope is still a refusal.
     for (const code of walletErrorCodes(err)) {
         if (code === WALLET_ERROR_CODES.USER_REFUSED_OP || code === EIP1193_USER_REJECTED)
             return true;

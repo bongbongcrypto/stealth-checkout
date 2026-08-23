@@ -245,7 +245,18 @@ export class StealthCheckout {
     } catch {
       /* keep the raw text: it still distinguishes two different recipients */
     }
-    const terms = `${invoice.id}|${invoice.token}|${invoice.amount}|${normalised}`;
+    // The amount is NORMALISED, because `matchesInvoice` compares amounts
+    // numerically: "2.50" and "2.5" are one invoice to the matcher and were
+    // two different keys to the store, so the same invoice rendered two ways
+    // (the hosted page shows the server's string when it has one and the
+    // link's when it does not) was paid twice.
+    let amount = invoice.amount;
+    try {
+      amount = addAmounts(invoice.amount, "0", decimalsOf(invoice.token));
+    } catch {
+      /* junk is not our problem here; matchesInvoice will refuse it */
+    }
+    const terms = `${invoice.id}|${invoice.token}|${amount}|${normalised}`;
     // A short, stable digest so the key cannot grow without bound or carry
     // characters a storage backend dislikes.
     let h1 = 0x811c9dc5;
@@ -265,7 +276,21 @@ export class StealthCheckout {
    */
   private loadSent(invoice: Invoice): SentPayment | null {
     try {
-      const raw = this.store?.getItem(this.storeKey(invoice));
+      let raw = this.store?.getItem(this.storeKey(invoice));
+      if (raw === null || raw === undefined) {
+        // An earlier build keyed on the id alone. A payer mid-payment when the
+        // widget updates would otherwise find no record of a broadcast that
+        // had already happened, and pay again.
+        const legacy = this.store?.getItem(`strk20-pay.sent.${this.wallet.network}.${invoice.id}`);
+        if (legacy) {
+          raw = legacy;
+          try {
+            this.store?.setItem(this.storeKey(invoice), legacy); // carry it forward once
+          } catch {
+            /* reading it was the important half */
+          }
+        }
+      }
       if (!raw) return null; // "" is a cleared marker, and falsy on purpose
       const record = JSON.parse(raw) as SentPayment;
       return matchesInvoice(record, invoice) ? record : null;

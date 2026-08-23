@@ -15,7 +15,7 @@
 //   GET    /invoices/:id            one invoice
 //   DELETE /invoices/:id            release a reserving / expired / needs_reregistration row
 //   POST   /invoices/:id/redeliver  re-queue this invoice's webhook
-//   GET    /healthz                 unauthenticated liveness
+//   GET    /healthz                 unauthenticated liveness (also /public/healthz)
 //
 // Payer-facing (unauthenticated, needs the invoice id AND its address, which
 // is exactly what a payment link carries):
@@ -507,6 +507,19 @@ function resolveToken(body) {
  * them would turn this into an oracle that signs arbitrary bodies with the
  * merchant's secret.
  */
+/**
+ * Drop a reservation, and ONLY a reservation.
+ *
+ * These two deletes matched by id with no identity check, so a create that
+ * failed after its reservation had been released and the id reused deleted the
+ * live invoice that now held it - freeing its address, and leaving a payer's
+ * link pointing at a row the watcher no longer had.
+ */
+function releaseReservation(id) {
+  const row = invoices.get(id);
+  if (row && row.status === "reserving") invoices.delete(id);
+}
+
 async function createInvoice(body) {
   // Type checks, not coercion: `.test()` stringifies, so ["0x0abc…"] used to
   // pass as an address and then silently never match on-chain.
@@ -578,7 +591,7 @@ async function createInvoice(body) {
     );
   } catch (err) {
     if (typeof createdBlock !== "number") {
-      invoices.delete(id); // never leave a half-created row behind
+      releaseReservation(id); // never leave a half-created row behind
       throw err;
     }
     // A node that will not serve that historical block is not a reason to
@@ -588,7 +601,7 @@ async function createInvoice(body) {
     try {
       baseline = u256FromCallResult(await rpc(balanceOfRequest(tokenAddress, body.receiveAddress, ++rpcId)));
     } catch (err2) {
-      invoices.delete(id);
+      releaseReservation(id);
       throw err2;
     }
   }
@@ -820,7 +833,12 @@ export function makeServer() {
     }
     // Health is unauthenticated and reveals nothing.
     if (req.method === "GET" && url.pathname === "/healthz") {
-      return json(req, res, 200, { ok: true });
+      return json(req, res, 200, { ok: true, watcher: true }, PUBLIC_CORS);
+    }
+    // The same answer under the payer-facing prefix, for callers that only
+    // grant themselves that path. Identical body, identical CORS.
+    if (req.method === "GET" && url.pathname === "/public/healthz") {
+      return json(req, res, 200, { ok: true, watcher: true }, PUBLIC_CORS);
     }
     // The payer's view. Unauthenticated by necessity: the payer's browser has
     // no merchant token. Knowing the id is not enough, the caller must also
@@ -1046,7 +1064,19 @@ export function makeServer() {
   });
 }
 
-export { createInvoice, pollOnce, invoices, deliverWebhook, drainWebhooks, queueWebhook, invoicesCsv, restore };
+export {
+  createInvoice,
+  pollOnce,
+  invoices,
+  deliverWebhook,
+  drainWebhooks,
+  queueWebhook,
+  invoicesCsv,
+  restore,
+  // Exported for tests: the guard that stops a failed create deleting whatever
+  // legitimately holds its id is worth asserting directly.
+  releaseReservation as releaseReservationForTest,
+};
 
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replaceAll("\\", "/").split("/").pop());
 if (isMain) {

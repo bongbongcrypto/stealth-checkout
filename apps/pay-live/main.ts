@@ -137,6 +137,32 @@ type Lookup =
   | { kind: "unknown" }
   | { kind: "unreachable" };
 
+/**
+ * Is a watcher answering at this origin?
+ *
+ * Without this, a 404 was treated as "your server says it never issued this
+ * invoice" - and a static host 404s everything. Served from GitHub Pages,
+ * which is where this page is published, EVERY link was refused with an
+ * accusation that the merchant had forged it.
+ *
+ * Probed on the payer route's own CORS terms, because /healthz used to send no
+ * CORS headers at all and so was blocked in exactly the split-host deployment
+ * the check exists for.
+ */
+async function watcherPresent(origin: string): Promise<boolean> {
+  for (const path of ["/public/healthz", "/healthz"]) {
+    try {
+      const res = await fetch(`${origin}${path}`, { signal: AbortSignal.timeout(4000) });
+      if (!res.ok) continue;
+      const body = (await res.json().catch(() => null)) as { ok?: unknown } | null;
+      if (body?.ok === true) return true;
+    } catch {
+      /* try the next path, then give up */
+    }
+  }
+  return false;
+}
+
 async function lookupInvoice(origin: string, invoice: Invoice): Promise<Lookup> {
   const url = `${origin}/public/invoices/${encodeURIComponent(invoice.id)}?to=${encodeURIComponent(invoice.receiveAddress!)}`;
   let res: Response;
@@ -147,12 +173,16 @@ async function lookupInvoice(origin: string, invoice: Invoice): Promise<Lookup> 
     // served from somewhere with no watcher at all sees.
     return { kind: "unreachable" };
   }
-  // 404 is the server saying so. Everything else that is not OK is the server
-  // failing, which says nothing about the invoice.
-  if (res.status === 404) return { kind: "unknown" };
+  // A 404 is only evidence if a watcher is answering here. A static host 404s
+  // every path it does not have, which is every path.
+  if (res.status === 404) return (await watcherPresent(origin)) ? { kind: "unknown" } : { kind: "unreachable" };
   if (!res.ok) return { kind: "unreachable" };
   const parsed = await parseServerInvoice(res, invoice);
-  return parsed ? { kind: "found", invoice: parsed } : { kind: "unknown" };
+  if (parsed) return { kind: "found", invoice: parsed };
+  // A 200 that is not an invoice is not the server denying one. A host with a
+  // single-page-app rewrite answers 200 with HTML for every path, and treating
+  // that as a denial refused every link with an accusation.
+  return (await watcherPresent(origin)) ? { kind: "unknown" } : { kind: "unreachable" };
 }
 
 async function parseServerInvoice(res: Response, invoice: Invoice): Promise<ServerInvoice | null> {

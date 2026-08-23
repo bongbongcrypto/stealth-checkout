@@ -48,6 +48,7 @@ export const INVOICE_STATES = [
   "underpaid", // deadline passed with some money received, but not enough
   "expired", // deadline passed with nothing received
   "cancelled", // withdrawn by the merchant before anything arrived
+  "written_off", // abandoned by the merchant; its address stays claimed forever
   "needs_reregistration", // pre-baseline row: cannot be judged safely
 ];
 
@@ -67,6 +68,7 @@ export const UNPAYABLE_STATES = new Set([
   "reserving",
   "expired",
   "cancelled",
+  "written_off",
   "needs_reregistration",
   "underpaid",
   "paid",
@@ -103,6 +105,9 @@ export function effectiveDeadline(invoice) {
 
 /** Should the poller still spend an RPC call on this row? */
 export function shouldPoll(invoice, now = Date.now()) {
+  // Written off means the merchant has stopped caring. Its address stays
+  // claimed, but nobody spends RPC calls on it again.
+  if (invoice?.status === "written_off") return false;
   // A `watching` row is ALWAYS polled. Retiring it is the poller's job, and
   // gating that on a window meant a watcher that was down across the window
   // came back to a row that would never be looked at again: not polled, not
@@ -149,7 +154,7 @@ export function sameAddress(a, b) {
  * absolute balance marks such an invoice paid the instant it is created, and
  * the merchant ships goods nobody paid for.
  */
-export function evaluateInvoice(invoice, balanceUnits, now = Date.now(), receivedOverride = null) {
+export function evaluateInvoice(invoice, balanceUnits, now = Date.now(), receivedOverride = null, holdOpen = false) {
   if (!shouldPoll(invoice, now)) return invoice;
 
   // A missing baseline must never mean zero. Rows written by an older build
@@ -171,7 +176,13 @@ export function evaluateInvoice(invoice, balanceUnits, now = Date.now(), receive
   const target = toUnits(invoice.amount, invoice.decimals);
   if (target <= 0n) throw new Error(`invoice ${invoice.id} has a non-positive amount and can never be paid`);
   const deadline = effectiveDeadline(invoice);
-  const overdue = deadline !== null && now > deadline;
+  // `holdOpen` suppresses the deadline for THIS evaluation only. The caller
+  // used to pass a doctored copy with `expiresAt: undefined` instead, and
+  // because this function returns a spread of what it was given, that copy was
+  // written back and persisted: the merchant's deadline was destroyed for
+  // good, and every later payment reported `paid` where it should have said
+  // `paid_late`.
+  const overdue = !holdOpen && deadline !== null && now > deadline;
 
   // A payment that landed before the deadline wins, even if this poll runs
   // after it. Expiring an invoice the payer already settled strands their

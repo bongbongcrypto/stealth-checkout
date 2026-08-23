@@ -163,9 +163,15 @@ export function mountCheckout(container, opts) {
             // A pending payment is not a retryable failure. Hide the button that
             // implies it is, and show the one that resolves it.
             const pending = Boolean(err && typeof err === "object" && "needsPayerCheck" in err);
-            button.hidden = pending;
+            // Settled elsewhere is terminal: there is nothing to retry and nothing
+            // to force. Offering either button here would only invite a payment
+            // nobody is owed.
+            const settled = Boolean(err && typeof err === "object" && "alreadySettled" in err);
+            button.hidden = pending || settled;
             payAnywayButton.hidden = !pending;
             payAnywayButton.disabled = false;
+            if (settled)
+                honesty.root.hidden = true;
         });
     };
     button.addEventListener("click", () => attempt());

@@ -106,8 +106,20 @@ export class StealthCheckout {
                 // arrived there is nothing left to do.
                 this.emit("confirming", "Checking whether that earlier attempt went through…", false);
                 const settled = await this.confirmPayment(invoice, "").catch(() => false);
-                if (settled)
-                    return this.finish(invoice, "", undefined);
+                if (settled) {
+                    // The merchant says this invoice is settled. That is NOT the same as
+                    // "your attempt landed", and `confirm` cannot tell the difference:
+                    // every implementation in these docs answers "is this invoice paid?"
+                    // and ignores the hash it is handed. On a shared link that meant one
+                    // payer's money minted a receipt for a different person, who had
+                    // broadcast nothing, and fired onPaid so the merchant handed over
+                    // goods.
+                    //
+                    // So say what is actually known, and refuse to assert what is not.
+                    throw new InvoiceSettledError("The merchant already records this invoice as paid, so nothing more is owed on it. " +
+                        "This page cannot tell whether that payment was yours: it never saw a transaction from this wallet. " +
+                        "If you paid, you are done. If you did not, do not pay this link - ask the merchant for a fresh invoice.");
+                }
                 if (!opts.paidNothingLastTime) {
                     // Not settled is not proof that nothing was sent: a payment can be
                     // in flight. The payer is the only one who can look in their wallet,
@@ -530,6 +542,20 @@ const alwaysConfirm = async () => true;
  * tell. Distinct from a plain failure so a UI can offer the one action that
  * resolves it, instead of a Retry button that might pay twice.
  */
+/**
+ * The invoice is settled, but not demonstrably by this payer.
+ *
+ * Separate from success because it is not one: nothing here witnessed a
+ * payment from this wallet, so a receipt would be a claim the page cannot
+ * support. Separate from failure because there is nothing to retry.
+ */
+export class InvoiceSettledError extends Error {
+    alreadySettled = true;
+    constructor(message) {
+        super(message);
+        this.name = "InvoiceSettledError";
+    }
+}
 export class PendingPaymentError extends Error {
     needsPayerCheck = true;
     constructor(message) {

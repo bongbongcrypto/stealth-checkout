@@ -433,3 +433,145 @@ test("an Idempotency-Key cannot be reused for different terms", async () => {
   assert.equal(repriced.status, 409, "a key must name one request, not any request");
   assert.match((await repriced.json()).error, /already used for a different invoice/);
 });
+
+test("holding an unreconciled row open never edits the row's own deadline", () => {
+  // The hold used to be applied by passing a doctored copy with
+  // `expiresAt: undefined`, and evaluateInvoice returns a spread of what it is
+  // given - so the copy was written back and persisted. The merchant's
+  // deadline was destroyed for good, and every later payment reported `paid`
+  // where it should have said `paid_late`.
+  chain.reset();
+  const addr = freshAddress();
+  return (async () => {
+    const deadline = Date.now() + 200;
+    const inv = await createInvoice("5", addr, { expiresAt: deadline });
+
+    // Inbound events claim money the balance and outbound events do not show.
+    chain.height = 1001;
+    chain.transfers.push({ from: 1n, to: BigInt(addr), amount: units(5), block: 1001 });
+    await new Promise((r) => setTimeout(r, 300));
+    await watcher.pollOnce();
+
+    const held = watcher.invoices.get(inv.id);
+    assert.equal(held.status, "watching", "held rather than expired");
+    assert.equal(held.expiresAt, deadline, "and its deadline is untouched");
+
+    const pub = await (await fetch(`${base}/public/invoices/${inv.id}?to=${addr}`)).json();
+    assert.equal(pub.expiresAt, deadline, "including as the payer's page sees it");
+  })();
+});
+
+test("a late payment is still recorded as late after a row has been held", () => {
+  chain.reset();
+  const addr = freshAddress();
+  return (async () => {
+    const inv = await createInvoice("5", addr, { expiresAt: Date.now() + 150 });
+    chain.height = 1001;
+    // A phantom inbound event: more in than the balance and the outbound
+    // events can account for, so the row is held rather than expired.
+    const phantom = { from: 1n, to: BigInt(addr), amount: units(5), block: 1001 };
+    chain.transfers.push(phantom);
+    await new Promise((r) => setTimeout(r, 250));
+    await watcher.pollOnce();
+    assert.equal(watcher.invoices.get(inv.id).status, "watching", "held, not expired");
+
+    // The discrepancy resolves - the node had been serving a stale view - and
+    // the money is genuinely there, after the deadline.
+    chain.transfers.splice(chain.transfers.indexOf(phantom), 1);
+    chain.credit(addr, units(5), 1002);
+    chain.height = 1002;
+    await watcher.pollOnce();
+    assert.equal(
+      watcher.invoices.get(inv.id).status,
+      "paid_late",
+      "a destroyed deadline would have reported this as on time",
+    );
+  })();
+});
+
+test("a dust-locked invoice can be written off, and keeps its address forever", () => {
+  // Anyone who has seen a link can send 1 wei and pin the invoice: not
+  // deletable, not cancellable, address never reusable. There has to be a way
+  // out that does not release the address.
+  chain.reset();
+  const addr = freshAddress();
+  return (async () => {
+    const inv = await createInvoice("5", addr, { expiresAt: Date.now() + 150 });
+    chain.height = 1001;
+    chain.credit(addr, 1n, 1001); // one wei, from a stranger
+    await new Promise((r) => setTimeout(r, 250));
+    await watcher.pollOnce();
+    assert.equal(watcher.invoices.get(inv.id).status, "underpaid");
+
+    assert.equal((await fetch(`${base}/invoices/${inv.id}`, { method: "DELETE", headers: auth })).status, 409);
+    assert.equal((await fetch(`${base}/invoices/${inv.id}/cancel`, { method: "POST", headers: auth })).status, 409);
+
+    const off = await fetch(`${base}/invoices/${inv.id}/write-off`, { method: "POST", headers: auth });
+    assert.equal(off.status, 200);
+    assert.equal(watcher.invoices.get(inv.id).status, "written_off");
+
+    // The address stays claimed: the wei is still there.
+    const reuse = await fetch(`${base}/invoices`, {
+      method: "POST",
+      headers: auth,
+      body: JSON.stringify({ token: "STRK", amount: "5", receiveAddress: addr }),
+    });
+    assert.equal(reuse.status, 400);
+    assert.equal((await fetch(`${base}/invoices/${inv.id}`, { method: "DELETE", headers: auth })).status, 409);
+  })();
+});
+
+test("write-off refuses a settled invoice, and needs the token", async () => {
+  chain.reset();
+  const addr = freshAddress();
+  const inv = await createInvoice("5", addr);
+  chain.height = 1001;
+  chain.credit(addr, units(5), 1001);
+  await watcher.pollOnce();
+  assert.equal(watcher.invoices.get(inv.id).status, "paid");
+
+  const res = await fetch(`${base}/invoices/${inv.id}/write-off`, { method: "POST", headers: auth });
+  assert.equal(res.status, 409, "there is nothing to write off");
+  assert.equal((await fetch(`${base}/invoices/${inv.id}/write-off`, { method: "POST" })).status, 401);
+});
+
+test("a known token label must carry that token's address", () => {
+  // The mirror of the check that already refused a known ADDRESS with the
+  // wrong label. Without it, an invoice watched some other contract while the
+  // payer's page, the webhook and the CSV all said STRK.
+  return (async () => {
+    const res = await fetch(`${base}/invoices`, {
+      method: "POST",
+      headers: auth,
+      body: JSON.stringify({
+        token: "STRK",
+        tokenAddress: "0x0deadbeef0000000000000000000000000000000000000000000000000000001",
+        decimals: 18,
+        amount: "5",
+        receiveAddress: freshAddress(),
+      }),
+    });
+    assert.equal(res.status, 400);
+    assert.match((await res.json()).error, /STRK is 0x/);
+  })();
+});
+
+test("an idempotent retry survives a recomputed deadline", () => {
+  // A dashboard mints `now + N hours` on every click. Including that in the
+  // fingerprint made every retry a different request, so the merchant got a
+  // 409 forever for a create that had already succeeded - the exact failure
+  // the feature exists to remove.
+  return (async () => {
+    const addr = freshAddress();
+    const headers = { ...auth, "Idempotency-Key": `deadline-${addr}` };
+    const body = () =>
+      JSON.stringify({ token: "STRK", amount: "5", receiveAddress: addr, expiresAt: Date.now() + 3_600_000 });
+
+    const first = await fetch(`${base}/invoices`, { method: "POST", headers, body: body() });
+    assert.equal(first.status, 201);
+    await new Promise((r) => setTimeout(r, 5));
+    const retry = await fetch(`${base}/invoices`, { method: "POST", headers, body: body() });
+    assert.equal(retry.status, 200, "a few milliseconds of deadline drift is the same request");
+    assert.equal((await retry.json()).id, (await first.json()).id);
+  })();
+});

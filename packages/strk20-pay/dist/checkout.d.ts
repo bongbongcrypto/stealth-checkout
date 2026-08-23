@@ -157,6 +157,17 @@ export interface PayOptions {
  * tell. Distinct from a plain failure so a UI can offer the one action that
  * resolves it, instead of a Retry button that might pay twice.
  */
+/**
+ * The invoice is settled, but not demonstrably by this payer.
+ *
+ * Separate from success because it is not one: nothing here witnessed a
+ * payment from this wallet, so a receipt would be a claim the page cannot
+ * support. Separate from failure because there is nothing to retry.
+ */
+export declare class InvoiceSettledError extends Error {
+    readonly alreadySettled = true;
+    constructor(message: string);
+}
 export declare class PendingPaymentError extends Error {
     readonly needsPayerCheck = true;
     constructor(message: string);

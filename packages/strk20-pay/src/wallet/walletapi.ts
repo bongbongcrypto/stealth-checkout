@@ -322,7 +322,7 @@ export class WalletApiAdapter implements WalletAdapter {
       // probe after one mis-click, and taught them to reach for the
       // pay-anyway button as the normal way out. That button is the
       // double-spend escape hatch, and it should stay hard to reach.
-      throw new WalletActionError(action, explainWalletError(err, action), err, !userRefused(err));
+      throw new WalletActionError(action, explainWalletError(err, action), err, !didNotSubmit(err));
     }
   }
 
@@ -342,24 +342,110 @@ export class WalletApiAdapter implements WalletAdapter {
  * one-time action in the wallet rather than anything this app can sign for.
  */
 /**
- * Did the wallet tell us the user turned it down?
+ * The Wallet API's own error codes, which are the only reliable way to tell
+ * what a wallet did before it failed.
  *
- * Kept next to `explainWalletError`, which recognises the same thing to write
- * "You dismissed the wallet prompt", so the two cannot drift: if one learns a
- * new phrasing the other must too. Deliberately narrow: anything it does not
- * recognise is treated as "this may have been submitted", which costs a payer
- * one extra confirmation and never costs them a second payment.
+ * Two rounds of this project tried to answer that by matching words in the
+ * message. The first matched too much and re-sent payments; the second matched
+ * too little and missed `USER_REFUSED_OP` - the actual code, number 113,
+ * declared in `@starknet-io/starknet-types-0103` right here in node_modules -
+ * so an ordinary Reject left the payer locked out of their own invoice.
+ *
+ * @see node_modules/@starknet-io/starknet-types-0103/dist/types/wallet-api/errors.d.ts
+ */
+export const WALLET_ERROR_CODES = {
+  NOT_ERC20: 111,
+  UNLISTED_NETWORK: 112,
+  USER_REFUSED_OP: 113,
+  INVALID_REQUEST_PAYLOAD: 114,
+  ACCOUNT_ALREADY_DEPLOYED: 115,
+  DEPLOYMENT_DATA_NOT_AVAILABLE: 116,
+  CHAIN_ID_NOT_SUPPORTED: 117,
+  NOT_REGISTERED: 118,
+  INSUFFICIENT_PRIVATE_BALANCE: 119,
+  PRIVACY_LEAK: 120,
+  API_VERSION_NOT_SUPPORTED: 162,
+  UNKNOWN_ERROR: 163,
+} as const;
+
+/**
+ * Codes a wallet raises while deciding whether to sign, i.e. before anything
+ * can reach the network. UNKNOWN_ERROR (163) is deliberately absent: unknown
+ * means unknown, and the safe reading of that is "the money may be gone".
+ */
+const PRE_SUBMISSION_CODES: ReadonlySet<number> = new Set([
+  WALLET_ERROR_CODES.NOT_ERC20,
+  WALLET_ERROR_CODES.UNLISTED_NETWORK,
+  WALLET_ERROR_CODES.USER_REFUSED_OP,
+  WALLET_ERROR_CODES.INVALID_REQUEST_PAYLOAD,
+  WALLET_ERROR_CODES.CHAIN_ID_NOT_SUPPORTED,
+  WALLET_ERROR_CODES.NOT_REGISTERED,
+  WALLET_ERROR_CODES.INSUFFICIENT_PRIVATE_BALANCE,
+  WALLET_ERROR_CODES.PRIVACY_LEAK,
+  WALLET_ERROR_CODES.API_VERSION_NOT_SUPPORTED,
+]);
+
+/** The numeric code a wallet attached, wherever it put it. */
+export function walletErrorCode(err: unknown): number | null {
+  const seen = new Set<unknown>();
+  let node: unknown = err;
+  for (let depth = 0; node && typeof node === "object" && depth < 5; depth++) {
+    if (seen.has(node)) break;
+    seen.add(node);
+    const code = (node as { code?: unknown }).code;
+    if (typeof code === "number" && Number.isInteger(code)) return code;
+    if (typeof code === "string" && /^\d+$/.test(code)) return Number(code);
+    node = (node as { cause?: unknown; error?: unknown; data?: unknown }).cause
+      ?? (node as { error?: unknown }).error
+      ?? (node as { data?: unknown }).data;
+  }
+  return null;
+}
+
+/**
+ * Could this error have followed a transaction reaching the network?
+ *
+ * Answered from the code when there is one, because that is a fact the wallet
+ * asserts rather than prose it happens to have written. The message is only a
+ * fallback for wallets that send no code, and it stays narrow: anything
+ * unrecognised is treated as "possibly submitted", which costs a payer one
+ * extra confirmation and never costs them a second payment.
+ */
+export function didNotSubmit(err: unknown): boolean {
+  const code = walletErrorCode(err);
+  if (code !== null) return PRE_SUBMISSION_CODES.has(code);
+  return userRefused(err);
+}
+
+/**
+ * Did the wallet tell us the user turned it down? Message-based, and used only
+ * for wallets that attach no code, and for the wording of the explanation.
+ *
+ * `USER_REFUSED_OP` is matched without a word boundary after the phrase for a
+ * reason: `\b` does not match between `D` and `_`, so the boundary version
+ * silently failed on the one string the spec actually defines.
  */
 export function userRefused(err: unknown): boolean {
   const raw = err instanceof Error ? err.message : String(err ?? "");
-  return /\bUSER_(REFUSED|REJECTED|DENIED|CANCELLED|CANCELED|ABORTED)\b|user (rejected|refused|denied|declined|cancelled|canceled|aborted)|(rejected|cancelled|canceled|denied|dismissed) by (the )?user|dismissed the wallet prompt/i.test(
+  if (walletErrorCode(err) === WALLET_ERROR_CODES.USER_REFUSED_OP) return true;
+  return /USER_(REFUSED|REJECTED|DENIED|CANCELLED|CANCELED|ABORTED)|user (rejected|refused|denied|declined|cancelled|canceled|aborted|abort)|(rejected|cancelled|canceled|denied|dismissed) by (the )?user|dismissed the wallet prompt/i.test(
     raw,
   );
 }
 
 export function explainWalletError(err: unknown, action: "shield" | "privateTransfer" | "unshield"): string {
   const raw = err instanceof Error ? err.message : String(err ?? "");
-  if (/NOT_REGISTERED/i.test(raw)) {
+  const code = walletErrorCode(err);
+  if (code === WALLET_ERROR_CODES.USER_REFUSED_OP || userRefused(err)) {
+    return "You dismissed the wallet prompt.";
+  }
+  if (code === WALLET_ERROR_CODES.PRIVACY_LEAK) {
+    return (
+      "Your wallet refused this payment because making it would have leaked something about you. " +
+      "Nothing was sent. Try a different amount, or ask the merchant for a fresh invoice."
+    );
+  }
+  if (code === WALLET_ERROR_CODES.NOT_REGISTERED || /NOT_REGISTERED/i.test(raw)) {
     return (
       "Your wallet is not registered with the privacy pool yet. This is a one-time step: " +
       "open your wallet, shield any amount there once (that publishes your viewing key on-chain), " +

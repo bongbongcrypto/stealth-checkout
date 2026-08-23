@@ -31697,7 +31697,11 @@ var StealthCheckout = class {
       if (prior && !prior.txHash) {
         this.emit("confirming", "Checking whether that earlier attempt went through\u2026", false);
         const settled = await this.confirmPayment(invoice, "").catch(() => false);
-        if (settled) return this.finish(invoice, "", void 0);
+        if (settled) {
+          throw new InvoiceSettledError(
+            "The merchant already records this invoice as paid, so nothing more is owed on it. This page cannot tell whether that payment was yours: it never saw a transaction from this wallet. If you paid, you are done. If you did not, do not pay this link - ask the merchant for a fresh invoice."
+          );
+        }
         if (!opts.paidNothingLastTime) {
           throw new PendingPaymentError(
             "This page asked your wallet to pay this invoice earlier and never learned the outcome, and the merchant does not see the money. Open your wallet and check its recent activity. If a payment went out, wait for it rather than paying again. If nothing did, choose to pay again below."
@@ -31969,6 +31973,13 @@ function isInsufficientFunds(err) {
   return /insufficient|not enough|no (unspent )?notes|balance too low|NOT_ENOUGH/i.test(raw);
 }
 var alwaysConfirm = async () => true;
+var InvoiceSettledError = class extends Error {
+  alreadySettled = true;
+  constructor(message) {
+    super(message);
+    this.name = "InvoiceSettledError";
+  }
+};
 var PendingPaymentError = class extends Error {
   needsPayerCheck = true;
   constructor(message) {
@@ -32141,9 +32152,11 @@ function mountCheckout(container, opts) {
       button.disabled = false;
       button.textContent = `Retry: ${defaultLabel}`;
       const pending = Boolean(err && typeof err === "object" && "needsPayerCheck" in err);
-      button.hidden = pending;
+      const settled = Boolean(err && typeof err === "object" && "alreadySettled" in err);
+      button.hidden = pending || settled;
       payAnywayButton.hidden = !pending;
       payAnywayButton.disabled = false;
+      if (settled) honesty.root.hidden = true;
     });
   };
   button.addEventListener("click", () => attempt());
@@ -32529,7 +32542,7 @@ var WalletApiAdapter = class {
       const { transaction_hash } = await this.accountV6.strk20InvokeTransaction(actions);
       return { txHash: transaction_hash };
     } catch (err) {
-      throw new WalletActionError(action, explainWalletError(err, action), err, !userRefused(err));
+      throw new WalletActionError(action, explainWalletError(err, action), err, !didNotSubmit(err));
     }
   }
   requireAddress() {
@@ -32537,15 +32550,66 @@ var WalletApiAdapter = class {
     return this.account.address;
   }
 };
+var WALLET_ERROR_CODES = {
+  NOT_ERC20: 111,
+  UNLISTED_NETWORK: 112,
+  USER_REFUSED_OP: 113,
+  INVALID_REQUEST_PAYLOAD: 114,
+  ACCOUNT_ALREADY_DEPLOYED: 115,
+  DEPLOYMENT_DATA_NOT_AVAILABLE: 116,
+  CHAIN_ID_NOT_SUPPORTED: 117,
+  NOT_REGISTERED: 118,
+  INSUFFICIENT_PRIVATE_BALANCE: 119,
+  PRIVACY_LEAK: 120,
+  API_VERSION_NOT_SUPPORTED: 162,
+  UNKNOWN_ERROR: 163
+};
+var PRE_SUBMISSION_CODES = /* @__PURE__ */ new Set([
+  WALLET_ERROR_CODES.NOT_ERC20,
+  WALLET_ERROR_CODES.UNLISTED_NETWORK,
+  WALLET_ERROR_CODES.USER_REFUSED_OP,
+  WALLET_ERROR_CODES.INVALID_REQUEST_PAYLOAD,
+  WALLET_ERROR_CODES.CHAIN_ID_NOT_SUPPORTED,
+  WALLET_ERROR_CODES.NOT_REGISTERED,
+  WALLET_ERROR_CODES.INSUFFICIENT_PRIVATE_BALANCE,
+  WALLET_ERROR_CODES.PRIVACY_LEAK,
+  WALLET_ERROR_CODES.API_VERSION_NOT_SUPPORTED
+]);
+function walletErrorCode(err) {
+  const seen = /* @__PURE__ */ new Set();
+  let node = err;
+  for (let depth = 0; node && typeof node === "object" && depth < 5; depth++) {
+    if (seen.has(node)) break;
+    seen.add(node);
+    const code = node.code;
+    if (typeof code === "number" && Number.isInteger(code)) return code;
+    if (typeof code === "string" && /^\d+$/.test(code)) return Number(code);
+    node = node.cause ?? node.error ?? node.data;
+  }
+  return null;
+}
+function didNotSubmit(err) {
+  const code = walletErrorCode(err);
+  if (code !== null) return PRE_SUBMISSION_CODES.has(code);
+  return userRefused(err);
+}
 function userRefused(err) {
   const raw = err instanceof Error ? err.message : String(err ?? "");
-  return /\bUSER_(REFUSED|REJECTED|DENIED|CANCELLED|CANCELED|ABORTED)\b|user (rejected|refused|denied|declined|cancelled|canceled|aborted)|(rejected|cancelled|canceled|denied|dismissed) by (the )?user|dismissed the wallet prompt/i.test(
+  if (walletErrorCode(err) === WALLET_ERROR_CODES.USER_REFUSED_OP) return true;
+  return /USER_(REFUSED|REJECTED|DENIED|CANCELLED|CANCELED|ABORTED)|user (rejected|refused|denied|declined|cancelled|canceled|aborted|abort)|(rejected|cancelled|canceled|denied|dismissed) by (the )?user|dismissed the wallet prompt/i.test(
     raw
   );
 }
 function explainWalletError(err, action) {
   const raw = err instanceof Error ? err.message : String(err ?? "");
-  if (/NOT_REGISTERED/i.test(raw)) {
+  const code = walletErrorCode(err);
+  if (code === WALLET_ERROR_CODES.USER_REFUSED_OP || userRefused(err)) {
+    return "You dismissed the wallet prompt.";
+  }
+  if (code === WALLET_ERROR_CODES.PRIVACY_LEAK) {
+    return "Your wallet refused this payment because making it would have leaked something about you. Nothing was sent. Try a different amount, or ask the merchant for a fresh invoice.";
+  }
+  if (code === WALLET_ERROR_CODES.NOT_REGISTERED || /NOT_REGISTERED/i.test(raw)) {
     return "Your wallet is not registered with the privacy pool yet. This is a one-time step: open your wallet, shield any amount there once (that publishes your viewing key on-chain), wait about ten blocks, then come back and pay.";
   }
   if (/SCREENING|COMPLIANCE|BLOCKED/i.test(raw)) {

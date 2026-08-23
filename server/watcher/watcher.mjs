@@ -24,7 +24,7 @@
 
 import { createServer } from "node:http";
 import { randomUUID, timingSafeEqual } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rename, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import {
   DELETABLE_STATES,
@@ -192,10 +192,9 @@ async function pollOnce() {
         log(`${id} note: no matching transfer events; judging on the balance delta instead`);
       }
       // An unreconciled row keeps its deadline at bay rather than being
-      // retired on numbers we do not trust.
-      const next = unreconciled && inv.status === "watching"
-        ? evaluateInvoice({ ...inv, expiresAt: undefined }, balance, Date.now(), received)
-        : evaluateInvoice(inv, balance, Date.now(), received);
+      // retired on numbers we do not trust - for this evaluation only, never
+      // by editing the row.
+      const next = evaluateInvoice(inv, balance, Date.now(), received, unreconciled && inv.status === "watching");
       if (next === inv) continue;
       // Never write back onto a row that changed underneath us: this loop
       // awaits twice, and a DELETE or a cancel landing in between used to be
@@ -432,13 +431,18 @@ function requestFingerprint(body) {
       return String(v ?? "");
     }
   };
+  // Deliberately NOT expiresAt. A dashboard computes it as `now + N hours` on
+  // every click, so including it made a retry under the same key a different
+  // request every time: the merchant got a 409 forever for a create that had
+  // already succeeded, which is the exact failure this feature exists to
+  // remove. What is owed and where it goes is the identity of a request; when
+  // it lapses is not.
   return JSON.stringify([
     String(body?.amount ?? ""),
     String(body?.token ?? ""),
     String(body?.tokenAddress ?? ""),
     body?.decimals ?? null,
     norm(body?.receiveAddress),
-    body?.expiresAt ?? null,
   ]);
 }
 
@@ -462,6 +466,14 @@ function resolveToken(body) {
     }
     if (!Number.isInteger(body.decimals) || body.decimals < 0 || body.decimals > 36) {
       throw new Error("decimals must be an integer between 0 and 36");
+    }
+    // The mirror of the check below, which only covered a known ADDRESS with
+    // the wrong label. A known LABEL on an unknown address let an invoice be
+    // watched on some other contract while the payer's page, the webhook and
+    // the CSV all said STRK: the payer pays real STRK and it never confirms.
+    const claimed = knownToken(body.token);
+    if (claimed && !sameAddress(claimed.address, body.tokenAddress)) {
+      throw new Error(`${body.token} is ${claimed.address}, not ${body.tokenAddress}`);
     }
     // Declaring the wrong decimals for a token we know would confirm an
     // invoice for "1 STRK" on a millionth of one while the webhook still
@@ -597,15 +609,34 @@ async function createInvoice(body) {
   return inv;
 }
 
-async function persist() {
+/**
+ * One write at a time, and never in place.
+ *
+ * `persist()` is called from overlapping paths, one of them un-awaited, and a
+ * bare writeFile can interleave into unparseable JSON - which `restore()` then
+ * refuses to boot on, taking every repair route down with it. Serialised
+ * behind a promise chain and written to a temp file that is renamed over the
+ * real one, so a reader sees the old ledger or the new one and never half.
+ */
+let persistChain = Promise.resolve();
+
+function persist() {
+  persistChain = persistChain.then(persistNow, persistNow);
+  return persistChain;
+}
+
+async function persistNow() {
   try {
     // The idempotency table rides with the ledger. It used to be memory-only,
     // so the retry a client sends after a crash - the one the feature exists
     // for - hit "invoice already exists" and read as a failure.
-    await writeFile(
-      STORE_PATH,
-      JSON.stringify({ invoices: [...invoices.values()], idempotency: [...idempotency.entries()] }, null, 2),
+    const body = JSON.stringify(
+      { invoices: [...invoices.values()], idempotency: [...idempotency.entries()] },
+      null,
+      2,
     );
+    await writeFile(`${STORE_PATH}.tmp`, body);
+    await rename(`${STORE_PATH}.tmp`, STORE_PATH);
   } catch (err) {
     // Loud, because the invoice-to-order mapping lives ONLY here. Losing it
     // means a paid invoice can never be matched back to an order.
@@ -655,9 +686,17 @@ async function restore() {
       await persist(); // write the quarantine back, or the file keeps saying "watching"
     }
   } catch (err) {
-    // Never silently start empty on a corrupt store: that looks identical to
-    // a first run and quietly drops every open invoice.
-    throw new Error(`invoice store at ${STORE_PATH} is corrupt: ${err.message}`);
+    // A corrupt store must not take the process down with it: refusing to boot
+    // removes DELETE, cancel and redeliver, which are the only ways to repair
+    // anything. Keep the evidence, start empty, and be impossible to miss.
+    const quarantine = `${STORE_PATH}.corrupt-${Date.now()}`;
+    try {
+      await writeFile(quarantine, raw);
+    } catch {
+      /* nothing more we can do about it */
+    }
+    log(`STORE IS CORRUPT (${err.message}). Kept a copy at ${quarantine} and started EMPTY.`);
+    log("Every open invoice is unknown to this process until that file is repaired and restored.");
   }
 }
 
@@ -895,6 +934,25 @@ export function makeServer() {
         invoices.set(inv.id, next);
         await persist();
         log(`${inv.id} → cancelled`);
+        return json(req, res, 200, next);
+      }
+      // Anyone who has seen a payment link can send 1 wei to its address, which
+      // makes the row `underpaid`: not deletable, not cancellable, its address
+      // never reusable. Without a way out, a stranger can permanently pin
+      // every invoice a merchant issues, for dust. This retires the row and
+      // keeps its address claimed forever, which is the part that must not
+      // change: the money is still there.
+      const writeOff = url.pathname.match(/^\/invoices\/([\w.-]{1,64})\/write-off$/);
+      if (req.method === "POST" && writeOff) {
+        const inv = invoices.get(writeOff[1]);
+        if (!inv) return json(req, res, 404, { error: "not found" });
+        if (SETTLED_STATES.has(inv.status)) {
+          return json(req, res, 409, { error: `invoice ${inv.id} is ${inv.status}; there is nothing to write off` });
+        }
+        const next = { ...inv, status: "written_off", writtenOffAt: Date.now() };
+        invoices.set(inv.id, next);
+        await persist();
+        log(`${inv.id} → written_off (was ${inv.status}, received ${inv.receivedUnits ?? "0"} units)`);
         return json(req, res, 200, next);
       }
       const redeliver = url.pathname.match(/^\/invoices\/([\w.-]{1,64})\/redeliver$/);

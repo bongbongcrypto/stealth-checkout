@@ -111,13 +111,50 @@ export declare class WalletApiAdapter implements WalletAdapter {
  * one-time action in the wallet rather than anything this app can sign for.
  */
 /**
- * Did the wallet tell us the user turned it down?
+ * The Wallet API's own error codes, which are the only reliable way to tell
+ * what a wallet did before it failed.
  *
- * Kept next to `explainWalletError`, which recognises the same thing to write
- * "You dismissed the wallet prompt", so the two cannot drift: if one learns a
- * new phrasing the other must too. Deliberately narrow: anything it does not
- * recognise is treated as "this may have been submitted", which costs a payer
- * one extra confirmation and never costs them a second payment.
+ * Two rounds of this project tried to answer that by matching words in the
+ * message. The first matched too much and re-sent payments; the second matched
+ * too little and missed `USER_REFUSED_OP` - the actual code, number 113,
+ * declared in `@starknet-io/starknet-types-0103` right here in node_modules -
+ * so an ordinary Reject left the payer locked out of their own invoice.
+ *
+ * @see node_modules/@starknet-io/starknet-types-0103/dist/types/wallet-api/errors.d.ts
+ */
+export declare const WALLET_ERROR_CODES: {
+    readonly NOT_ERC20: 111;
+    readonly UNLISTED_NETWORK: 112;
+    readonly USER_REFUSED_OP: 113;
+    readonly INVALID_REQUEST_PAYLOAD: 114;
+    readonly ACCOUNT_ALREADY_DEPLOYED: 115;
+    readonly DEPLOYMENT_DATA_NOT_AVAILABLE: 116;
+    readonly CHAIN_ID_NOT_SUPPORTED: 117;
+    readonly NOT_REGISTERED: 118;
+    readonly INSUFFICIENT_PRIVATE_BALANCE: 119;
+    readonly PRIVACY_LEAK: 120;
+    readonly API_VERSION_NOT_SUPPORTED: 162;
+    readonly UNKNOWN_ERROR: 163;
+};
+/** The numeric code a wallet attached, wherever it put it. */
+export declare function walletErrorCode(err: unknown): number | null;
+/**
+ * Could this error have followed a transaction reaching the network?
+ *
+ * Answered from the code when there is one, because that is a fact the wallet
+ * asserts rather than prose it happens to have written. The message is only a
+ * fallback for wallets that send no code, and it stays narrow: anything
+ * unrecognised is treated as "possibly submitted", which costs a payer one
+ * extra confirmation and never costs them a second payment.
+ */
+export declare function didNotSubmit(err: unknown): boolean;
+/**
+ * Did the wallet tell us the user turned it down? Message-based, and used only
+ * for wallets that attach no code, and for the wording of the explanation.
+ *
+ * `USER_REFUSED_OP` is matched without a word boundary after the phrase for a
+ * reason: `\b` does not match between `D` and `_`, so the boundary version
+ * silently failed on the one string the spec actually defines.
  */
 export declare function userRefused(err: unknown): boolean;
 export declare function explainWalletError(err: unknown, action: "shield" | "privateTransfer" | "unshield"): string;

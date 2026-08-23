@@ -7,6 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  InvoiceSettledError,
   MockWallet,
   PendingPaymentError,
   StealthCheckout,
@@ -123,18 +124,45 @@ test("a pending payment stops the flow with a distinct, actionable error", async
   assert.equal(wallet.broadcasts, 1, "and nothing was sent while asking");
 });
 
-test("if the merchant CAN see the money, the pending payment settles instead of asking", async () => {
+test("a merchant reporting the invoice settled ends the flow WITHOUT a receipt", async () => {
+  // `confirm` answers "is this invoice paid?" - every implementation in the
+  // docs ignores the hash it is handed. So a settled answer is not evidence
+  // that THIS payer paid, and on a shared link one person's money used to mint
+  // a receipt for another, who had broadcast nothing, and fire onPaid so the
+  // merchant handed over goods.
   const wallet = broadcastThenThrow("connection lost");
   const store = freshStore();
   await new StealthCheckout(wallet, async () => true, false, store).pay(invoice()).catch(() => {});
 
-  const receipt = await new StealthCheckout(wallet, async () => true, false, store).pay(invoice());
-  assert.equal(receipt.invoiceId, "inv-p");
-  assert.equal(wallet.broadcasts, 1, "settled from the record, not by paying again");
-  // The hash is genuinely unknown, and the receipt must say so rather than
-  // pointing at nothing.
-  assert.equal(receipt.txHash, "");
-  assert.match(receipt.disclosure, /hash is not known to this page/);
+  const err = await new StealthCheckout(wallet, async () => true, false, store).pay(invoice()).then(
+    (r) => assert.fail(`must not mint a receipt: ${JSON.stringify(r)}`),
+    (e) => e,
+  );
+  assert.ok(err instanceof InvoiceSettledError, `expected InvoiceSettledError, got ${err.name}`);
+  assert.equal(err.alreadySettled, true, "a UI must be able to render this as terminal, not retryable");
+  assert.match(err.message, /cannot tell whether that payment was yours/i);
+  assert.equal(wallet.broadcasts, 1, "and nothing was paid again while finding out");
+});
+
+test("a stranger's payment on a shared link cannot mint someone else's receipt", async () => {
+  // The concrete harm: two people open one link, B's wallet fails after the
+  // marker is written, A pays, and B clicks again.
+  const shared = freshStore();
+  const b = broadcastThenThrow("the extension went away");
+  b.broadcasts = 0;
+  const bBefore = await b.shieldedBalance("STRK");
+  await new StealthCheckout(b, async () => true, false, shared).pay(invoice()).catch(() => {});
+
+  // A has since paid, so the merchant now says the invoice is settled.
+  let paidFired = false;
+  const err = await new StealthCheckout(b, async () => true, false, shared)
+    .pay(invoice())
+    .then(() => (paidFired = true), (e) => e);
+
+  assert.ok(err instanceof InvoiceSettledError);
+  assert.equal(paidFired, false, "onPaid must not fire for a payment B never made");
+  assert.equal(b.broadcasts, 1, "B broadcast once, at the very start, and never again");
+  assert.equal(Number(bBefore) - Number(await b.shieldedBalance("STRK")), 11, "B paid exactly once");
 });
 
 test("paidNothingLastTime actually pays: it opened no wallet at all", async () => {
@@ -301,4 +329,92 @@ test("the adapter itself labels a refusal as not-submitted, and everything else 
     assert.equal(err.submitted, true, `${raw}: this may have reached the network`);
     assert.equal(didNotReachTheChain(err), false);
   }
+});
+
+test("the wallet's own error codes decide whether anything was submitted", async () => {
+  // Two rounds tried to answer this by matching words. The first matched too
+  // much and re-sent payments; the second missed USER_REFUSED_OP - the actual
+  // code, 113, declared in @starknet-io/starknet-types-0103 in this repo's own
+  // node_modules - so an ordinary Reject locked the payer out of their invoice.
+  const { didNotSubmit, WALLET_ERROR_CODES } = await import("../dist/index.js");
+  const wallet = (code) => Object.assign(new Error(`An error occurred (${code})`), { code });
+
+  // Everything the wallet raises while deciding whether to sign.
+  for (const name of [
+    "USER_REFUSED_OP",
+    "INVALID_REQUEST_PAYLOAD",
+    "NOT_REGISTERED",
+    "INSUFFICIENT_PRIVATE_BALANCE",
+    "PRIVACY_LEAK",
+    "API_VERSION_NOT_SUPPORTED",
+    "CHAIN_ID_NOT_SUPPORTED",
+  ]) {
+    assert.equal(didNotSubmit(wallet(WALLET_ERROR_CODES[name])), true, `${name} precedes submission`);
+  }
+  // Unknown means unknown, and the safe reading is "the money may be gone".
+  assert.equal(didNotSubmit(wallet(WALLET_ERROR_CODES.UNKNOWN_ERROR)), false);
+  // A code can arrive nested, as JSON-RPC wrappers do.
+  assert.equal(didNotSubmit({ cause: { code: 113 } }), true);
+  assert.equal(didNotSubmit({ error: { code: 163 } }), false);
+
+  // With no code at all, the message is the only evidence, and it stays narrow.
+  assert.equal(didNotSubmit(new Error("User abort")), true, "Argent/Ready's classic rejection");
+  assert.equal(didNotSubmit(new Error("USER_REFUSED_OP")), true, "no word boundary after the phrase");
+  assert.equal(didNotSubmit(new Error("Transaction rejected by the sequencer")), false);
+  assert.equal(didNotSubmit(new Error("INSUFFICIENT_MAX_FEE")), false, "a node error, raised after submission");
+  assert.equal(didNotSubmit(new Error("timed out")), false);
+});
+
+test("the real adapter labels every documented wallet code correctly", async () => {
+  // The wiring, end to end: a code goes into the extension stub and comes out
+  // as `submitted` on the error the checkout reads.
+  const { WalletApiAdapter, WALLET_ERROR_CODES } = await import("../dist/index.js");
+  const adapterFor = (code) => {
+    const a = new WalletApiAdapter({ network: "sepolia", rpcUrl: "http://127.0.0.1:1" });
+    a.account = { address: "0x0abc" };
+    a.accountV6 = {
+      strk20InvokeTransaction: async () => {
+        throw Object.assign(new Error(`An error occurred (${code})`), { code });
+      },
+    };
+    return a;
+  };
+  const expected = {
+    [WALLET_ERROR_CODES.USER_REFUSED_OP]: false,
+    [WALLET_ERROR_CODES.INVALID_REQUEST_PAYLOAD]: false,
+    [WALLET_ERROR_CODES.NOT_REGISTERED]: false,
+    [WALLET_ERROR_CODES.INSUFFICIENT_PRIVATE_BALANCE]: false,
+    [WALLET_ERROR_CODES.PRIVACY_LEAK]: false,
+    [WALLET_ERROR_CODES.API_VERSION_NOT_SUPPORTED]: false,
+    [WALLET_ERROR_CODES.UNKNOWN_ERROR]: true,
+  };
+  for (const [code, submitted] of Object.entries(expected)) {
+    const err = await adapterFor(Number(code)).unshield("STRK", "1", "0x0def").then(() => null, (e) => e);
+    assert.ok(err, `code ${code} should throw`);
+    assert.equal(err.submitted, submitted, `code ${code}: submitted should be ${submitted}`);
+  }
+});
+
+test("the pool's own shortfall code still shields and pays, once", async () => {
+  // INSUFFICIENT_PRIVATE_BALANCE is code 119, raised before signing. Round 6
+  // labelled it "may have been submitted", which made the whole shield-then-pay
+  // branch dead code with the shipped adapter: the payer was refused and then
+  // locked out.
+  const wallet = new MockWallet({ latency: 0, funded: { STRK: "500" }, shielded: { STRK: "0" } });
+  wallet.shieldedBalance = async () => null;
+  let attempts = 0;
+  const realUnshield = wallet.unshield.bind(wallet);
+  wallet.unshield = async (...args) => {
+    attempts++;
+    if (attempts === 1) {
+      throw Object.assign(new WalletActionError("unshield", "An error occurred (INSUFFICIENT_PRIVATE_BALANCE)", undefined, false), {
+        code: 119,
+      });
+    }
+    return realUnshield(...args);
+  };
+
+  const receipt = await new StealthCheckout(wallet, async () => true, true, freshStore()).pay(invoice());
+  assert.ok(receipt.shieldTxHash, "it shielded rather than giving up");
+  assert.equal(attempts, 2, "one refusal, then one that worked");
 });

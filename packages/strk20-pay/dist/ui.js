@@ -1,4 +1,5 @@
 import { StealthCheckout, addAmounts, compareAmounts } from "./checkout.js";
+import { TOKENS, resolveToken } from "./tokens.js";
 /**
  * The drop-in widget. One call renders a complete checkout into `container`:
  * pay button, live progress line (always next to the button), the pre-sign
@@ -50,6 +51,14 @@ export function mountCheckout(container, opts) {
     // most important number on the screen for anyone pricing goods in STRK.
     const feeWarning = el("div", "spay-fee-warn");
     feeWarning.hidden = true;
+    const decimals = (() => {
+        try {
+            return resolveToken(invoice.token, TOKENS).decimals;
+        }
+        catch {
+            return 18;
+        }
+    })();
     void (async () => {
         const fee = (await wallet.poolFee?.(invoice.token)) ?? null;
         if (fee === null) {
@@ -58,8 +67,8 @@ export function mountCheckout(container, opts) {
             return;
         }
         feeCell.textContent = `${fee} ${invoice.token}`;
-        totalCell.textContent = `${addAmounts(invoice.amount, fee)} ${invoice.token}`;
-        if (compareAmounts(fee, invoice.amount) > 0) {
+        totalCell.textContent = `${addAmounts(invoice.amount, fee, decimals)} ${invoice.token}`;
+        if (compareAmounts(fee, invoice.amount, decimals) > 0) {
             feeWarning.hidden = false;
             feeWarning.textContent =
                 `Heads up: the pool's flat fee of ${fee} ${invoice.token} is larger than this invoice. ` +

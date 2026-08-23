@@ -31578,6 +31578,39 @@ function revealReport(invoice, willShieldFirst) {
   return items;
 }
 
+// packages/strk20-pay/src/tokens.ts
+var TOKENS = {
+  STRK: { address: "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d", decimals: 18 },
+  ETH: { address: "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7", decimals: 18 }
+};
+function resolveToken(symbolOrAddress, registry = TOKENS) {
+  const known = Object.prototype.hasOwnProperty.call(registry, symbolOrAddress) ? registry[symbolOrAddress] : void 0;
+  if (known && typeof known.address === "string" && /^0x[0-9a-fA-F]+$/.test(known.address) && Number.isInteger(known.decimals) && known.decimals >= 0 && known.decimals <= 36) {
+    return known;
+  }
+  throw new Error(
+    `Unknown token "${symbolOrAddress}". Register it first: resolveToken("${symbolOrAddress}", { ...TOKENS, MYTOKEN: { address, decimals } }), or pass a registry entry via the tokens option. Decimals are never assumed.`
+  );
+}
+function amountToUnits(amount, decimals) {
+  const s = String(amount).trim();
+  if (!/^\d+(\.\d+)?$/.test(s)) throw new Error(`Invalid amount: ${JSON.stringify(amount)}`);
+  const [ip = "0", fp = ""] = s.split(".");
+  if (fp.length > decimals) {
+    throw new Error(`Invalid amount: ${amount} has more than ${decimals} decimal places`);
+  }
+  return BigInt(ip || "0") * 10n ** BigInt(decimals) + BigInt(fp.padEnd(decimals, "0") || "0");
+}
+function unitsToAmount(units2, decimals) {
+  const one = 10n ** BigInt(decimals);
+  const ip = units2 / one;
+  const fp = (units2 % one).toString().padStart(decimals, "0").replace(/0+$/, "");
+  return fp ? `${ip}.${fp}` : ip.toString();
+}
+function amountToFelt(amount, decimals) {
+  return `0x${amountToUnits(amount, decimals).toString(16)}`;
+}
+
 // packages/strk20-pay/src/wallet/adapter.ts
 var WalletActionError = class extends Error {
   constructor(action, message, cause) {
@@ -31619,7 +31652,8 @@ var StealthCheckout = class {
     if (!this.wallet.isConnected()) return revealReport(invoice, true);
     const shielded = await this.wallet.shieldedBalance(invoice.token);
     const fee = await this.wallet.poolFee?.(invoice.token) ?? "0";
-    const willShieldFirst = shielded === null || compareAmounts(shielded, addAmounts(invoice.amount, fee)) < 0;
+    const dp = decimalsOf(invoice.token);
+    const willShieldFirst = shielded === null || compareAmounts(shielded, addAmounts(invoice.amount, fee, dp), dp) < 0;
     return revealReport(invoice, willShieldFirst);
   }
   async pay(invoice) {
@@ -31664,8 +31698,9 @@ var StealthCheckout = class {
         }
       } else {
         const fee = await this.wallet.poolFee?.(invoice.token) ?? "0";
-        const needed = addAmounts(invoice.amount, fee);
-        if (compareAmounts(shielded, needed) < 0) {
+        const dp = decimalsOf(invoice.token);
+        const needed = addAmounts(invoice.amount, fee, dp);
+        if (compareAmounts(shielded, needed, dp) < 0) {
           shieldTxHash = await this.shieldOrExplain(invoice, shielded, fee);
         }
         ({ txHash } = await this.payStep(invoice));
@@ -31731,7 +31766,7 @@ var StealthCheckout = class {
    */
   async shieldOrExplain(invoice, shielded, fee = "0") {
     if (this.allowInlineShield) return this.shieldStep(invoice, fee);
-    const needed = addAmounts(invoice.amount, fee);
+    const needed = addAmounts(invoice.amount, fee, decimalsOf(invoice.token));
     const have = shielded !== void 0 ? ` You have ${shielded} ${invoice.token} shielded right now.` : "";
     const feeNote = compareAmounts(fee, "0") > 0 ? ` The pool charges a flat ${fee} ${invoice.token} for the payment itself, on top of the ${invoice.amount} the merchant receives.` : "";
     throw new Error(
@@ -31757,7 +31792,7 @@ var StealthCheckout = class {
   }
   /** Shield, then block until the new notes are actually spendable. */
   async shieldStep(invoice, fee = "0") {
-    const deposit = addAmounts(invoice.amount, fee);
+    const deposit = addAmounts(invoice.amount, fee, decimalsOf(invoice.token));
     this.emit(
       "shielding",
       `Your wallet will pop up to shield ${deposit} ${invoice.token}. This deposit is public and screened.`,
@@ -31792,15 +31827,25 @@ var StealthCheckout = class {
     this.listeners.forEach((l) => l({ type: "progress", progress }));
   }
 };
-function compareAmounts(a, b) {
-  const norm = (x) => {
-    const s = String(x).trim();
-    if (!/^\d+(\.\d+)?$|^\.\d+$/.test(s)) throw new Error(`Not a valid amount: ${JSON.stringify(x)}`);
-    const [ip = "0", fp = ""] = s.split(".");
-    return [(ip || "0").replace(/^0+(?=\d)/, ""), fp.replace(/0+$/, "")];
-  };
-  const [ai, af] = norm(a);
-  const [bi, bf] = norm(b);
+function parseAmount(x, decimals) {
+  const s = String(x).trim();
+  if (!/^\d+(\.\d+)?$/.test(s)) throw new Error(`Not a valid amount: ${JSON.stringify(x)}`);
+  const [ip = "0", fp = ""] = s.split(".");
+  if (fp.length > decimals) {
+    throw new Error(`Amount ${JSON.stringify(x)} has more than ${decimals} decimal places`);
+  }
+  return [(ip || "0").replace(/^0+(?=\d)/, ""), fp.replace(/0+$/, "")];
+}
+function decimalsOf(token) {
+  try {
+    return resolveToken(token, TOKENS).decimals;
+  } catch {
+    return 18;
+  }
+}
+function compareAmounts(a, b, decimals = 18) {
+  const [ai, af] = parseAmount(a, decimals);
+  const [bi, bf] = parseAmount(b, decimals);
   if (ai.length !== bi.length) return ai.length < bi.length ? -1 : 1;
   if (ai !== bi) return ai < bi ? -1 : 1;
   if (af === bf) return 0;
@@ -31837,9 +31882,8 @@ function sameFelt(a, b) {
 }
 function addAmounts(a, b, decimals = 18) {
   const units2 = (x) => {
-    if (!/^\d+(\.\d+)?$/.test(String(x).trim())) throw new Error(`Not a valid amount: ${JSON.stringify(x)}`);
-    const [ip2 = "0", fp2 = ""] = String(x).trim().split(".");
-    return BigInt(ip2 || "0") * 10n ** BigInt(decimals) + BigInt(fp2.padEnd(decimals, "0").slice(0, decimals) || "0");
+    const [ip2, fp2] = parseAmount(x, decimals);
+    return BigInt(ip2 || "0") * 10n ** BigInt(decimals) + BigInt(fp2.padEnd(decimals, "0") || "0");
   };
   const total = units2(a) + units2(b);
   const one = 10n ** BigInt(decimals);
@@ -31883,6 +31927,13 @@ function mountCheckout(container, opts) {
   confirmRow("Network", invoice.network === "mainnet" ? "Starknet mainnet" : "Starknet sepolia");
   const feeWarning = el("div", "spay-fee-warn");
   feeWarning.hidden = true;
+  const decimals = (() => {
+    try {
+      return resolveToken(invoice.token, TOKENS).decimals;
+    } catch {
+      return 18;
+    }
+  })();
   void (async () => {
     const fee = await wallet.poolFee?.(invoice.token) ?? null;
     if (fee === null) {
@@ -31891,8 +31942,8 @@ function mountCheckout(container, opts) {
       return;
     }
     feeCell.textContent = `${fee} ${invoice.token}`;
-    totalCell.textContent = `${addAmounts(invoice.amount, fee)} ${invoice.token}`;
-    if (compareAmounts(fee, invoice.amount) > 0) {
+    totalCell.textContent = `${addAmounts(invoice.amount, fee, decimals)} ${invoice.token}`;
+    if (compareAmounts(fee, invoice.amount, decimals) > 0) {
       feeWarning.hidden = false;
       feeWarning.textContent = `Heads up: the pool's flat fee of ${fee} ${invoice.token} is larger than this invoice. Private payments through the pool cost the same fee whatever the amount, so small ones carry most of it. Shield once for several purchases rather than once per purchase.`;
     }
@@ -32072,39 +32123,6 @@ function injectStylesOnce() {
 @media (prefers-reduced-motion:reduce){.spay *{transition:none!important;animation:none!important}}
 `;
   document.head.append(style);
-}
-
-// packages/strk20-pay/src/tokens.ts
-var TOKENS = {
-  STRK: { address: "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d", decimals: 18 },
-  ETH: { address: "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7", decimals: 18 }
-};
-function resolveToken(symbolOrAddress, registry = TOKENS) {
-  const known = Object.prototype.hasOwnProperty.call(registry, symbolOrAddress) ? registry[symbolOrAddress] : void 0;
-  if (known && typeof known.address === "string" && /^0x[0-9a-fA-F]+$/.test(known.address) && Number.isInteger(known.decimals) && known.decimals >= 0 && known.decimals <= 36) {
-    return known;
-  }
-  throw new Error(
-    `Unknown token "${symbolOrAddress}". Register it first: resolveToken("${symbolOrAddress}", { ...TOKENS, MYTOKEN: { address, decimals } }), or pass a registry entry via the tokens option. Decimals are never assumed.`
-  );
-}
-function amountToUnits(amount, decimals) {
-  const s = String(amount).trim();
-  if (!/^\d+(\.\d+)?$/.test(s)) throw new Error(`Invalid amount: ${JSON.stringify(amount)}`);
-  const [ip = "0", fp = ""] = s.split(".");
-  if (fp.length > decimals) {
-    throw new Error(`Invalid amount: ${amount} has more than ${decimals} decimal places`);
-  }
-  return BigInt(ip || "0") * 10n ** BigInt(decimals) + BigInt(fp.padEnd(decimals, "0") || "0");
-}
-function unitsToAmount(units2, decimals) {
-  const one = 10n ** BigInt(decimals);
-  const ip = units2 / one;
-  const fp = (units2 % one).toString().padStart(decimals, "0").replace(/0+$/, "");
-  return fp ? `${ip}.${fp}` : ip.toString();
-}
-function amountToFelt(amount, decimals) {
-  return `0x${amountToUnits(amount, decimals).toString(16)}`;
 }
 
 // packages/strk20-pay/src/wallet/walletapi.ts

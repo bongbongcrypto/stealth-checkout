@@ -84,12 +84,7 @@ export declare class StealthCheckout {
     private executePayment;
     private emit;
 }
-/**
- * Compare two decimal-string amounts without floats.
- * Throws on anything that is not a plain non-negative decimal: this gates the
- * shield-or-not decision, and silently ranking junk sends real money.
- */
-export declare function compareAmounts(a: string, b: string): -1 | 0 | 1;
+export declare function compareAmounts(a: string, b: string, decimals?: number): -1 | 0 | 1;
 /** Does this wallet error mean "you do not have enough shielded funds"? */
 export declare function isInsufficientFunds(err: unknown): boolean;
 /** A payment already broadcast. Persisted so a reload cannot re-send it. */

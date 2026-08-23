@@ -351,9 +351,46 @@ test("inline shielding deposits enough to afford the payment that follows", asyn
   assert.equal(await wallet.shieldedBalance("STRK"), "0", "deposit exactly covered the payment");
 });
 
-test("addAmounts is exact, and rejects junk", () => {
+test("the two amount helpers agree on what an amount is", () => {
+  // They did not. compareAmounts accepted ".5" and addAmounts threw on it, so
+  // the same string passed a sufficiency check and then failed mid-payment.
+  // And addAmounts truncated below the token's precision while compareAmounts
+  // counted it, so the two disagreed about whether dust was more than zero.
+  const both = (x) => {
+    const results = [];
+    for (const fn of [() => compareAmounts(x, "1"), () => addAmounts(x, "1")]) {
+      try {
+        fn();
+        results.push("ok");
+      } catch {
+        results.push("throws");
+      }
+    }
+    return results;
+  };
+  for (const input of ["", ".5", "5.", "1e3", "-1", "0x1", "1,5", "NaN", " ", "0.0000000000000000001"]) {
+    const [cmp, add] = both(input);
+    assert.equal(cmp, add, `compareAmounts and addAmounts disagree about ${JSON.stringify(input)}`);
+    assert.equal(cmp, "throws", `${JSON.stringify(input)} should be refused`);
+  }
+  for (const input of ["0", "1", "007", "1.10", "  5  ", "0.000000000000000001"]) {
+    const [cmp, add] = both(input);
+    assert.equal(cmp, "ok", `${JSON.stringify(input)} should be accepted by compareAmounts`);
+    assert.equal(add, "ok", `${JSON.stringify(input)} should be accepted by addAmounts`);
+  }
+});
+
+test("addAmounts is exact, and never silently drops precision", () => {
   assert.equal(addAmounts("5", "6"), "11");
-  assert.equal(addAmounts("0.1", "0.2"), "0.3"); // no float drift
+  assert.equal(addAmounts("0.1", "0.2"), "0.3"); // the float trap
   assert.equal(addAmounts("1.999999999999999999", "0.000000000000000001"), "2");
   assert.throws(() => addAmounts("abc", "1"), /Not a valid amount/);
+  assert.equal(addAmounts("1", "6"), "7"); // an invoice plus the pool's fee
+  assert.equal(addAmounts("0.000000000000000001", "0"), "0.000000000000000001");
+  assert.equal(addAmounts("999999999999999999999999", "1"), "1000000000000000000000000");
+  // Truncation must be an error, not a rounding-down of someone's money.
+  assert.throws(() => addAmounts("1.0000000000000000001", "1"), /more than 18 decimal places/);
+  // A six-decimal token refuses what an eighteen-decimal one accepts.
+  assert.equal(addAmounts("1.5", "0.25", 6), "1.75");
+  assert.throws(() => addAmounts("1.0000001", "1", 6), /more than 6 decimal places/);
 });

@@ -1,4 +1,5 @@
 import { revealReport } from "./honesty.js";
+import { TOKENS, resolveToken } from "./tokens.js";
 import type { Amount, CheckoutEvent, Invoice, PaymentPhase, PaymentProgress, Receipt, RevealItem, Unsubscribe } from "./types.js";
 import type { WalletAdapter } from "./wallet/adapter.js";
 import { WalletActionError } from "./wallet/adapter.js";
@@ -59,7 +60,9 @@ export class StealthCheckout {
     if (!this.wallet.isConnected()) return revealReport(invoice, true);
     const shielded = await this.wallet.shieldedBalance(invoice.token);
     const fee = (await this.wallet.poolFee?.(invoice.token)) ?? "0";
-    const willShieldFirst = shielded === null || compareAmounts(shielded, addAmounts(invoice.amount, fee)) < 0;
+    const dp = decimalsOf(invoice.token);
+    const willShieldFirst =
+      shielded === null || compareAmounts(shielded, addAmounts(invoice.amount, fee, dp), dp) < 0;
     return revealReport(invoice, willShieldFirst);
   }
 
@@ -122,8 +125,9 @@ export class StealthCheckout {
         // amount alone waved payers through who then hit an opaque wallet
         // error with the money still in the pool.
         const fee = (await this.wallet.poolFee?.(invoice.token)) ?? "0";
-        const needed = addAmounts(invoice.amount, fee);
-        if (compareAmounts(shielded, needed) < 0) {
+        const dp = decimalsOf(invoice.token);
+        const needed = addAmounts(invoice.amount, fee, dp);
+        if (compareAmounts(shielded, needed, dp) < 0) {
           shieldTxHash = await this.shieldOrExplain(invoice, shielded, fee);
         }
         ({ txHash } = await this.payStep(invoice));
@@ -206,7 +210,7 @@ export class StealthCheckout {
    */
   private async shieldOrExplain(invoice: Invoice, shielded?: Amount, fee = "0"): Promise<string> {
     if (this.allowInlineShield) return this.shieldStep(invoice, fee);
-    const needed = addAmounts(invoice.amount, fee);
+    const needed = addAmounts(invoice.amount, fee, decimalsOf(invoice.token));
     const have = shielded !== undefined ? ` You have ${shielded} ${invoice.token} shielded right now.` : "";
     const feeNote =
       compareAmounts(fee, "0") > 0
@@ -245,7 +249,7 @@ export class StealthCheckout {
   private async shieldStep(invoice: Invoice, fee = "0"): Promise<string> {
     // Shield the amount PLUS the fee the payment will cost, or the deposit
     // lands and the payment that follows can never be afforded.
-    const deposit = addAmounts(invoice.amount, fee);
+    const deposit = addAmounts(invoice.amount, fee, decimalsOf(invoice.token));
     this.emit(
       "shielding",
       `Your wallet will pop up to shield ${deposit} ${invoice.token}. This deposit is public and screened.`,
@@ -291,15 +295,46 @@ export class StealthCheckout {
  * Throws on anything that is not a plain non-negative decimal: this gates the
  * shield-or-not decision, and silently ranking junk sends real money.
  */
-export function compareAmounts(a: string, b: string): -1 | 0 | 1 {
-  const norm = (x: string): [string, string] => {
-    const s = String(x).trim();
-    if (!/^\d+(\.\d+)?$|^\.\d+$/.test(s)) throw new Error(`Not a valid amount: ${JSON.stringify(x)}`);
-    const [ip = "0", fp = ""] = s.split(".");
-    return [(ip || "0").replace(/^0+(?=\d)/, ""), fp.replace(/0+$/, "")];
-  };
-  const [ai, af] = norm(a);
-  const [bi, bf] = norm(b);
+/**
+ * The one definition of a valid amount, shared by every helper here.
+ *
+ * It has to be shared. When `compareAmounts` accepted ".5" and `addAmounts`
+ * rejected it, the same string passed the sufficiency check and then threw
+ * partway through a payment. And when `addAmounts` silently truncated below
+ * the token's precision while `compareAmounts` counted it, the two disagreed
+ * about whether a dust amount was greater than zero.
+ *
+ * Rejected on purpose: "" (parses as 0 in most naive versions), ".5" and "5."
+ * (ambiguous), "1e3" (exponent notation is not a decimal string), "-1", and
+ * anything with more decimal places than the token can represent, because
+ * truncating a payment amount without saying so is how a payer is short-changed.
+ */
+function parseAmount(x: string, decimals: number): [string, string] {
+  const s = String(x).trim();
+  if (!/^\d+(\.\d+)?$/.test(s)) throw new Error(`Not a valid amount: ${JSON.stringify(x)}`);
+  const [ip = "0", fp = ""] = s.split(".");
+  if (fp.length > decimals) {
+    throw new Error(`Amount ${JSON.stringify(x)} has more than ${decimals} decimal places`);
+  }
+  return [(ip || "0").replace(/^0+(?=\d)/, ""), fp.replace(/0+$/, "")];
+}
+
+/**
+ * The token's precision, or 18 for one not in the registry. An unregistered
+ * token is already refused at the wallet boundary, so this only decides how
+ * strictly an amount string is validated before we get there.
+ */
+function decimalsOf(token: string): number {
+  try {
+    return resolveToken(token, TOKENS).decimals;
+  } catch {
+    return 18;
+  }
+}
+
+export function compareAmounts(a: string, b: string, decimals = 18): -1 | 0 | 1 {
+  const [ai, af] = parseAmount(a, decimals);
+  const [bi, bf] = parseAmount(b, decimals);
   if (ai.length !== bi.length) return ai.length < bi.length ? -1 : 1;
   if (ai !== bi) return ai < bi ? -1 : 1;
   if (af === bf) return 0;
@@ -376,9 +411,8 @@ export function sameFelt(a: string, b: string): boolean {
 /** Add two decimal-string amounts exactly, with no float. */
 export function addAmounts(a: string, b: string, decimals = 18): string {
   const units = (x: string): bigint => {
-    if (!/^\d+(\.\d+)?$/.test(String(x).trim())) throw new Error(`Not a valid amount: ${JSON.stringify(x)}`);
-    const [ip = "0", fp = ""] = String(x).trim().split(".");
-    return BigInt(ip || "0") * 10n ** BigInt(decimals) + BigInt(fp.padEnd(decimals, "0").slice(0, decimals) || "0");
+    const [ip, fp] = parseAmount(x, decimals);
+    return BigInt(ip || "0") * 10n ** BigInt(decimals) + BigInt(fp.padEnd(decimals, "0") || "0");
   };
   const total = units(a) + units(b);
   const one = 10n ** BigInt(decimals);

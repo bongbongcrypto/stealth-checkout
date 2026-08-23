@@ -100,7 +100,21 @@ class El {
     for (const fn of this.listeners.get(type) ?? []) fn(event);
   }
   click() {
+    // A real button does nothing when disabled, and a hidden one cannot be
+    // clicked at all. Ignoring both meant no test could prove the pay /
+    // pay-anyway gating worked, because every click landed regardless.
+    if (this.disabled) return;
+    if (this.hidden || this.hiddenByAncestor()) return;
     this.dispatch("click", {});
+  }
+
+  hiddenByAncestor() {
+    let node = this.parentNode;
+    while (node) {
+      if (node.hidden) return true;
+      node = node.parentNode;
+    }
+    return false;
   }
   focus() {
     this.focused = true;

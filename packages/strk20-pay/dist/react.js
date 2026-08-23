@@ -41,7 +41,13 @@ export function createCheckoutHook({ useEffect, useRef }) {
                 ...opts,
                 onPaid: (receipt) => latest.current.onPaid?.(receipt),
                 onFailed: (error) => latest.current.onFailed?.(error),
-                confirm: (invoice, txHash) => latest.current.confirm ? latest.current.confirm(invoice, txHash) : Promise.resolve(true),
+                // Only when the consumer actually supplied one. Synthesising a wrapper
+                // unconditionally made the core believe a real confirmation existed,
+                // so the receipt told a React integrator who had wired no backend that
+                // the money had arrived - the exact claim the check exists to withhold.
+                ...(opts.confirm
+                    ? { confirm: (invoice, txHash) => latest.current.confirm(invoice, txHash) }
+                    : {}),
             });
             return () => mounted.unmount();
             // Remount only when the payment's own terms change. Depending on `opts`

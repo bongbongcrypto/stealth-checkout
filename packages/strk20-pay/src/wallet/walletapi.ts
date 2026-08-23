@@ -140,7 +140,13 @@ export class WalletApiAdapter implements WalletAdapter {
       this.account = { address: this.accountV6.address };
       return this.account;
     } catch (err) {
-      throw new WalletActionError("connect", err instanceof Error ? err.message : "Wallet connection failed.", err);
+      // Connecting moves no money, whatever it fails with.
+      throw new WalletActionError(
+        "connect",
+        err instanceof Error ? err.message : "Wallet connection failed.",
+        err,
+        false,
+      );
     }
   }
 
@@ -211,7 +217,10 @@ export class WalletApiAdapter implements WalletAdapter {
       const high = BigInt(res[1] ?? "0x0");
       this.feeCache = unitsToAmount(low + (high << 128n), info.decimals);
     } catch {
-      this.feeCache = null;
+      // Do NOT cache the failure. Caching null meant one transient RPC hiccup
+      // made every later quote in the session fee-free, and waved a payer
+      // through who could not afford the payment.
+      return null;
     }
     return this.feeCache;
   }
@@ -296,16 +305,23 @@ export class WalletApiAdapter implements WalletAdapter {
     actions: readonly unknown[],
   ): Promise<{ txHash: string }> {
     this.requireAddress();
+    if (!Array.isArray(actions) || actions.length === 0) {
+      throw new WalletActionError(action, "Nothing to submit.", undefined, false);
+    }
     try {
       const { transaction_hash } = await this.accountV6.strk20InvokeTransaction(actions as unknown[]);
       return { txHash: transaction_hash };
     } catch (err) {
+      // Thrown by the submit call itself: the transaction may well have
+      // reached the network before whatever went wrong. `submitted` stays
+      // true, and the checkout will not send a second one.
       throw new WalletActionError(action, explainWalletError(err, action), err);
     }
   }
 
   private requireAddress(): string {
-    if (!this.account) throw new WalletActionError("connect", "Wallet is not connected.");
+    // Nothing has been built, let alone sent.
+    if (!this.account) throw new WalletActionError("connect", "Wallet is not connected.", undefined, false);
     return this.account.address;
   }
 }

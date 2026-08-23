@@ -102,7 +102,7 @@ export class StealthCheckout {
       // for another invoice used to shadow the persisted lookup entirely, and
       // the payer paid an already-settled invoice a second time.
       const cached = this.sentPayment && matchesInvoice(this.sentPayment, invoice) ? this.sentPayment : null;
-      const prior = cached ?? this.loadSent(invoice);
+      let prior = cached ?? this.loadSent(invoice);
       if (prior && !prior.txHash) {
         // We asked a wallet to pay this invoice and never learned the outcome.
         // Ask the merchant first: they can see the chain, and if the money
@@ -122,6 +122,12 @@ export class StealthCheckout {
           );
         }
         this.clearPending(invoice);
+        // And forget it HERE too. Clearing only the stored copy left `prior`
+        // truthy, so the very next branch treated the empty hash as a payment
+        // already sent: the button whose entire purpose is to pay never opened
+        // the wallet, and told the payer "your payment was sent once" when
+        // nothing had been sent at all.
+        prior = null;
       }
       if (prior) {
         this.emit("confirming", "Payment already sent. Waiting for on-chain confirmation…", false, prior.txHash);
@@ -524,13 +530,10 @@ export function compareAmounts(a: string, b: string, decimals = 18): -1 | 0 | 1 
  * when it is not.
  */
 export function didNotReachTheChain(err: unknown): boolean {
-  const raw = err instanceof Error ? err.message : String(err ?? "");
-  return (
-    isInsufficientFunds(err) ||
-    /dismissed the wallet prompt|user (rejected|refused|denied)|USER_REFUSED|is not connected|expired|invalid|missing its receive address|wrong network|is for (mainnet|sepolia)/i.test(
-      raw,
-    )
-  );
+  // Structural, not lexical. The adapter knows where in its own code the error
+  // came from; a message does not, and matching words in one let a wallet
+  // vendor's phrasing decide whether a payer pays twice.
+  return err instanceof WalletActionError && err.submitted === false;
 }
 
 /** Does this wallet error mean "you do not have enough shielded funds"? */

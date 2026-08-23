@@ -378,10 +378,31 @@ async function renderPayer(
   // The baseline is the whole safety property. Retry rather than fall back to
   // an absolute check: an address that already holds funds would confirm
   // instantly and the payer would be told "paid" without paying.
-  let baseline: bigint | null = null;
+  //
+  // And it must survive a reload. Re-reading it on every page load meant that
+  // after paying and reloading, the payer's OWN money was inside the baseline:
+  // the delta was zero forever, the widget correctly refused to pay twice, and
+  // then told them for ten minutes at a time that the payment it could see on
+  // chain had not been confirmed. It never self-healed.
+  const baselineKey = `spay-baseline.${invoice.network}.${invoice.id}.${invoice.receiveAddress}`;
+  const rememberedBaseline = (() => {
+    try {
+      const raw = localStorage.getItem(baselineKey);
+      return raw && /^\d+$/.test(raw) ? BigInt(raw) : null;
+    } catch {
+      return null;
+    }
+  })();
+
+  let baseline: bigint | null = rememberedBaseline;
   for (let attempt = 0; attempt < 5 && baseline === null; attempt++) {
     try {
       baseline = await readBalance();
+      try {
+        localStorage.setItem(baselineKey, baseline.toString());
+      } catch {
+        /* a payer with storage disabled just gets the old behaviour */
+      }
     } catch {
       await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
     }

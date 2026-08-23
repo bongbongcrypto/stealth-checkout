@@ -56,7 +56,7 @@ export class MockWallet {
         // than silently crediting zero.
         const deposited = toUnits(amount);
         if (deposited <= this.fee) {
-            throw new WalletActionError("shield", `A deposit of ${amount} is not more than the pool's ${fromUnits(this.fee)} fee, so it would credit nothing.`);
+            throw new WalletActionError("shield", `A deposit of ${amount} is not more than the pool's ${fromUnits(this.fee)} fee, so it would credit nothing.`, undefined, false);
         }
         this.take(this.pub, token, amount, "shield");
         this.shielded.set(token, (this.shielded.get(token) ?? 0n) + deposited - this.fee);
@@ -89,15 +89,16 @@ export class MockWallet {
     }
     assertConnected(action) {
         if (!this.connected)
-            throw new WalletActionError(action, "Wallet is not connected.");
+            throw new WalletActionError(action, "Wallet is not connected.", undefined, false);
     }
     take(from, token, amount, action) {
         const bal = from.get(token) ?? 0n;
         const amt = toUnits(amount);
+        // Both are refused before anything is built, let alone sent.
         if (amt <= 0n)
-            throw new WalletActionError(action, "Amount must be positive.");
+            throw new WalletActionError(action, "Amount must be positive.", undefined, false);
         if (bal < amt)
-            throw new WalletActionError(action, `Insufficient ${token} balance.`);
+            throw new WalletActionError(action, `Insufficient ${token} balance.`, undefined, false);
         from.set(token, bal - amt);
     }
     hash() {

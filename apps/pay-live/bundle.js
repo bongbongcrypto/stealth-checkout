@@ -31625,10 +31625,11 @@ function amountToFelt(amount, decimals) {
 
 // packages/strk20-pay/src/wallet/adapter.ts
 var WalletActionError = class extends Error {
-  constructor(action, message, cause) {
+  constructor(action, message, cause, submitted = true) {
     super(message);
     this.action = action;
     this.cause = cause;
+    this.submitted = submitted;
     this.name = "WalletActionError";
   }
 };
@@ -31688,7 +31689,7 @@ var StealthCheckout = class {
         await this.wallet.connect();
       }
       const cached = this.sentPayment && matchesInvoice(this.sentPayment, invoice) ? this.sentPayment : null;
-      const prior = cached ?? this.loadSent(invoice);
+      let prior = cached ?? this.loadSent(invoice);
       if (prior && !prior.txHash) {
         this.emit("confirming", "Checking whether that earlier attempt went through\u2026", false);
         const settled = await this.confirmPayment(invoice, "").catch(() => false);
@@ -31699,6 +31700,7 @@ var StealthCheckout = class {
           );
         }
         this.clearPending(invoice);
+        prior = null;
       }
       if (prior) {
         this.emit("confirming", "Payment already sent. Waiting for on-chain confirmation\u2026", false, prior.txHash);
@@ -31956,10 +31958,7 @@ function compareAmounts(a, b, decimals = 18) {
   return ap === bp ? 0 : ap < bp ? -1 : 1;
 }
 function didNotReachTheChain(err) {
-  const raw = err instanceof Error ? err.message : String(err ?? "");
-  return isInsufficientFunds(err) || /dismissed the wallet prompt|user (rejected|refused|denied)|USER_REFUSED|is not connected|expired|invalid|missing its receive address|wrong network|is for (mainnet|sepolia)/i.test(
-    raw
-  );
+  return err instanceof WalletActionError && err.submitted === false;
 }
 function isInsufficientFunds(err) {
   const raw = err instanceof Error ? err.message : String(err ?? "");
@@ -32383,7 +32382,12 @@ var WalletApiAdapter = class {
       this.account = { address: this.accountV6.address };
       return this.account;
     } catch (err) {
-      throw new WalletActionError("connect", err instanceof Error ? err.message : "Wallet connection failed.", err);
+      throw new WalletActionError(
+        "connect",
+        err instanceof Error ? err.message : "Wallet connection failed.",
+        err,
+        false
+      );
     }
   }
   async publicBalance(token) {
@@ -32444,7 +32448,7 @@ var WalletApiAdapter = class {
       const high = BigInt(res2[1] ?? "0x0");
       this.feeCache = unitsToAmount(low + (high << 128n), info.decimals);
     } catch {
-      this.feeCache = null;
+      return null;
     }
     return this.feeCache;
   }
@@ -32514,6 +32518,9 @@ var WalletApiAdapter = class {
   }
   async invoke(action, actions) {
     this.requireAddress();
+    if (!Array.isArray(actions) || actions.length === 0) {
+      throw new WalletActionError(action, "Nothing to submit.", void 0, false);
+    }
     try {
       const { transaction_hash } = await this.accountV6.strk20InvokeTransaction(actions);
       return { txHash: transaction_hash };
@@ -32522,7 +32529,7 @@ var WalletApiAdapter = class {
     }
   }
   requireAddress() {
-    if (!this.account) throw new WalletActionError("connect", "Wallet is not connected.");
+    if (!this.account) throw new WalletActionError("connect", "Wallet is not connected.", void 0, false);
     return this.account.address;
   }
 };
@@ -32792,10 +32799,23 @@ async function renderPayer(invoice, authority, foreignWatcher = null, serverSaid
     });
     return BigInt(res2[0] ?? "0x0") + (BigInt(res2[1] ?? "0x0") << 128n);
   };
-  let baseline = null;
+  const baselineKey = `spay-baseline.${invoice.network}.${invoice.id}.${invoice.receiveAddress}`;
+  const rememberedBaseline = (() => {
+    try {
+      const raw = localStorage.getItem(baselineKey);
+      return raw && /^\d+$/.test(raw) ? BigInt(raw) : null;
+    } catch {
+      return null;
+    }
+  })();
+  let baseline = rememberedBaseline;
   for (let attempt = 0; attempt < 5 && baseline === null; attempt++) {
     try {
       baseline = await readBalance();
+      try {
+        localStorage.setItem(baselineKey, baseline.toString());
+      } catch {
+      }
     } catch {
       await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
     }

@@ -281,14 +281,19 @@ export function isHexFelt(value, maxDigits = 64) {
 }
 
 /** JSON-RPC request body for a balanceOf call at the latest block. */
-export function balanceOfRequest(tokenAddress, holderAddress, id = 1) {
+export function balanceOfRequest(tokenAddress, holderAddress, id = 1, blockNumber = null) {
   return {
     jsonrpc: "2.0",
     id,
     method: "starknet_call",
     params: [
       { contract_address: tokenAddress, entry_point_selector: SELECTORS.balanceOf, calldata: [holderAddress] },
-      "latest",
+      // A baseline must be pinned to a KNOWN block. Reading it at "latest" and
+      // asking a second call for the block height let the two disagree on a
+      // load-balanced endpoint: the height came back lower, the event scan
+      // started inside the range the baseline already covered, and a transfer
+      // was counted twice - confirming an invoice nobody had paid.
+      blockNumber === null ? "latest" : { block_number: blockNumber },
     ],
   };
 }
@@ -314,6 +319,52 @@ export function transferEventsRequest(tokenAddress, toAddress, fromBlock, id = 1
       },
     ],
   };
+}
+
+/** Transfer events whose `from` is this address: money leaving it. */
+export function sentEventsRequest(tokenAddress, fromAddress, fromBlock, id = 1, continuationToken = undefined) {
+  return {
+    jsonrpc: "2.0",
+    id,
+    method: "starknet_getEvents",
+    params: [
+      {
+        address: tokenAddress,
+        keys: [[SELECTORS.transferEvent], [normFelt(fromAddress)]],
+        from_block: { block_number: fromBlock },
+        to_block: "latest",
+        chunk_size: 100,
+        ...(continuationToken ? { continuation_token: continuationToken } : {}),
+      },
+    ],
+  };
+}
+
+/** Total value transferred OUT of `fromAddress` by these events. */
+export function sentFromEvents(eventsResult, fromAddress) {
+  const target = normFelt(fromAddress);
+  let total = 0n;
+  for (const ev of eventsResult?.events ?? []) {
+    const keys = ev.keys ?? [];
+    const data = ev.data ?? [];
+    const keyed =
+      keys.length >= 2 &&
+      (() => {
+        try {
+          return normFelt(keys[1]) === target;
+        } catch {
+          return false;
+        }
+      })();
+    if (!keyed) continue;
+    if (data.length < 1) return null;
+    try {
+      total += BigInt(data[0]) + (data.length > 1 ? BigInt(data[1]) << 128n : 0n);
+    } catch {
+      return null;
+    }
+  }
+  return { units: total };
 }
 
 /**

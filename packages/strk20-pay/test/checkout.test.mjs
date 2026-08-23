@@ -256,11 +256,21 @@ test("a retry after a failed confirmation never sends money twice", async () => 
   );
 });
 
-test("the receipt reports the wallet's network, not the invoice's claim", async () => {
-  const wallet = fastWallet(); // sepolia
-  const checkout = new StealthCheckout(wallet, undefined, true, freshStore());
-  const receipt = await checkout.pay(invoice({ network: "sepolia" }));
-  assert.equal(receipt.network, "sepolia");
+test("a wallet on the wrong network is refused before anything moves", () => {
+  // This replaces a test that claimed to check the receipt carried the
+  // WALLET's network rather than the invoice's claim. It could not: pay()
+  // rejects a mismatch before a receipt exists, so both sides were always
+  // equal and the assertion held no matter which field the code read.
+  const wallet = new MockWallet({ latency: 1, funded: { STRK: "100" }, shielded: { STRK: "100" } });
+  assert.equal(wallet.network, "sepolia");
+  const checkout = new StealthCheckout(wallet, async () => true, false, freshStore());
+  return assert.rejects(
+    () => checkout.pay(invoice({ network: "mainnet" })),
+    (err) => {
+      assert.match(err.message, /this invoice is for mainnet, but the wallet is on sepolia/i);
+      return true;
+    },
+  );
 });
 
 test("paying a mainnet invoice from a sepolia wallet is refused before any prompt", async () => {
@@ -348,15 +358,25 @@ test("a stale record for another invoice cannot shadow this one", async () => {
   const before = await wallet.shieldedBalance("STRK");
   await again.pay(invoice({ id: "B" }));
   assert.equal(await wallet.shieldedBalance("STRK"), before, "B must not be paid twice");
-  assert.ok(afterB >= "0");
 });
 
-test("a corrupt stored record is ignored, not fatal", async () => {
+test("a corrupt stored record is ignored, not fatal, and does not settle the invoice", async () => {
+  // The second half matters more than the first. Dropping the matchesInvoice
+  // guard in loadSent also passes the "did not throw" half of this test, while
+  // minting a receipt with no payment made at all: a junk record in storage
+  // would settle an invoice for free.
   const store = new Map([["strk20-pay.sent.sepolia.inv-1", '{"amount":"abc","invoiceId":"inv-1"}']]);
   const shared = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
   const wallet = fastWallet();
+  const spent = { unshield: 0 };
+  const realUnshield = wallet.unshield.bind(wallet);
+  wallet.unshield = async (...args) => {
+    spent.unshield++;
+    return realUnshield(...args);
+  };
   const checkout = new StealthCheckout(wallet, async () => true, true, shared);
   const receipt = await checkout.pay(invoice());
+  assert.equal(spent.unshield, 1, "the invoice was actually paid, not settled from junk");
   assert.equal(receipt.invoiceId, "inv-1", "a poisoned record must not brick the invoice");
 });
 

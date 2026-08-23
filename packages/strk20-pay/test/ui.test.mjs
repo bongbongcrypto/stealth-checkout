@@ -78,7 +78,7 @@ test("the payer is shown the total, the fee, and the destination before signing"
 
 test("a fee larger than the invoice is called out, not buried", async () => {
   const wallet = new MockWallet({ funded: { STRK: "100" }, latency: 0 });
-  mountCheckout(host, { invoice: invoice({ amount: "1", store: freshStore() }), wallet });
+  mountCheckout(host, { invoice: invoice({ amount: "1" }), wallet, store: freshStore() });
   await settle();
 
   const warn = host.find("spay-fee-warn");
@@ -100,7 +100,7 @@ test("a payer who already holds shielded funds is quoted one fee, not two", asyn
 
 test("a fee smaller than the invoice does not nag", async () => {
   const wallet = new MockWallet({ funded: { STRK: "100" }, latency: 0 });
-  mountCheckout(host, { invoice: invoice({ amount: "500", store: freshStore() }), wallet });
+  mountCheckout(host, { invoice: invoice({ amount: "500" }), wallet, store: freshStore() });
   await settle();
   assert.equal(host.find("spay-fee-warn").hidden, true);
 });

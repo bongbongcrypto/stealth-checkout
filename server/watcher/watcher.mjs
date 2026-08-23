@@ -35,6 +35,8 @@ import {
   csvCell,
   isHexFelt,
   receivedFromEvents,
+  sentEventsRequest,
+  sentFromEvents,
   evaluateInvoice,
   hasUsableBaseline,
   normFelt,
@@ -141,12 +143,17 @@ async function pollOnce() {
       // earlier is already inside the baseline.
       if (typeof inv.createdBlock !== "number") {
         const head = await currentBlock().catch(() => null);
-        if (typeof head === "number") {
+        // The same guard the normal write below uses. Without it a cancel or a
+        // DELETE landing during that await was undone by this write: a
+        // cancelled invoice went back to accepting payment, and a deleted row
+        // came back with its address still locked.
+        if (typeof head === "number" && invoices.get(id) === inv) {
           invoices.set(id, { ...inv, createdBlock: head });
           await persist();
           log(`${id} backfilled createdBlock=${head}; event accounting is on from here`);
           continue; // judge it on the next cycle, with the scan available
         }
+        if (invoices.get(id) !== inv) continue; // it changed under us; leave it alone
       }
       const inflow = await totalReceived(inv).catch((err) => {
         log(`${id} event scan failed (${err.message}); falling back to the balance delta`);
@@ -158,7 +165,23 @@ async function pollOnce() {
       // does silently. Taking the larger can only ever fail towards crediting
       // a payer for money that did arrive, never away from it.
       const delta = balance - BigInt(inv.baselineUnits);
-      const received = inflow === null ? null : inflow.units > delta ? inflow.units : delta;
+      // The event sum may exceed the delta only because money left again after
+      // arriving. Anything beyond that is the two measurements disagreeing,
+      // and crediting the larger of two numbers we cannot reconcile is how an
+      // invoice gets confirmed on money that was already there. Cap the excess
+      // at what has demonstrably flowed out.
+      let received = null;
+      if (inflow !== null) {
+        const outflow = await totalSent(inv).catch(() => null);
+        const credible = outflow === null ? delta : delta + outflow.units;
+        received = inflow.units > delta ? (inflow.units > credible ? credible : inflow.units) : delta;
+        if (inflow.units > credible) {
+          log(
+            `${id} WARNING: transfers in (${inflow.units}) exceed balance growth plus transfers out ` +
+              `(${credible}); crediting the lower figure. Check this address.`,
+          );
+        }
+      }
       if (inflow !== null && inflow.count === 0 && delta > 0n) {
         log(`${id} note: no matching transfer events; judging on the balance delta instead`);
       }
@@ -216,6 +239,28 @@ async function findTxHash(inv) {
  * cannot be read, or when the scan runs longer than it is worth: a partial sum
  * would under-credit the payer, which is exactly the bug this replaces.
  */
+/** The mirror of totalReceived: everything that has left this address. */
+async function totalSent(inv) {
+  if (typeof inv.createdBlock !== "number") return null;
+  let token;
+  let total = 0n;
+  let pages = 0;
+  const seen = new Set();
+  do {
+    const page = await rpc(
+      sentEventsRequest(inv.tokenAddress, inv.receiveAddress, inv.createdBlock + 1, ++rpcId, token),
+    );
+    const summed = sentFromEvents(page, inv.receiveAddress);
+    if (summed === null) return null;
+    total += summed.units;
+    token = page?.continuation_token;
+    if (token && seen.has(token)) return null;
+    if (token) seen.add(token);
+  } while (token && ++pages < 50);
+  if (token) return null;
+  return { units: total };
+}
+
 async function totalReceived(inv) {
   // Without a start block there is nothing to scan from, and scanning from
   // zero would count money that arrived before the invoice existed. The row
@@ -490,16 +535,41 @@ async function createInvoice(body) {
   // the checks above, and the second would overwrite the first, leaving the
   // first order's address unwatched.
   invoices.set(id, { id, status: "reserving", receiveAddress: body.receiveAddress, createdAt: Date.now() });
+
+  // Height FIRST, then the balance pinned to that exact height, so the
+  // baseline and the scan window can never disagree about where one ends and
+  // the other begins. The old order read the balance at "latest" and the
+  // height separately, and a lagging replica answering the second call put
+  // money that was already inside the baseline back inside the scan.
+  let createdBlock = await currentBlock().catch(() => undefined);
   let baseline;
   try {
-    baseline = u256FromCallResult(await rpc(balanceOfRequest(tokenAddress, body.receiveAddress, ++rpcId)));
+    baseline = u256FromCallResult(
+      await rpc(
+        balanceOfRequest(
+          tokenAddress,
+          body.receiveAddress,
+          ++rpcId,
+          typeof createdBlock === "number" ? createdBlock : null,
+        ),
+      ),
+    );
   } catch (err) {
-    invoices.delete(id); // never leave a half-created row behind
-    throw err;
+    if (typeof createdBlock !== "number") {
+      invoices.delete(id); // never leave a half-created row behind
+      throw err;
+    }
+    // A node that will not serve that historical block is not a reason to
+    // refuse the invoice: fall back to "latest" and to delta accounting, which
+    // is what every row did before event scanning existed.
+    createdBlock = undefined;
+    try {
+      baseline = u256FromCallResult(await rpc(balanceOfRequest(tokenAddress, body.receiveAddress, ++rpcId)));
+    } catch (err2) {
+      invoices.delete(id);
+      throw err2;
+    }
   }
-  // Where to start counting transfers in. Best effort: without it the row
-  // falls back to balance-delta accounting, which is what it used to do.
-  const createdBlock = await currentBlock().catch(() => undefined);
   const inv = {
     id,
     token,

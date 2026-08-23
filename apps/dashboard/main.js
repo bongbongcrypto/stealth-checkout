@@ -132,16 +132,16 @@ function payLink(inv) {
   if (UNPAYABLE.has(inv.status)) return "";
   if (!/^0x[0-9a-fA-F]{10,}$/.test(inv.receiveAddress ?? "")) return "";
   const base = new URL("../pay-live/index.html", location.href);
-  const watcher = watcherUrl();
+  // No `watcher` parameter. The payer's page decides its own authority from
+  // where it was DEPLOYED, because a link cannot vouch for itself: whoever
+  // controls the link controls the amount, and would control the auditor too.
+  // Emitting it anyway only produced a banner telling the payer it had been
+  // ignored. To get server-verified terms, serve pay-live from the same origin
+  // as the watcher.
   base.search = new URLSearchParams({
     to: inv.receiveAddress,
     amount: inv.amount,
     id: inv.id,
-    // Name this watcher in the link so the payer's page takes the amount from
-    // the server rather than from the query string it was handed. Only over
-    // https or loopback: the page refuses anything else, and a link the page
-    // will refuse is worse than one that simply omits the watcher.
-    ...(/^(https:|http:\/\/(localhost|127\.0\.0\.1)([:/]|$))/.test(watcher) ? { watcher } : {}),
   }).toString();
   return base.toString();
 }

@@ -181,8 +181,23 @@ export class WalletApiAdapter implements WalletAdapter {
    * move, and returned as null rather than zero when unreadable, so a caller
    * can say "unknown" instead of quietly promising the payer too low a total.
    */
+  /**
+   * The pool's flat fee, denominated in STRK.
+   *
+   * `get_fee_amount()` takes no arguments, so the pool cannot be charging a
+   * different fee per token: there is one figure, and it is STRK. Decoding it
+   * with the INVOICE's decimals and captioning it with the invoice's symbol
+   * printed "6 ETH" on an ETH invoice, which is neither the right unit nor a
+   * number anyone should add to a total. A non-STRK invoice gets null instead:
+   * unknown is the honest answer until the denomination is confirmed.
+   */
   async poolFee(token: string): Promise<Amount | null> {
-    const info = resolveToken(token, this.registry);
+    const strk = resolveToken("STRK", this.registry);
+    const asked = resolveToken(token, this.registry);
+    // By address, not by label: "strk", " STRK" and a raw address are all the
+    // same token, and only the address says so.
+    if (BigInt(asked.address) !== BigInt(strk.address)) return null;
+    const info = strk;
     if (this.feeCache !== undefined) return this.feeCache;
     try {
       const { RpcProvider } = (await import("starknet")) as any;

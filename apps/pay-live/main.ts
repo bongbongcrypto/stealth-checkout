@@ -9,7 +9,7 @@
 // watcher does the same job headlessly for real merchants.
 import { RpcProvider } from "starknet";
 import { mountCheckout } from "../../packages/strk20-pay/src/ui.js";
-import { WalletApiAdapter } from "../../packages/strk20-pay/src/wallet/walletapi.js";
+import { EXPLORER_BASE, WalletApiAdapter } from "../../packages/strk20-pay/src/wallet/walletapi.js";
 import { TOKENS, amountToUnits, resolveToken } from "../../packages/strk20-pay/src/tokens.js";
 import type { Invoice } from "../../packages/strk20-pay/src/types.js";
 
@@ -20,22 +20,50 @@ const params = new URLSearchParams(location.search);
 const to = params.get("to");
 
 /**
- * The merchant's watcher, if the link names one. Everything in this page's
- * query string is under the payer's control, including the amount, so a link
- * edited to `amount=0.001` used to produce a real "Paid" screen for a
- * thousandth of the price. When a watcher is named, the invoice's terms and
- * its settlement both come from there instead, and this page is only a view.
+ * A merchant server this page is willing to treat as an authority.
+ *
+ * Set it when you host this page yourself. Left empty, the page falls back to
+ * its own origin, so a merchant who serves both from one host needs no
+ * configuration at all.
+ */
+const TRUSTED_WATCHER = "";
+
+/**
+ * The merchant's watcher, if there is one we are allowed to believe.
+ *
+ * The `watcher` query parameter is NOT it. The whole point of asking a server
+ * for the amount is that the payer controls this URL, and a payer who can edit
+ * `amount` can edit `watcher` just as easily. Worse: honouring a link-supplied
+ * origin turned the page's honest warning ("this amount came from the link,
+ * the receipt is not proof") into a green "the merchant's server confirmed
+ * these terms" badge, issued to whatever host the link named. A phishing link
+ * could vouch for its own address and its own price.
+ *
+ * So the authority is decided by whoever DEPLOYED this page: a build-time
+ * constant, or the page's own origin. A `watcher` parameter pointing anywhere
+ * else is ignored, and the page says plainly that the amount came from the
+ * link.
  */
 function watcherOrigin(): string | null {
-  const raw = params.get("watcher");
-  if (!raw) return null;
+  const candidate = TRUSTED_WATCHER || location.origin;
   try {
-    const url = new URL(raw);
+    const url = new URL(candidate);
     const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
     if (url.protocol !== "https:" && !(url.protocol === "http:" && local)) return null;
     return url.origin;
   } catch {
     return null;
+  }
+}
+
+/** Did this link ask us to trust a server we are not deploying alongside? */
+function linkNamedAForeignWatcher(): string | null {
+  const raw = params.get("watcher");
+  if (!raw) return null;
+  try {
+    return new URL(raw).origin === watcherOrigin() ? null : new URL(raw).host;
+  } catch {
+    return raw.slice(0, 60);
   }
 }
 
@@ -50,8 +78,16 @@ if (!to) {
     renderError("This invoice link has an invalid amount.");
   } else {
     void start({
-      id: (params.get("id") ?? `inv_${Date.now().toString(36)}`).slice(0, 64),
-      token: params.get("token") === "STRK" ? "STRK" : "STRK",
+      // A STABLE id, derived from the link's own terms when none is given.
+      // Minting `inv_${Date.now()}` per page load meant the double-send guard,
+      // which is keyed by invoice id, never matched its own record: a payer
+      // whose confirmation timed out reloaded and paid a second time, while
+      // the widget told them "it was sent once and will not be sent again".
+      id: (params.get("id") || linkId(to, amount, params.get("memo") ?? "")).slice(0, 64),
+      // Only STRK is served here: the widget resolves a token by symbol, and
+      // paying a `?token=ETH` link in STRK would send the wrong asset. This
+      // used to be a ternary with the same value on both sides.
+      token: "STRK",
       amount,
       memo: params.get("memo")?.slice(0, 140) || undefined,
       mode: "address",
@@ -60,6 +96,21 @@ if (!to) {
       createdAt: Date.now(),
     });
   }
+}
+
+/**
+ * A deterministic id for a link that carries none: same link, same id, every
+ * load and every tab. Not a hash for secrecy, just for stability.
+ */
+function linkId(to: string, amount: string, memo: string): string {
+  const input = `${to.toLowerCase()}|${amount}|${memo}`;
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193;
+  for (let i = 0; i < input.length; i++) {
+    h1 = Math.imul(h1 ^ input.charCodeAt(i), 0x01000193) >>> 0;
+    h2 = Math.imul(h2 + input.charCodeAt(i), 0x85ebca6b) >>> 0;
+  }
+  return `lnk_${h1.toString(36)}${h2.toString(36)}`;
 }
 
 /** Terms as the merchant's server states them. */
@@ -78,10 +129,23 @@ async function fetchServerInvoice(origin: string, invoice: Invoice): Promise<Ser
   const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
   if (!res.ok) return null;
   const body = (await res.json()) as ServerInvoice;
-  // A server that answers about some other address is not talking about this
-  // invoice, whatever it claims.
-  if (!body || typeof body.amount !== "string") return null;
-  if (BigInt(body.receiveAddress) !== BigInt(invoice.receiveAddress!)) return null;
+  // Every field is checked before use. A response is data from a server, and
+  // an unexpected type here reaches string methods and BigInt() further down:
+  // `expiresAt: {"nope":1}` used to throw out of an un-awaited call and leave
+  // a blank page.
+  if (!body || typeof body !== "object") return null;
+  if (typeof body.amount !== "string" || typeof body.receiveAddress !== "string") return null;
+  if (typeof body.status !== "string") return null;
+  if (body.token !== undefined && typeof body.token !== "string") return null;
+  if (body.expiresAt !== null && body.expiresAt !== undefined && typeof body.expiresAt !== "number") return null;
+  // A server that answers about some other address, or some other token, is
+  // not talking about this invoice, whatever it claims.
+  try {
+    if (BigInt(body.receiveAddress) !== BigInt(invoice.receiveAddress!)) return null;
+  } catch {
+    return null;
+  }
+  if (body.token !== undefined && body.token !== invoice.token) return null;
   if (!/^\d+(\.\d{1,18})?$/.test(body.amount) || Number(body.amount) <= 0) return null;
   return body;
 }
@@ -92,8 +156,9 @@ async function fetchServerInvoice(origin: string, invoice: Invoice): Promise<Ser
  * observation and not the merchant's confirmation.
  */
 async function start(fromUrl: Invoice): Promise<void> {
+  const foreign = linkNamedAForeignWatcher();
   const origin = watcherOrigin();
-  if (!origin) return renderPayer(fromUrl, null);
+  if (!origin) return renderPayer(fromUrl, null, foreign);
   let server: ServerInvoice | null = null;
   let reachable = true;
   try {
@@ -105,13 +170,11 @@ async function start(fromUrl: Invoice): Promise<void> {
     server = null;
   }
   if (!server) {
-    const host = new URL(origin).host;
-    return renderError(
-      reachable
-        ? `The merchant's server at ${host} does not recognise this invoice. Do not pay it: ask the merchant for a fresh link.`
-        : `The merchant's server at ${host} could not be reached, so the amount on this link cannot be verified. ` +
-          "Reload in a moment. Paying an unverified link risks paying the wrong amount.",
-    );
+    // No server here is the normal case for the hosted copy of this page: it
+    // is served from GitHub Pages, which runs no watcher. Fall through to the
+    // link-only mode, which says exactly what it is, rather than refusing to
+    // render anything at all.
+    return renderPayer(fromUrl, null, foreign, reachable ? "unknown-invoice" : null);
   }
   if (server.status !== "watching") {
     return renderError(
@@ -121,7 +184,11 @@ async function start(fromUrl: Invoice): Promise<void> {
     );
   }
   // The server's number wins. The URL's was only ever a hint.
-  renderPayer({ ...fromUrl, amount: server.amount, expiresAt: server.expiresAt ?? undefined }, { origin, server, urlAmount: fromUrl.amount });
+  renderPayer(
+    { ...fromUrl, amount: server.amount, expiresAt: server.expiresAt ?? undefined },
+    { origin, server, urlAmount: fromUrl.amount },
+    foreign,
+  );
 }
 
 interface Authority {
@@ -231,7 +298,12 @@ async function reportWalletSupport(wallet: WalletApiAdapter): Promise<void> {
   }
 }
 
-async function renderPayer(invoice: Invoice, authority: Authority | null): Promise<void> {
+async function renderPayer(
+  invoice: Invoice,
+  authority: Authority | null,
+  foreignWatcher: string | null = null,
+  serverSaid: "unknown-invoice" | null = null,
+): Promise<void> {
   // Built node by node with textContent. These values come from the URL, and
   // interpolating them into innerHTML would let any link run script on this
   // origin and rewrite the address being paid.
@@ -252,15 +324,26 @@ async function renderPayer(invoice: Invoice, authority: Authority | null): Promi
   source.className = "check";
   if (authority) {
     source.classList.add("good");
-    source.textContent = `Terms confirmed by the merchant's server at ${new URL(authority.origin).host}.`;
+    source.textContent = `Terms confirmed by the merchant's server at ${new URL(authority.origin).host}, which serves this page.`;
     if (authority.urlAmount !== invoice.amount) {
       source.textContent += ` This link said ${authority.urlAmount} ${invoice.token}; the server says ${invoice.amount} ${invoice.token}, and the server is what counts.`;
     }
   } else {
+    source.classList.add("bad");
     source.textContent =
-      "The amount above comes from this link, not from a merchant server. This page can show you that " +
-      "the money arrived, but its receipt is not proof of payment to anyone else: the merchant confirms " +
-      "independently from the chain.";
+      "The amount and the destination above come from this link, and nothing here has checked them. " +
+      "Confirm both with the merchant through a channel you already trust before paying. " +
+      "This page can show you that the money arrived; its receipt is not proof of payment to anyone else.";
+    if (serverSaid === "unknown-invoice") {
+      source.textContent += " The server that hosts this page does not recognise this invoice id.";
+    }
+    if (foreignWatcher) {
+      // Named and neutralised, rather than silently dropped: a payer who was
+      // told to expect a watcher deserves to know it was ignored.
+      source.textContent +=
+        ` This link asked to be verified by ${foreignWatcher}, which is not the server hosting this page. ` +
+        "That request was ignored: a link cannot nominate its own auditor.";
+    }
   }
 
   const foot = document.createElement("p");
@@ -268,11 +351,16 @@ async function renderPayer(invoice: Invoice, authority: Authority | null): Promi
   foot.textContent = authority
     ? "Settlement is confirmed by the merchant's watcher, cross-checked here against public RPC. Payer identity is severed by the STRK20 pool. "
     : "Confirmation runs in this page over public RPC (balance delta on the invoice address). Payer identity is severed by the STRK20 pool. ";
+  // Built from the network this page is actually on, not hardcoded to mainnet
+  // Voyager. Note that a counterfactual (undeployed) receive address, which is
+  // the recommended setup, has no contract page: the link is to look up
+  // transfers, not to prove the account exists.
+  const explorer = EXPLORER_BASE[invoice.network];
   const link = document.createElement("a");
-  link.href = `https://voyager.online/contract/${encodeURIComponent(invoice.receiveAddress!)}`;
+  link.href = `${explorer}/contract/${encodeURIComponent(invoice.receiveAddress!)}`;
   link.target = "_blank";
   link.rel = "noreferrer";
-  link.textContent = "address on Voyager";
+  link.textContent = "look up this address";
   foot.append(link);
   app.append(title, memo, source, check, host, foot);
 

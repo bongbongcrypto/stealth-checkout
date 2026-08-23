@@ -32358,8 +32358,21 @@ var WalletApiAdapter = class {
    * move, and returned as null rather than zero when unreadable, so a caller
    * can say "unknown" instead of quietly promising the payer too low a total.
    */
+  /**
+   * The pool's flat fee, denominated in STRK.
+   *
+   * `get_fee_amount()` takes no arguments, so the pool cannot be charging a
+   * different fee per token: there is one figure, and it is STRK. Decoding it
+   * with the INVOICE's decimals and captioning it with the invoice's symbol
+   * printed "6 ETH" on an ETH invoice, which is neither the right unit nor a
+   * number anyone should add to a total. A non-STRK invoice gets null instead:
+   * unknown is the honest answer until the denomination is confirmed.
+   */
   async poolFee(token) {
-    const info = resolveToken(token, this.registry);
+    const strk = resolveToken("STRK", this.registry);
+    const asked = resolveToken(token, this.registry);
+    if (BigInt(asked.address) !== BigInt(strk.address)) return null;
+    const info = strk;
     if (this.feeCache !== void 0) return this.feeCache;
     try {
       const { RpcProvider: RpcProvider2 } = await Promise.resolve().then(() => (init_dist(), dist_exports));
@@ -32477,16 +32490,25 @@ var RPC_URL = "https://rpc.starknet.lava.build";
 var app = document.getElementById("app");
 var params = new URLSearchParams(location.search);
 var to = params.get("to");
+var TRUSTED_WATCHER = "";
 function watcherOrigin() {
-  const raw = params.get("watcher");
-  if (!raw) return null;
+  const candidate = TRUSTED_WATCHER || location.origin;
   try {
-    const url2 = new URL(raw);
+    const url2 = new URL(candidate);
     const local = url2.hostname === "localhost" || url2.hostname === "127.0.0.1";
     if (url2.protocol !== "https:" && !(url2.protocol === "http:" && local)) return null;
     return url2.origin;
   } catch {
     return null;
+  }
+}
+function linkNamedAForeignWatcher() {
+  const raw = params.get("watcher");
+  if (!raw) return null;
+  try {
+    return new URL(raw).origin === watcherOrigin() ? null : new URL(raw).host;
+  } catch {
+    return raw.slice(0, 60);
   }
 }
 if (!to) {
@@ -32499,8 +32521,16 @@ if (!to) {
     renderError("This invoice link has an invalid amount.");
   } else {
     void start({
-      id: (params.get("id") ?? `inv_${Date.now().toString(36)}`).slice(0, 64),
-      token: params.get("token") === "STRK" ? "STRK" : "STRK",
+      // A STABLE id, derived from the link's own terms when none is given.
+      // Minting `inv_${Date.now()}` per page load meant the double-send guard,
+      // which is keyed by invoice id, never matched its own record: a payer
+      // whose confirmation timed out reloaded and paid a second time, while
+      // the widget told them "it was sent once and will not be sent again".
+      id: (params.get("id") || linkId(to, amount, params.get("memo") ?? "")).slice(0, 64),
+      // Only STRK is served here: the widget resolves a token by symbol, and
+      // paying a `?token=ETH` link in STRK would send the wrong asset. This
+      // used to be a ternary with the same value on both sides.
+      token: "STRK",
       amount,
       memo: params.get("memo")?.slice(0, 140) || void 0,
       mode: "address",
@@ -32510,19 +32540,39 @@ if (!to) {
     });
   }
 }
+function linkId(to2, amount, memo) {
+  const input = `${to2.toLowerCase()}|${amount}|${memo}`;
+  let h1 = 2166136261;
+  let h2 = 16777619;
+  for (let i = 0; i < input.length; i++) {
+    h1 = Math.imul(h1 ^ input.charCodeAt(i), 16777619) >>> 0;
+    h2 = Math.imul(h2 + input.charCodeAt(i), 2246822507) >>> 0;
+  }
+  return `lnk_${h1.toString(36)}${h2.toString(36)}`;
+}
 async function fetchServerInvoice(origin, invoice) {
   const url2 = `${origin}/public/invoices/${encodeURIComponent(invoice.id)}?to=${encodeURIComponent(invoice.receiveAddress)}`;
   const res2 = await fetch(url2, { signal: AbortSignal.timeout(8e3) });
   if (!res2.ok) return null;
   const body = await res2.json();
-  if (!body || typeof body.amount !== "string") return null;
-  if (BigInt(body.receiveAddress) !== BigInt(invoice.receiveAddress)) return null;
+  if (!body || typeof body !== "object") return null;
+  if (typeof body.amount !== "string" || typeof body.receiveAddress !== "string") return null;
+  if (typeof body.status !== "string") return null;
+  if (body.token !== void 0 && typeof body.token !== "string") return null;
+  if (body.expiresAt !== null && body.expiresAt !== void 0 && typeof body.expiresAt !== "number") return null;
+  try {
+    if (BigInt(body.receiveAddress) !== BigInt(invoice.receiveAddress)) return null;
+  } catch {
+    return null;
+  }
+  if (body.token !== void 0 && body.token !== invoice.token) return null;
   if (!/^\d+(\.\d{1,18})?$/.test(body.amount) || Number(body.amount) <= 0) return null;
   return body;
 }
 async function start(fromUrl) {
+  const foreign = linkNamedAForeignWatcher();
   const origin = watcherOrigin();
-  if (!origin) return renderPayer(fromUrl, null);
+  if (!origin) return renderPayer(fromUrl, null, foreign);
   let server = null;
   let reachable = true;
   try {
@@ -32532,17 +32582,18 @@ async function start(fromUrl) {
     server = null;
   }
   if (!server) {
-    const host = new URL(origin).host;
-    return renderError(
-      reachable ? `The merchant's server at ${host} does not recognise this invoice. Do not pay it: ask the merchant for a fresh link.` : `The merchant's server at ${host} could not be reached, so the amount on this link cannot be verified. Reload in a moment. Paying an unverified link risks paying the wrong amount.`
-    );
+    return renderPayer(fromUrl, null, foreign, reachable ? "unknown-invoice" : null);
   }
   if (server.status !== "watching") {
     return renderError(
       server.status === "paid" || server.status === "paid_late" ? "This invoice has already been paid. Nothing more is owed, so this page will not take another payment." : `The merchant's server is no longer accepting payment for this invoice (${server.status.replace(/_/g, " ")}). Ask for a fresh link.`
     );
   }
-  renderPayer({ ...fromUrl, amount: server.amount, expiresAt: server.expiresAt ?? void 0 }, { origin, server, urlAmount: fromUrl.amount });
+  renderPayer(
+    { ...fromUrl, amount: server.amount, expiresAt: server.expiresAt ?? void 0 },
+    { origin, server, urlAmount: fromUrl.amount },
+    foreign
+  );
 }
 function renderError(message) {
   app.replaceChildren();
@@ -32632,7 +32683,7 @@ async function reportWalletSupport(wallet) {
     box.textContent = `Could not check your wallet: ${err instanceof Error ? err.message : String(err)}`;
   }
 }
-async function renderPayer(invoice, authority) {
+async function renderPayer(invoice, authority, foreignWatcher = null, serverSaid = null) {
   app.replaceChildren();
   const title = document.createElement("h1");
   title.textContent = `Invoice ${invoice.id}`;
@@ -32648,21 +32699,29 @@ async function renderPayer(invoice, authority) {
   source.className = "check";
   if (authority) {
     source.classList.add("good");
-    source.textContent = `Terms confirmed by the merchant's server at ${new URL(authority.origin).host}.`;
+    source.textContent = `Terms confirmed by the merchant's server at ${new URL(authority.origin).host}, which serves this page.`;
     if (authority.urlAmount !== invoice.amount) {
       source.textContent += ` This link said ${authority.urlAmount} ${invoice.token}; the server says ${invoice.amount} ${invoice.token}, and the server is what counts.`;
     }
   } else {
-    source.textContent = "The amount above comes from this link, not from a merchant server. This page can show you that the money arrived, but its receipt is not proof of payment to anyone else: the merchant confirms independently from the chain.";
+    source.classList.add("bad");
+    source.textContent = "The amount and the destination above come from this link, and nothing here has checked them. Confirm both with the merchant through a channel you already trust before paying. This page can show you that the money arrived; its receipt is not proof of payment to anyone else.";
+    if (serverSaid === "unknown-invoice") {
+      source.textContent += " The server that hosts this page does not recognise this invoice id.";
+    }
+    if (foreignWatcher) {
+      source.textContent += ` This link asked to be verified by ${foreignWatcher}, which is not the server hosting this page. That request was ignored: a link cannot nominate its own auditor.`;
+    }
   }
   const foot = document.createElement("p");
   foot.className = "muted small";
   foot.textContent = authority ? "Settlement is confirmed by the merchant's watcher, cross-checked here against public RPC. Payer identity is severed by the STRK20 pool. " : "Confirmation runs in this page over public RPC (balance delta on the invoice address). Payer identity is severed by the STRK20 pool. ";
+  const explorer = EXPLORER_BASE[invoice.network];
   const link = document.createElement("a");
-  link.href = `https://voyager.online/contract/${encodeURIComponent(invoice.receiveAddress)}`;
+  link.href = `${explorer}/contract/${encodeURIComponent(invoice.receiveAddress)}`;
   link.target = "_blank";
   link.rel = "noreferrer";
-  link.textContent = "address on Voyager";
+  link.textContent = "look up this address";
   foot.append(link);
   app.append(title, memo, source, check, host, foot);
   const provider = new RpcProvider({ nodeUrl: RPC_URL });

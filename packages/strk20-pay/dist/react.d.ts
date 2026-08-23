@@ -17,6 +17,12 @@
  *     const ref = useCheckout({ invoice, wallet, onPaid: (r) => console.log(r) });
  *     return <div ref={ref} />;
  *   }
+ *
+ * Keep `wallet` stable. It is in the effect's dependencies, because a
+ * different wallet is a different payment, so constructing the adapter inline
+ * (`wallet={new WalletApiAdapter(...)}`) makes a new one every render and
+ * remounts the widget each time, which would tear down a payment in flight.
+ * Build it once with `useMemo`, or above the component.
  */
 import { type MountOptions } from "./ui.js";
 /** The two hooks this needs, passed in rather than imported. */

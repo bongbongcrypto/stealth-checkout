@@ -17,6 +17,12 @@
  *     const ref = useCheckout({ invoice, wallet, onPaid: (r) => console.log(r) });
  *     return <div ref={ref} />;
  *   }
+ *
+ * Keep `wallet` stable. It is in the effect's dependencies, because a
+ * different wallet is a different payment, so constructing the adapter inline
+ * (`wallet={new WalletApiAdapter(...)}`) makes a new one every render and
+ * remounts the widget each time, which would tear down a payment in flight.
+ * Build it once with `useMemo`, or above the component.
  */
 import { mountCheckout, type MountOptions } from "./ui.js";
 
@@ -50,16 +56,23 @@ export function createCheckoutHook({ useEffect, useRef }: ReactLike): CheckoutHo
       return () => mounted.unmount();
       // Remount only when the payment's own terms change. Depending on `opts`
       // would remount on every parent render.
+      // Every field that changes what is paid, to whom, or under what terms.
+      // `mode` and `expiresAt` were missing: flipping mode while both
+      // addresses stayed the same kept the old widget, which then paid the
+      // wrong destination.
     }, [
       opts.invoice.id,
       opts.invoice.amount,
       opts.invoice.token,
+      opts.invoice.mode,
       opts.invoice.receiveAddress,
       opts.invoice.merchantPoolAddress,
       opts.invoice.network,
+      opts.invoice.expiresAt,
       opts.wallet,
       opts.label,
       opts.allowInlineShield,
+      opts.store,
     ]);
 
     return hostRef;

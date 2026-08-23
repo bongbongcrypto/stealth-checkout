@@ -72,10 +72,13 @@ const receipt = await checkout.pay(invoice);
 
 ## Things worth knowing before you ship
 
-- **The pool charges a flat fee per operation**, on top of the amount: 6 STRK on mainnet at the time
-  of writing, read live from the pool's `get_fee_amount()`. It is the same whether you move 1 STRK
-  or 1,000, so small invoices carry almost all of it. `wallet.poolFee(token)` returns it; the widget
-  adds it to the total before the payer signs and warns when it exceeds the invoice.
+- **The pool charges a flat fee per operation, and the direction is not obvious.** 6 STRK on mainnet
+  at the time of writing, read live from the pool's `get_fee_amount()`, the same whether you move
+  1 STRK or 1,000. It comes **out of** a deposit (send 20, get 14 credited) and **on top of** a
+  payment (spend 5, lose 11). So a payer who already holds shielded funds needs `amount + fee`, and
+  one who must deposit first needs `amount + 2 x fee`. `depositNeededFor` and `shieldedNeededFor`
+  are the two answers; do not compute either by hand. `wallet.poolFee(token)` returns the fee, in
+  STRK, or `null` for a token it is not denominated in.
 - **A deposit into the pool is public and screened.** Privacy comes from the transfer, not the
   deposit. Shielding the exact invoice amount moments before paying it is the strongest link an
   observer can get, which is why inline shielding is off by default.
@@ -95,6 +98,7 @@ const receipt = await checkout.pay(invoice);
 | `StealthCheckout` | UI-free payment orchestrator |
 | `WalletApiAdapter` | Privacy Wallet API adapter (Ready X and friends) |
 | `MockWallet` | Play-money wallet with the same interface |
+| `depositNeededFor`, `shieldedNeededFor` | What to deposit, and what to hold, given the fee |
 | `revealReport` | The honesty panel's rows, for your own UI |
 | `TOKENS`, `resolveToken`, `amountToUnits`, `unitsToAmount` | Token registry and amount maths |
 | `MATURITY_BLOCKS`, `POOL_ADDRESS`, `EXPLORER_BASE` | Protocol constants |

@@ -35,11 +35,23 @@ createServer(async (req, res) => {
     res.end(body);
   };
   try {
+    // Only loopback names. Without this the server answers any hostname that
+    // resolves to 127.0.0.1, so a page on the internet can rebind DNS and read
+    // whatever is under ROOT - which is the whole repository, .git included.
+    const host = (req.headers.host ?? "").split(":")[0].toLowerCase();
+    if (host && !["localhost", "127.0.0.1", "[::1]", "::1", ""].includes(host)) {
+      return send(403, "this dev server only answers to localhost");
+    }
+
     const rel = decodeURIComponent(new URL(req.url, "http://localhost").pathname);
     // Resolve first, then check containment: "../" and encoded variants must
     // not be able to read the rest of the disk.
     const target = resolve(join(ROOT, normalize(rel)));
     if (target !== ROOT && !target.startsWith(ROOT + sep)) return send(403, "forbidden");
+    // Nothing under a dot-directory. ROOT is the repository, so without this
+    // `/.git/config` is a 200 with the remote URL and any stored credentials.
+    const segments = target.slice(ROOT.length).split(sep).filter(Boolean);
+    if (segments.some((part) => part.startsWith("."))) return send(404, "not found");
 
     let file = target;
     const info = await stat(file).catch(() => null);

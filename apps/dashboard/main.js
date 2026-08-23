@@ -7,14 +7,25 @@ const statusEl = document.getElementById("status");
 const demoNote = document.getElementById("demo-note");
 const watcherInput = document.getElementById("f-watcher");
 
-watcherInput.value = localStorage.getItem("spay-watcher-url") ?? watcherInput.value;
 const tokenInput = document.getElementById("f-token");
-tokenInput.value = localStorage.getItem("spay-watcher-token") ?? "";
+
+// The token is NOT persisted, and the URL only is when this page is served
+// from a host of its own.
+//
+// github.io gives every Pages site on an account the SAME origin, so anything
+// in localStorage there is readable by any other page that account publishes,
+// and a hostile sibling could also rewrite the saved watcher URL and have this
+// dashboard post `Authorization: Bearer <token>` to it every ten seconds. A
+// merchant API token is not worth that convenience: retype it, or serve the
+// dashboard from your own host.
+const PERSISTENCE_IS_SAFE = !/(^|\.)github\.io$/i.test(location.hostname) && location.protocol !== "file:";
+if (PERSISTENCE_IS_SAFE) {
+  watcherInput.value = localStorage.getItem("spay-watcher-url") ?? watcherInput.value;
+}
 
 /** The watcher requires a bearer token; without it every call is a 401. */
 function authHeaders() {
   const token = tokenInput.value.trim();
-  localStorage.setItem("spay-watcher-token", token);
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
@@ -65,7 +76,7 @@ const DEMO_ROWS = [
 
 function watcherUrl() {
   const url = watcherInput.value.trim().replace(/\/$/, "");
-  localStorage.setItem("spay-watcher-url", url);
+  if (PERSISTENCE_IS_SAFE) localStorage.setItem("spay-watcher-url", url);
   return url;
 }
 
@@ -245,6 +256,26 @@ async function refresh() {
   } catch {
     render(DEMO_ROWS, true);
     statusEl.textContent = "";
+    reachable = false;
+    setControlsEnabled(false);
+    return;
+  }
+  reachable = true;
+  setControlsEnabled(true);
+}
+
+let reachable = true;
+
+/**
+ * With no watcher there is nothing to create an invoice in and nothing to
+ * export. Leaving the buttons live only bought the visitor a "Failed to fetch"
+ * with no action attached to it.
+ */
+function setControlsEnabled(on) {
+  for (const id of ["f-create", "f-export"]) {
+    const btn = document.getElementById(id);
+    btn.disabled = !on;
+    btn.title = on ? "" : "Start the watcher and set its URL above first";
   }
 }
 

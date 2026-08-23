@@ -82,9 +82,11 @@
     </div>
 
     <h2>Embed it</h2>
+    <p class="lede" style="font-size:14px">Not on npm yet: publishing is pending. Until then, clone the
+    repo and <code>npm install ./packages/strk20-pay</code>.</p>
     <pre><code>import { mountCheckout, WalletApiAdapter } from "strk20-pay";
 
-mountCheckout(document.getElementById("checkout"), {
+mountCheckout(document.getElementById("checkout")!, {
   invoice: {
     id: "order_1042",
     token: "STRK",
@@ -101,23 +103,24 @@ mountCheckout(document.getElementById("checkout"), {
 
     <h2>What it does that nothing else here does</h2>
     <ul class="facts">
-      <li><strong>Confirms without proving.</strong> Each invoice gets its own receive address and is
-      settled on the <em>delta</em> of that address's balance against a baseline captured at
-      registration. Public JSON-RPC is the only dependency.</li>
+      <li><strong>Confirms without proving.</strong> Each invoice gets its own receive address, and a
+      payment is the sum of transfers <em>into</em> it since it was registered, never the balance
+      sitting there. Public JSON-RPC is the only dependency.</li>
       <li><strong>Says what a payment reveals, before it is signed.</strong> The honesty panel is open
       by default and lists what goes on-chain and what does not. Overclaiming privacy is the one
       thing this must never do.</li>
-      <li><strong>Shows the pool's fee.</strong> The STRK20 pool charges a flat
-      <strong>6 STRK per operation</strong>, on top of the amount, and documents this nowhere. The
-      widget reads it from the contract, adds it to the total before you sign, and warns you when it
-      is larger than the invoice.</li>
+      <li><strong>Shows the pool's fee, and gets its direction right.</strong> The STRK20 pool charges
+      a flat <strong>6 STRK per operation</strong> and documents it nowhere. It comes <em>out of</em> a
+      deposit and <em>on top of</em> a payment, so a payer who has to shield first pays it twice: 22
+      STRK to settle a 10 STRK invoice. The widget reads it from the contract, quotes the real total
+      before you sign, and warns when it is larger than the invoice.</li>
       <li><strong>Never confirms money it did not see arrive.</strong> Partial payments become
       <code>underpaid</code> rather than <code>expired</code>, late ones become <code>paid_late</code>
       instead of being dropped, and an address is never released for reuse once anything has landed
       on it.</li>
       <li><strong>Signed webhooks that survive a restart.</strong> HMAC over
-      <code>timestamp.body</code>, a stable delivery id to dedupe on, a persisted retry queue, and a
-      redelivery endpoint.</li>
+      <code>timestamp.body</code>, one delivery id per event to dedupe on, a retry queue persisted with
+      the ledger, and a redelivery endpoint.</li>
     </ul>
 
     <h2>What it deliberately does not do</h2>

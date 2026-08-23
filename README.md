@@ -24,7 +24,7 @@ Stealth Checkout is that missing accepting side.
 
 | Piece | What it does |
 |---|---|
-| [`strk20-pay`](packages/strk20-pay) | Framework-agnostic TS widget, plus a React binding. One call renders the whole flow: connect → shield if needed → pay → confirmed → receipt. |
+| [`strk20-pay`](packages/strk20-pay) | Framework-agnostic TS widget, plus a React binding. One call renders the whole flow: connect → check balance → pay → confirmed → receipt. It refuses to shield for the payer by default, and says why. |
 | Hosted invoice page | `apps/pay-live/?to=0x…&amount=25&id=…&watcher=https://…` — a shareable payment link. With a `watcher`, the page reads the amount from the merchant's server instead of from its own query string. |
 | Watcher + webhooks | Confirms payments by watching per-invoice receive addresses over public RPC. No proving dependency, fully headless. Signed webhooks with a persisted retry queue. |
 | Merchant dashboard | Create invoices, watch them settle, release stuck rows, export the ledger as CSV. |
@@ -61,35 +61,55 @@ npm run dev              # demos at http://127.0.0.1:4173
 WATCHER_TOKEN=dev node server/watcher/watcher.mjs
 ```
 
-`npm run e2e:watcher` runs against mainnet without spending anything. It proves the watcher reads a real balance over public RPC, captures a baseline, and **refuses to confirm an address that merely holds funds**, then exercises the signed webhook path including timestamp binding and the persisted delivery queue. It deliberately does not prove that a real payment was detected: that needs someone to actually pay, and this script will not do that with your money.
+`npm run e2e:watcher` runs against mainnet without spending anything. It proves the watcher reads a real balance over public RPC, captures a baseline, and **refuses to confirm an address that merely holds funds**, then sends one signed webhook and checks the signature verifies, that a replayed timestamp does not, and that the delivery was recorded on the invoice row.
+
+It deliberately does not prove a real payment was detected: that needs someone to actually pay, and this script will not do that with your money. It also does not restart the process, so it does not prove the delivery queue survives one; the unit suite covers that.
 
 ## Repository layout
 
 ```
+index.html             # landing page, linking the three apps
 packages/strk20-pay/   # the embeddable checkout (core, adapters, React binding, honesty report)
 apps/demo-arcade/      # coin-op arcade demo store
 apps/pay-live/         # hosted invoice page (link creator + payer view)
 apps/dashboard/        # merchant dashboard
 server/watcher/        # RPC watcher, webhook dispatcher, invoice ledger
 server/dev-static.mjs  # no-cache static server for local demos
+docs/                  # integration guide, video script, announcement
 strk20.json            # sprint manifest (txs, demo, video)
 ```
 
 ## Verified on mainnet
 
-`strk20.json` lists seven Starknet mainnet transactions against the live STRK20 pool. Every one exists, SUCCEEDED, and carries pool events for the same account. Two of them are payments this checkout itself made:
+`strk20.json` lists seven Starknet mainnet transactions against the live STRK20 pool. Every one exists, SUCCEEDED, and reached L1.
 
 | Block | What it is | Tx |
 |---|---|---|
 | 13642789 | `ViewingKeySet` + `Deposit`: the one-time pool registration, then the opening shield | `0x30ecaffb...9b32` |
-| 13643191 | **`Withdrawal`: a private payment made through this checkout** | `0x32a6b74f...0140` |
+| 13643191 | `Withdrawal`: 5 STRK out of the pool to a chosen destination | `0x32a6b74f...0140` |
 | 13643247 | `Deposit` | `0x620188e2...bed3` |
 | 13643266 | `Deposit` | `0x365816d7...bdf1` |
 | 13645507 | `Deposit` | `0x1663fa3f...700b` |
-| 13645574 | **`Withdrawal`: a private payment made through this checkout** | `0x683df5a6...2c14` |
+| 13645574 | `Withdrawal`: 5 STRK out of the pool to a chosen destination | `0x683df5a6...2c14` |
 | 13645946 | `Deposit` | `0x5a054090...629d` |
 
-The ledger balances exactly: 55 STRK deposited, 10 withdrawn, 42 taken by the pool's flat per-operation fee (7 × 6 STRK), leaving 3 STRK shielded. That arithmetic is where the flat fee was found.
+**What these do and do not show.** The two withdrawals exercise the exact
+operation an invoice payment uses: shielded funds leaving the pool to a
+destination address, submitted by a relayer. Decode the STRK transfers and the
+sender of each is a different address, none of them the pool account: that is
+the pool severing the payer's identity, and it is real.
+
+They are **not** end-to-end payments to a merchant. Both sent their 5 STRK to
+`0x4ea15bf3…`, the same address that made all five deposits, because they were
+run as tests of the mechanism with the only funds available. A payment to a
+fresh per-invoice address is the same operation with a different destination
+felt, but this table would be overclaiming if it said one had happened.
+
+The ledger balances exactly, and this is where the pool's undocumented fee was
+found: 55 STRK deposited, 10 withdrawn, 42 taken as a flat 6 STRK on each of
+the seven operations, leaving 3 STRK shielded. The direction matters and is not
+obvious: the fee comes **out of** a deposit and **on top of** a withdrawal, so
+`20-6, -5-6, +5-6, +5-6, +20-6, -5-6, +5-6 = 3`.
 
 No contracts were deployed, so these are judged against the pool alone.
 

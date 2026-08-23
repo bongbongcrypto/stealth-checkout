@@ -16,7 +16,9 @@ wherever your users are: a button, a QR, a chat message.
    With it, the payer's page fetches the amount from your server and refuses
    the link if your server does not recognise it or has already settled it.
 4. Share the generated link. The payer gets a full checkout: wallet connect,
-   shield if needed, private payment, receipt.
+   private payment from their shielded balance, receipt. If they have not
+   shielded yet, the widget tells them what to shield and why, rather than
+   depositing for them.
 
 Watch the address yourself, or run the watcher (Tier 2) for webhooks.
 
@@ -88,7 +90,9 @@ mountCheckout(document.getElementById("pay")!, {
   // default is `async () => true`: the widget believes the payer and calls
   // onPaid without checking the chain. Point it at your own backend (Tier 2)
   // or a balance check you control.
-  confirm: (invoice, txHash) => fetch(`/api/paid?id=${invoice.id}`).then((r) => r.json()),
+  // MUST resolve to a boolean. `r.json()` resolves to an OBJECT, and every
+  // object is truthy, so `{"paid": false}` would ship the goods.
+  confirm: (invoice, txHash) => fetch(`/api/paid?id=${invoice.id}`).then((r) => r.json()).then((b) => b.paid === true),
   onPaid(receipt) {
     // unlock the thing they paid for
   },
@@ -127,9 +131,24 @@ WEBHOOK_SECRET=whsec_yours \
 node server/watcher/watcher.mjs
 ```
 
-`WATCHER_TOKEN` is required: without it the API refuses every request rather
+`WATCHER_TOKEN` is required: without it every merchant route refuses rather
 than starting open. Set `WATCHER_ORIGIN` to the exact origin of your dashboard
-if a browser needs to reach it; there is no wildcard.
+if a browser needs to reach it; that grant is an exact origin, never a wildcard.
+
+Two routes are deliberately outside the token, because the people who need them
+have no token:
+
+- `GET /healthz` returns `{ok:true}` and nothing else.
+- `GET /public/invoices/:id?to=0x…` returns one invoice's terms, and only to a
+  caller who presents both its id **and** its receive address, which is exactly
+  what a payment link carries. It is readable from any origin
+  (`Access-Control-Allow-Origin: *`) because a payer's page is not your
+  dashboard; it carries no credentials, so that grant gives a script nothing a
+  plain `fetch` could not already have. It never returns baselines, webhook
+  state, or anything else from your ledger.
+
+Bind the watcher to loopback and put your own proxy in front if that is not the
+trade you want.
 
 ```bash
 # register an invoice to watch

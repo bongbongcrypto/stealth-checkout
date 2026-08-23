@@ -53,6 +53,16 @@ export declare class WalletApiAdapter implements WalletAdapter {
      * move, and returned as null rather than zero when unreadable, so a caller
      * can say "unknown" instead of quietly promising the payer too low a total.
      */
+    /**
+     * The pool's flat fee, denominated in STRK.
+     *
+     * `get_fee_amount()` takes no arguments, so the pool cannot be charging a
+     * different fee per token: there is one figure, and it is STRK. Decoding it
+     * with the INVOICE's decimals and captioning it with the invoice's symbol
+     * printed "6 ETH" on an ETH invoice, which is neither the right unit nor a
+     * number anyone should add to a total. A non-STRK invoice gets null instead:
+     * unknown is the honest answer until the denomination is confirmed.
+     */
     poolFee(token: string): Promise<Amount | null>;
     shield(token: string, amount: Amount): Promise<{
         txHash: string;

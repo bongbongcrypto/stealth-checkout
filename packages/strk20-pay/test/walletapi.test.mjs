@@ -12,10 +12,16 @@ test("token math: units and felts", () => {
   assert.throws(() => amountToUnits("1.2345678", 6), /Invalid amount/);
 });
 
-test("token registry: symbols resolve, raw addresses pass through, junk throws", () => {
+test("token registry: known symbols resolve, everything else must declare decimals", () => {
   assert.equal(resolveToken("STRK").address, STRK);
-  assert.equal(resolveToken("0x0abc").address, "0x0abc");
+  assert.equal(resolveToken("STRK").decimals, 18);
+  // A bare address used to resolve with an ASSUMED 18 decimals. For a
+  // 6-decimal token that builds a transfer 10^12 times too large, and the
+  // payer signs it. Refusing is the only safe answer.
+  assert.throws(() => resolveToken("0x0abc"), /Decimals are never assumed/);
   assert.throws(() => resolveToken("DOGE"), /Unknown token/);
+  const registry = { USDC: { address: "0x0usdc", decimals: 6 } };
+  assert.equal(resolveToken("USDC", registry).decimals, 6);
 });
 
 test("action builders produce exact Wallet API shapes", () => {

@@ -8,6 +8,15 @@ const demoNote = document.getElementById("demo-note");
 const watcherInput = document.getElementById("f-watcher");
 
 watcherInput.value = localStorage.getItem("spay-watcher-url") ?? watcherInput.value;
+const tokenInput = document.getElementById("f-token");
+tokenInput.value = localStorage.getItem("spay-watcher-token") ?? "";
+
+/** The watcher requires a bearer token; without it every call is a 401. */
+function authHeaders() {
+  const token = tokenInput.value.trim();
+  localStorage.setItem("spay-watcher-token", token);
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 const DEMO_ROWS = [
   { id: "inv_demo1", amount: "2", token: "STRK", receiveAddress: "0x04a1…fresh1", status: "paid", txHash: "0x07c0…9f2a" },
@@ -98,7 +107,15 @@ function render(invoices, demo) {
 async function refresh() {
   statusEl.textContent = "loading…";
   try {
-    const res = await fetch(`${watcherUrl()}/invoices`, { signal: AbortSignal.timeout(3000) });
+    const res = await fetch(`${watcherUrl()}/invoices`, {
+      headers: authHeaders(),
+      signal: AbortSignal.timeout(3000),
+    });
+    if (res.status === 401) {
+      render([], false);
+      statusEl.textContent = "watcher rejected the token: paste the WATCHER_TOKEN you started it with";
+      return;
+    }
     if (!res.ok) throw new Error();
     const invoices = await res.json();
     render(invoices, false);
@@ -118,7 +135,7 @@ document.getElementById("f-create").addEventListener("click", async () => {
   try {
     const res = await fetch(`${watcherUrl()}/invoices`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({ ...(id ? { id } : {}), token: "STRK", amount, receiveAddress: to }),
       signal: AbortSignal.timeout(5000),
     });

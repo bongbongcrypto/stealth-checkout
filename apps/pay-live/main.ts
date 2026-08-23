@@ -21,17 +21,35 @@ const to = params.get("to");
 
 if (!to) {
   renderCreator();
+} else if (!/^0x[0-9a-fA-F]{10,64}$/.test(to)) {
+  // A malformed address would send an unshield into the void. Refuse loudly.
+  renderError("This invoice link has an invalid receive address, so it cannot be paid safely.");
 } else {
-  void renderPayer({
-    id: params.get("id") ?? `inv_${Date.now().toString(36)}`,
-    token: params.get("token") ?? "STRK",
-    amount: params.get("amount") ?? "2",
-    memo: params.get("memo") ?? undefined,
-    mode: "address",
-    receiveAddress: to,
-    network: "mainnet",
-    createdAt: Date.now(),
-  });
+  const amount = params.get("amount") ?? "2";
+  if (!/^\d+(\.\d{1,18})?$/.test(amount) || Number(amount) <= 0) {
+    renderError("This invoice link has an invalid amount.");
+  } else {
+    void renderPayer({
+      id: (params.get("id") ?? `inv_${Date.now().toString(36)}`).slice(0, 64),
+      token: params.get("token") === "STRK" ? "STRK" : "STRK",
+      amount,
+      memo: params.get("memo")?.slice(0, 140) || undefined,
+      mode: "address",
+      receiveAddress: to,
+      network: "mainnet",
+      createdAt: Date.now(),
+    });
+  }
+}
+
+function renderError(message: string): void {
+  app.replaceChildren();
+  const h = document.createElement("h1");
+  h.textContent = "Invalid invoice link";
+  const p = document.createElement("p");
+  p.className = "muted";
+  p.textContent = message;
+  app.append(h, p);
 }
 
 function renderCreator(): void {
@@ -58,7 +76,7 @@ function renderCreator(): void {
     const url = new URL(location.href);
     url.search = new URLSearchParams({ to: toValue, amount, ...(memo ? { memo } : {}) }).toString();
     out.hidden = false;
-    out.innerHTML = "";
+    out.replaceChildren();
     const link = document.createElement("a");
     link.href = url.toString();
     link.textContent = url.toString();
@@ -108,15 +126,32 @@ async function reportWalletSupport(wallet: WalletApiAdapter): Promise<void> {
 }
 
 async function renderPayer(invoice: Invoice): Promise<void> {
-  app.innerHTML = `
-    <h1>Invoice ${invoice.id}</h1>
-    <p class="muted">${invoice.memo ?? "Private payment on Starknet mainnet"}</p>
-    <div id="wallet-check" class="check"></div>
-    <div id="checkout"></div>
-    <p class="muted small">Confirmation runs in this page over public RPC (balance delta on the
-    invoice address). Payer identity is severed by the STRK20 pool.
-    <a href="https://voyager.online/contract/${invoice.receiveAddress}" target="_blank" rel="noreferrer">address on Voyager ↗</a></p>
-  `;
+  // Built node by node with textContent. These values come from the URL, and
+  // interpolating them into innerHTML would let any link run script on this
+  // origin and rewrite the address being paid.
+  app.replaceChildren();
+  const title = document.createElement("h1");
+  title.textContent = `Invoice ${invoice.id}`;
+  const memo = document.createElement("p");
+  memo.className = "muted";
+  memo.textContent = invoice.memo ?? "Private payment on Starknet mainnet";
+  const check = document.createElement("div");
+  check.id = "wallet-check";
+  check.className = "check";
+  const host = document.createElement("div");
+  host.id = "checkout";
+  const foot = document.createElement("p");
+  foot.className = "muted small";
+  foot.textContent =
+    "Confirmation runs in this page over public RPC (balance delta on the invoice address). " +
+    "Payer identity is severed by the STRK20 pool. ";
+  const link = document.createElement("a");
+  link.href = `https://voyager.online/contract/${encodeURIComponent(invoice.receiveAddress!)}`;
+  link.target = "_blank";
+  link.rel = "noreferrer";
+  link.textContent = "address on Voyager";
+  foot.append(link);
+  app.append(title, memo, check, host, foot);
 
   const provider = new RpcProvider({ nodeUrl: RPC_URL });
   const token = resolveToken(invoice.token, TOKENS);
@@ -129,11 +164,23 @@ async function renderPayer(invoice: Invoice): Promise<void> {
     return BigInt(res[0] ?? "0x0") + (BigInt(res[1] ?? "0x0") << 128n);
   };
 
+  // The baseline is the whole safety property. Retry rather than fall back to
+  // an absolute check: an address that already holds funds would confirm
+  // instantly and the payer would be told "paid" without paying.
   let baseline: bigint | null = null;
-  try {
-    baseline = await readBalance();
-  } catch {
-    baseline = null; // RPC hiccup at load: fall back to absolute check at confirm time
+  for (let attempt = 0; attempt < 5 && baseline === null; attempt++) {
+    try {
+      baseline = await readBalance();
+    } catch {
+      await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+    }
+  }
+  if (baseline === null) {
+    const box = document.getElementById("wallet-check")!;
+    box.className = "check bad";
+    box.textContent =
+      "Could not read this invoice address from the network, so a payment cannot be confirmed here. Reload in a moment.";
+    return;
   }
 
   const wallet = new WalletApiAdapter({ network: "mainnet", rpcUrl: RPC_URL });
@@ -146,9 +193,8 @@ async function renderPayer(invoice: Invoice): Promise<void> {
       const started = Date.now();
       while (Date.now() - started < 10 * 60_000) {
         try {
-          const now = await readBalance();
-          const delta = baseline === null ? now : now - baseline;
-          if (delta >= target) return true;
+          const received = (await readBalance()) - baseline;
+          if (received >= target) return true;
         } catch {
           /* RPC refusal is not a chain answer: keep polling */
         }

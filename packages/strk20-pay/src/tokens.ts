@@ -14,15 +14,24 @@ export const TOKENS: Record<string, TokenInfo> = {
 export function resolveToken(symbolOrAddress: string, registry: Record<string, TokenInfo> = TOKENS): TokenInfo {
   const known = registry[symbolOrAddress];
   if (known) return known;
-  if (/^0x[0-9a-fA-F]+$/.test(symbolOrAddress)) return { address: symbolOrAddress, decimals: 18 };
-  throw new Error(`Unknown token "${symbolOrAddress}": register it with an address and decimals.`);
+  // Never guess decimals. Assuming 18 for a 6-decimal token such as USDC
+  // builds a transfer for a million million times the intended amount, and
+  // the payer signs it. Make the caller declare it.
+  throw new Error(
+    `Unknown token "${symbolOrAddress}". Register it first: ` +
+      `resolveToken("${symbolOrAddress}", { ...TOKENS, MYTOKEN: { address, decimals } }), ` +
+      `or pass a registry entry via the tokens option. Decimals are never assumed.`,
+  );
 }
 
 /** Decimal-string amount → integer units for the token. Pure bigint math. */
 export function amountToUnits(amount: Amount, decimals: number): bigint {
-  const [ip = "0", fp = ""] = String(amount).trim().split(".");
-  if (!/^\d+$/.test(ip || "0") || !/^\d*$/.test(fp) || fp.length > decimals) {
-    throw new Error(`Invalid amount: ${amount}`);
+  const s = String(amount).trim();
+  // One dot, digits only, non-empty. "1.2.3" used to parse as 1.2, and "" as 0.
+  if (!/^\d+(\.\d+)?$/.test(s)) throw new Error(`Invalid amount: ${JSON.stringify(amount)}`);
+  const [ip = "0", fp = ""] = s.split(".");
+  if (fp.length > decimals) {
+    throw new Error(`Invalid amount: ${amount} has more than ${decimals} decimal places`);
   }
   return BigInt(ip || "0") * 10n ** BigInt(decimals) + BigInt(fp.padEnd(decimals, "0") || "0");
 }

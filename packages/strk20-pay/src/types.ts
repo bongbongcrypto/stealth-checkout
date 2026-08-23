@@ -6,8 +6,12 @@ export type Network = "mainnet" | "sepolia";
 export interface Invoice {
   /** Merchant-scoped unique id, also the hosted page slug. */
   id: string;
-  /** ERC-20 the merchant prices in. Symbol resolved via the token registry. */
-  token: "STRK" | "USDC" | (string & {});
+  /**
+   * ERC-20 the merchant prices in, resolved via the token registry. Only
+   * symbols present in that registry work: anything else must be registered
+   * with its decimals first. STRK and ETH ship by default.
+   */
+  token: "STRK" | "ETH" | (string & {});
   amount: Amount;
   /** Shown to the payer and kept on the receipt. Never written on-chain. */
   memo?: string;

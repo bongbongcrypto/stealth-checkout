@@ -191,3 +191,36 @@ test("by default the widget refuses to shield inline, and says why", async () =>
   assert.ok(!phases.includes("shielding"), "no deposit is made");
   assert.equal(await wallet.publicBalance("STRK"), "10", "no funds moved");
 });
+
+test("a retry after a failed confirmation never sends money twice", async () => {
+  // The chain was slow, confirmation timed out, the widget offered Retry.
+  // Before the fix this broadcast a second unshield and the payer paid twice.
+  const wallet = fastWallet();
+  let confirmations = 0;
+  const checkout = new StealthCheckout(wallet, async () => ++confirmations > 1, true);
+
+  await assert.rejects(() => checkout.pay(invoice()), /was sent once and will not be sent again/);
+  const spentAfterFirst = await wallet.shieldedBalance("STRK");
+
+  const receipt = await checkout.pay(invoice());
+  assert.equal(receipt.invoiceId, "inv-1");
+  assert.equal(
+    await wallet.shieldedBalance("STRK"),
+    spentAfterFirst,
+    "the retry must confirm the existing payment, not make a new one",
+  );
+});
+
+test("the receipt reports the wallet's network, not the invoice's claim", async () => {
+  const wallet = fastWallet(); // sepolia
+  const checkout = new StealthCheckout(wallet, undefined, true);
+  const receipt = await checkout.pay(invoice({ network: "sepolia" }));
+  assert.equal(receipt.network, "sepolia");
+});
+
+test("paying a mainnet invoice from a sepolia wallet is refused before any prompt", async () => {
+  const wallet = fastWallet();
+  const checkout = new StealthCheckout(wallet, undefined, true);
+  await assert.rejects(() => checkout.pay(invoice({ network: "mainnet" })), /invoice is for mainnet.*wallet is on sepolia/);
+  assert.equal(await wallet.publicBalance("STRK"), "10", "no funds moved");
+});

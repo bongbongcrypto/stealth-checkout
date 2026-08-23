@@ -17,7 +17,7 @@
     label { font-size:11.5px; color:var(--muted); display:block; }
     input { display:block; margin-top:3px; padding:8px 10px; border:1px solid var(--line);
       border-radius:8px; background:var(--panel); color:var(--fg); font-size:13px; }
-    #f-id { width:110px; } #f-amount { width:90px; } #f-to { width:270px; } #f-watcher { width:210px; }
+    #f-id { width:110px; } #f-token { width:150px; } #f-amount { width:90px; } #f-to { width:270px; } #f-watcher { width:210px; }
     button { padding:9px 14px; border:0; border-radius:8px; cursor:pointer;
       background:var(--green); color:#08110a; font-weight:700; font-size:13px; }
     button.ghost { background:transparent; color:var(--muted); border:1px solid var(--line); }
@@ -41,6 +41,7 @@
 
     <div class="bar">
       <div><label>Watcher URL</label><input id="f-watcher" value="http://127.0.0.1:8787" /></div>
+      <div><label>Watcher token</label><input id="f-token" type="password" placeholder="WATCHER_TOKEN" /></div>
       <div><label>Invoice id</label><input id="f-id" placeholder="auto" /></div>
       <div><label>Amount (STRK)</label><input id="f-amount" value="2" /></div>
       <div><label>Receive address (fresh per invoice)</label><input id="f-to" placeholder="0x…" /></div>

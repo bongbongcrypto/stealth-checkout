@@ -18,12 +18,14 @@ Watch the address yourself, or run the watcher (Tier 2) for webhooks.
 
 ## Tier 1: drop-in widget (a few lines)
 
-The widget is plain ESM. If you bundle your app (Vite, Next, esbuild), install
-from git and mount it:
+The widget is plain ESM. It is not on npm yet, and a plain git install does NOT
+work: npm would fetch the monorepo root, which exports nothing. Vendor the
+package folder instead. Two commands, and you own the copy (MIT):
 
 ```bash
-npm install "git+https://github.com/bongbongcrypto/stealth-checkout.git#main"
-# the package lives at packages/strk20-pay; or simply copy that folder (MIT)
+git clone --depth 1 https://github.com/bongbongcrypto/stealth-checkout.git /tmp/sc
+cp -r /tmp/sc/packages/strk20-pay ./vendor/strk20-pay
+npm install ./vendor/strk20-pay
 ```
 
 ```ts
@@ -41,11 +43,20 @@ mountCheckout(document.getElementById("pay")!, {
     createdAt: Date.now(),
   },
   wallet: new WalletApiAdapter({ network: "mainnet" }),
+  // REQUIRED IF ANYTHING OF VALUE DEPENDS ON THIS. Without `confirm`, the
+  // default is `async () => true`: the widget believes the payer and calls
+  // onPaid without checking the chain. Point it at your own backend (Tier 2)
+  // or a balance check you control.
+  confirm: (invoice, txHash) => fetch(`/api/paid?id=${invoice.id}`).then((r) => r.json()),
   onPaid(receipt) {
     // unlock the thing they paid for
   },
 });
 ```
+
+> The widget refuses to pay when `wallet.network` and `invoice.network` differ,
+> and the receipt always reports the wallet's network, never the invoice's
+> claim. A testnet payment can never mint a mainnet-looking receipt.
 
 That renders the button, the progress line, the pre-sign honesty panel, and the
 receipt. No React required; a React wrapper is a `useEffect` around this call.
@@ -86,15 +97,24 @@ Your endpoint receives:
 
 ```json
 { "event": "payment.confirmed",
+  "deliveryId": "dlv_4f3c…",
   "invoice": { "id": "order-42", "token": "STRK", "amount": "5",
-               "receiveAddress": "0x...", "txHash": "0x...", "confirmedAt": 1756600000000 } }
+               "receiveAddress": "0x04ea…", "txHash": "0x30ec…", "receivedUnits": "5000000000000000000",
+               "confirmedAt": 1756600000000 } }
 ```
 
-Verify the `X-Spay-Signature` header with HMAC-SHA256 over the raw body
-(`verifySignature` in `server/watcher/lib.mjs` is the reference).
+`txHash` is best effort and may be `null`; the confirmation itself rests on the
+balance delta, so never require the hash to be present.
 
-Prove it works before wiring anything: `npm run e2e:watcher` runs the whole
-confirm-and-webhook loop against Starknet mainnet without spending anything.
+Verify with `verifySignature(secret, rawBody, signature, timestamp)` from
+`server/watcher/lib.mjs`. The signature covers `timestamp.body`, sent in
+`X-Spay-Signature` and `X-Spay-Timestamp`, and anything older than five minutes
+is rejected, so a captured delivery cannot be replayed later. Retries reuse the
+same `deliveryId`: dedupe on it.
+
+Sanity-check the whole thing before wiring it up: `npm run e2e:watcher` reads
+mainnet, asserts that a heavily funded address is NOT treated as paid, and
+exercises the signed webhook including replay rejection. It spends nothing.
 
 ## Why the widget will not shield for your payer
 
@@ -116,17 +136,40 @@ Whatever tier you use, tell your users the truth. With STRK20 today:
 |---|---|
 | Deposits into the pool: depositor, token, amount (compliance-screened) | Note-to-note transfers: amounts and both parties |
 | An unshield's destination address and amount | Which deposit funded it, and the payer's wallet |
-| Timing of pool interactions | The merchant's total revenue (fresh address per invoice) |
+| Timing of pool interactions | A merchant's revenue, to anyone watching one invoice address |
+
+Two limits on that last row, because it is easy to overclaim:
+
+- Sweeping several invoice addresses into one treasury links them on-chain, and
+  the total becomes visible after all. Shield the proceeds instead if that
+  matters.
+- Your own invoice ledger knows everything. Keep the watcher's API token secret
+  and its origin allowlist tight.
 
 A distinctive amount paid right after a distinctive deposit is correlatable.
-Advise payers to shield ahead of time, or more than they spend. The widget's
+Advise payers to shield ahead of time, and more than they spend. The widget's
 pre-sign panel says all of this automatically.
+
+One more path the on-chain view does not cover: the hosted page confirms by
+polling a public RPC from the payer's browser, so that RPC operator can see one
+IP watching one invoice address. Self-host the RPC, or use the watcher, if that
+is in your threat model.
 
 ## Getting funds out (merchant side)
 
-Each paid invoice leaves funds on its own fresh address. Sweep them on your own
-schedule; consider shielding them again if you want your treasury private. Fresh
-addresses are just Starknet accounts: generate a keypair per invoice and deploy
-lazily, or use subaddresses of an account you already control.
+**This part is yours to build, and it is not small.** Each invoice needs its own
+fresh Starknet account, and this repo ships no key management: no derivation, no
+keystore, no deployment, no sweeper. What a real merchant needs:
+
+1. Derive a keypair per invoice from one seed you keep offline.
+2. Compute the counterfactual account address, and hand that to the invoice. It
+   does not need deploying to receive an ERC-20.
+3. To move the funds, deploy the account (it needs a little STRK for its own
+   deploy fee) and transfer out. Budget that fee per invoice.
+4. Note that a sweep to one treasury address links those invoice addresses
+   together on-chain. Shielding the proceeds instead keeps them apart.
+
+Until you have that, use the hosted links (Tier 0) with addresses you generate
+by hand.
 
 Questions? Open an issue, or find us in the sprint Telegram (@bongbongcrypto).

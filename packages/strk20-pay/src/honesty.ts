@@ -28,7 +28,8 @@ export function revealReport(invoice: Invoice, willShieldFirst: boolean): Reveal
         fact: "The link between your wallet and this payment",
         visibility: "hidden",
         detail:
-          "The withdrawal is submitted by the pool's relayers. Your wallet address appears nowhere in the paying transaction.",
+          "Privacy wallets submit this through the pool's relayers, so your address is not the sender of the paying transaction. " +
+          "The strength of that depends on your wallet, and on the deposit that funded it not standing out.",
       },
       {
         fact: "The merchant's other income",
@@ -57,8 +58,18 @@ export function revealReport(invoice: Invoice, willShieldFirst: boolean): Reveal
     fact: "Timing correlation",
     visibility: "public",
     detail:
-      "A distinctive amount paid shortly after a distinctive deposit can be correlated. Shield ahead of time, or shield more than you spend.",
+      "A distinctive amount paid shortly after a distinctive deposit can be correlated. Shield ahead of time, and shield more than you spend.",
   });
+
+  if (willShieldFirst) {
+    items.push({
+      fact: "Shielding right now, for this payment",
+      visibility: "public",
+      detail:
+        "Depositing the exact invoice amount moments before paying it is the strongest link an observer can get. " +
+        "This is why the checkout asks you to shield in your wallet ahead of time instead.",
+    });
+  }
 
   return items;
 }

@@ -13,8 +13,9 @@
 //   GET  /healthz
 
 import { createServer } from "node:http";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import {
   TOKENS,
   balanceOfRequest,
@@ -31,7 +32,11 @@ const PORT = Number(process.env.WATCHER_PORT ?? 8787);
 const POLL_MS = Number(process.env.WATCHER_POLL_MS ?? 15_000);
 const WEBHOOK_URL = process.env.WEBHOOK_URL ?? "";
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET ?? "";
-const STORE_PATH = process.env.WATCHER_STORE ?? new URL("./invoices.json", import.meta.url).pathname;
+/** Required. Every request must carry `Authorization: Bearer <token>`. */
+const API_TOKEN = process.env.WATCHER_TOKEN ?? "";
+/** Exact origin allowed to call this from a browser. No wildcard. */
+const ALLOWED_ORIGIN = process.env.WATCHER_ORIGIN ?? "";
+const STORE_PATH = process.env.WATCHER_STORE ?? fileURLToPath(new URL("./invoices.json", import.meta.url));
 
 /** @type {Map<string, any>} */
 const invoices = new Map();
@@ -52,6 +57,19 @@ async function rpc(body) {
 
 async function currentBlock() {
   return rpc({ jsonrpc: "2.0", id: ++rpcId, method: "starknet_blockNumber", params: [] });
+}
+
+let polling = false;
+
+/** Guarded so two cycles never confirm the same invoice and double-fire. */
+export async function pollLoop() {
+  if (polling) return;
+  polling = true;
+  try {
+    await pollOnce();
+  } finally {
+    polling = false;
+  }
 }
 
 async function pollOnce() {
@@ -86,25 +104,40 @@ async function findTxHash(inv) {
 }
 
 async function deliverWebhook(inv, attempt = 1) {
-  const url = inv.webhookUrl || WEBHOOK_URL;
-  if (!url) return;
+  // Server configuration only. An invoice can never name its own endpoint.
+  if (!WEBHOOK_URL) return;
+  if (!WEBHOOK_SECRET) {
+    // Sending unsigned would let anyone who can reach the merchant's endpoint
+    // forge a confirmation. Refuse instead of downgrading silently.
+    log(`webhook ${inv.id} NOT SENT: WEBHOOK_SECRET is unset, refusing to send unsigned`);
+    return;
+  }
+  const deliveryId = inv.deliveryId ?? `dlv_${randomUUID()}`;
+  if (!inv.deliveryId) {
+    inv.deliveryId = deliveryId;
+    invoices.set(inv.id, inv);
+  }
   const body = JSON.stringify({
     event: "payment.confirmed",
+    deliveryId, // stable across retries: merchants dedupe on this
     invoice: {
       id: inv.id,
       token: inv.token,
       amount: inv.amount,
       receiveAddress: inv.receiveAddress,
-      txHash: inv.txHash,
+      txHash: inv.txHash ?? null,
+      receivedUnits: inv.receivedUnits ?? null,
       confirmedAt: inv.confirmedAt,
     },
   });
+  const timestamp = Math.floor(Date.now() / 1000);
   try {
-    const res = await fetch(url, {
+    const res = await fetch(WEBHOOK_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(WEBHOOK_SECRET ? { "X-Spay-Signature": signPayload(WEBHOOK_SECRET, body) } : {}),
+        "X-Spay-Timestamp": String(timestamp),
+        "X-Spay-Signature": signPayload(WEBHOOK_SECRET, body, timestamp),
       },
       body,
       signal: AbortSignal.timeout(10_000),
@@ -115,12 +148,15 @@ async function deliverWebhook(inv, attempt = 1) {
   } catch (err) {
     log(`webhook ${inv.id} attempt ${attempt} failed: ${err.message}`);
     if (attempt < 5) setTimeout(() => deliverWebhook(inv, attempt + 1), attempt * 30_000);
+    else log(`webhook ${inv.id} GAVE UP after ${attempt} attempts; query GET /invoices/${inv.id} to reconcile`);
   }
 }
 
 function resolveToken(body) {
   if (body.tokenAddress) {
-    if (typeof body.decimals !== "number") throw new Error("decimals required with tokenAddress");
+    if (!Number.isInteger(body.decimals) || body.decimals < 0 || body.decimals > 36) {
+      throw new Error("decimals must be an integer between 0 and 36");
+    }
     return { token: body.token ?? "CUSTOM", tokenAddress: body.tokenAddress, decimals: body.decimals };
   }
   const known = TOKENS[body.token];
@@ -128,25 +164,49 @@ function resolveToken(body) {
   return { token: body.token, tokenAddress: known.address, decimals: known.decimals };
 }
 
-function createInvoice(body) {
-  if (!body.receiveAddress || !/^0x[0-9a-fA-F]+$/.test(body.receiveAddress)) {
-    throw new Error("receiveAddress (hex) is required: one fresh address per invoice");
+/**
+ * Register an invoice. The baseline balance is read HERE, once, so payment is
+ * always judged as a delta. Callers cannot choose the webhook URL: letting
+ * them would turn this into an oracle that signs arbitrary bodies with the
+ * merchant's secret.
+ */
+async function createInvoice(body) {
+  if (!body.receiveAddress || !/^0x[0-9a-fA-F]{10,}$/.test(body.receiveAddress)) {
+    throw new Error("receiveAddress (hex, 10+ digits) is required: one fresh address per invoice");
   }
   const { token, tokenAddress, decimals } = resolveToken(body);
-  toUnits(body.amount, decimals); // validate amount format early
+  const amount = String(body.amount ?? "");
+  const target = toUnits(amount, decimals); // validates format
+  if (target <= 0n) throw new Error("amount must be greater than zero");
+  if (body.expiresAt !== undefined && !Number.isFinite(Number(body.expiresAt))) {
+    throw new Error("expiresAt must be a millisecond timestamp");
+  }
+
+  const id = String(body.id ?? `inv_${randomUUID().slice(0, 8)}`);
+  if (!/^[\w.-]{1,64}$/.test(id)) throw new Error("id must be 1-64 chars of [A-Za-z0-9_.-]");
+  if (invoices.has(id)) throw new Error(`Invoice ${id} already exists`);
+
+  // One address, one invoice. Sharing an address lets a single payment
+  // confirm several orders.
+  for (const other of invoices.values()) {
+    if (other.status === "watching" && BigInt(other.receiveAddress) === BigInt(body.receiveAddress)) {
+      throw new Error(`receiveAddress is already watched by invoice ${other.id}; use a fresh address`);
+    }
+  }
+
+  const baseline = u256FromCallResult(await rpc(balanceOfRequest(tokenAddress, body.receiveAddress, ++rpcId)));
   const inv = {
-    id: body.id ?? `inv_${randomUUID().slice(0, 8)}`,
+    id,
     token,
     tokenAddress,
     decimals,
-    amount: String(body.amount),
+    amount,
     receiveAddress: body.receiveAddress,
-    webhookUrl: body.webhookUrl,
-    expiresAt: body.expiresAt,
+    baselineUnits: baseline.toString(),
+    expiresAt: body.expiresAt === undefined ? undefined : Number(body.expiresAt),
     status: "watching",
     createdAt: Date.now(),
   };
-  if (invoices.has(inv.id)) throw new Error(`Invoice ${inv.id} already exists`);
   invoices.set(inv.id, inv);
   return inv;
 }
@@ -154,18 +214,28 @@ function createInvoice(body) {
 async function persist() {
   try {
     await writeFile(STORE_PATH, JSON.stringify([...invoices.values()], null, 2));
-  } catch {
-    /* persistence is best-effort; the chain is the source of truth */
+  } catch (err) {
+    // Loud, because the invoice-to-order mapping lives ONLY here. Losing it
+    // means a paid invoice can never be matched back to an order.
+    log(`PERSISTENCE FAILED (${STORE_PATH}): ${err.message}`);
   }
 }
 
 async function restore() {
+  let raw;
   try {
-    const rows = JSON.parse(await readFile(STORE_PATH, "utf8"));
+    raw = await readFile(STORE_PATH, "utf8");
+  } catch {
+    return; // first run
+  }
+  try {
+    const rows = JSON.parse(raw);
     for (const row of rows) invoices.set(row.id, row);
     log(`restored ${rows.length} invoice(s)`);
-  } catch {
-    /* first run */
+  } catch (err) {
+    // Never silently start empty on a corrupt store: that looks identical to
+    // a first run and quietly drops every open invoice.
+    throw new Error(`invoice store at ${STORE_PATH} is corrupt: ${err.message}`);
   }
 }
 
@@ -173,58 +243,92 @@ function log(msg) {
   console.log(`[watcher ${new Date().toISOString()}] ${msg}`);
 }
 
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
+/**
+ * No wildcard. A wildcard plus a bearer token still lets any page the merchant
+ * visits read the whole invoice ledger once that token leaks into a script.
+ * Set WATCHER_ORIGIN to the exact dashboard origin, or leave it unset to
+ * refuse browsers entirely.
+ */
+function corsHeaders(req) {
+  const origin = req.headers.origin;
+  if (!ALLOWED_ORIGIN || origin !== ALLOWED_ORIGIN) return {};
+  return {
+    "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
+    "Vary": "Origin",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  };
+}
 
-function json(res, code, data) {
+/** Constant-time bearer check. */
+function authorized(req) {
+  const header = req.headers.authorization ?? "";
+  const got = Buffer.from(header);
+  const want = Buffer.from(`Bearer ${API_TOKEN}`);
+  return got.length === want.length && timingSafeEqual(got, want);
+}
+
+function json(req, res, code, data) {
   const body = JSON.stringify(data, null, 2);
-  res.writeHead(code, { "Content-Type": "application/json", ...CORS });
+  res.writeHead(code, { "Content-Type": "application/json", ...corsHeaders(req) });
   res.end(body);
+}
+
+/** Read a bounded body: an unbounded one is a free memory-exhaustion attack. */
+async function readBody(req, limit = 64 * 1024) {
+  let raw = "";
+  for await (const chunk of req) {
+    raw += chunk;
+    if (raw.length > limit) throw new Error("request body too large");
+  }
+  return raw;
 }
 
 export function makeServer() {
   return createServer(async (req, res) => {
     const url = new URL(req.url, "http://localhost");
     if (req.method === "OPTIONS") {
-      res.writeHead(204, CORS);
+      res.writeHead(204, corsHeaders(req));
       return res.end();
     }
+    // Health is the only unauthenticated route, and it reveals nothing.
+    if (req.method === "GET" && url.pathname === "/healthz") {
+      return json(req, res, 200, { ok: true });
+    }
+    if (!API_TOKEN) {
+      return json(req, res, 503, { error: "WATCHER_TOKEN is not set; the API is disabled" });
+    }
+    if (!authorized(req)) {
+      return json(req, res, 401, { error: "missing or invalid bearer token" });
+    }
     try {
-      if (req.method === "GET" && url.pathname === "/healthz") {
-        return json(res, 200, { ok: true, watching: [...invoices.values()].filter((i) => i.status === "watching").length });
-      }
       if (req.method === "GET" && url.pathname === "/invoices") {
-        return json(res, 200, [...invoices.values()].sort((a, b) => b.createdAt - a.createdAt));
+        return json(req, res, 200, [...invoices.values()].sort((a, b) => b.createdAt - a.createdAt));
       }
       if (req.method === "POST" && url.pathname === "/invoices") {
-        let raw = "";
-        for await (const chunk of req) raw += chunk;
-        const inv = createInvoice(JSON.parse(raw || "{}"));
+        const inv = await createInvoice(JSON.parse((await readBody(req)) || "{}"));
         await persist();
-        log(`watching ${inv.id} → ${inv.receiveAddress} for ${inv.amount} ${inv.token}`);
-        return json(res, 201, inv);
+        log(`watching ${inv.id} -> ${inv.receiveAddress} for ${inv.amount} ${inv.token} (baseline ${inv.baselineUnits})`);
+        return json(req, res, 201, inv);
       }
-      const match = url.pathname.match(/^\/invoices\/([\w-]+)$/);
+      const match = url.pathname.match(/^\/invoices\/([\w.-]+)$/);
       if (req.method === "GET" && match) {
         const inv = invoices.get(match[1]);
-        return inv ? json(res, 200, inv) : json(res, 404, { error: "not found" });
+        return inv ? json(req, res, 200, inv) : json(req, res, 404, { error: "not found" });
       }
-      return json(res, 404, { error: "unknown route" });
+      return json(req, res, 404, { error: "unknown route" });
     } catch (err) {
-      return json(res, 400, { error: err.message });
+      return json(req, res, 400, { error: err.message });
     }
   });
 }
 
-export { createInvoice, pollOnce, invoices };
+export { createInvoice, pollOnce, invoices, deliverWebhook };
 
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replaceAll("\\", "/").split("/").pop());
 if (isMain) {
   await restore();
   makeServer().listen(PORT, "127.0.0.1", () => log(`listening on 127.0.0.1:${PORT}, rpc=${RPC_URL}, poll=${POLL_MS}ms`));
-  setInterval(pollOnce, POLL_MS);
-  void pollOnce();
+  setInterval(pollLoop, POLL_MS);
+  void pollLoop();
 }

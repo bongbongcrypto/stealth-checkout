@@ -24,6 +24,12 @@ export declare class StealthCheckout {
     private readonly allowInlineShield;
     private listeners;
     private phase;
+    /**
+     * Hash of a payment already broadcast for this invoice. Confirmation can
+     * fail while the money is genuinely gone (slow chain, flaky RPC), and the
+     * widget then offers a Retry button. Without this the retry pays twice.
+     */
+    private sentPayment;
     constructor(wallet: WalletAdapter, confirmPayment?: (invoice: Invoice, txHash: string) => Promise<boolean>, 
     /**
      * Shield inline when the payer has no shielded funds. OFF by default, and
@@ -43,13 +49,18 @@ export declare class StealthCheckout {
      * privacy-preserving answer, so the message has to be genuinely useful.
      */
     private shieldOrExplain;
+    private finish;
     /** Shield, then block until the new notes are actually spendable. */
     private shieldStep;
     private payStep;
     private executePayment;
     private emit;
 }
-/** Compare two decimal-string amounts without floats. */
+/**
+ * Compare two decimal-string amounts without floats.
+ * Throws on anything that is not a plain non-negative decimal: this gates the
+ * shield-or-not decision, and silently ranking junk sends real money.
+ */
 export declare function compareAmounts(a: string, b: string): -1 | 0 | 1;
 /** Does this wallet error mean "you do not have enough shielded funds"? */
 export declare function isInsufficientFunds(err: unknown): boolean;

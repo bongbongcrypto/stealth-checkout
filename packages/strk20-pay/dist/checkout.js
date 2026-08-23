@@ -16,6 +16,12 @@ export class StealthCheckout {
     allowInlineShield;
     listeners = new Set();
     phase = "idle";
+    /**
+     * Hash of a payment already broadcast for this invoice. Confirmation can
+     * fail while the money is genuinely gone (slow chain, flaky RPC), and the
+     * widget then offers a Retry button. Without this the retry pays twice.
+     */
+    sentPayment = null;
     constructor(wallet, confirmPayment = async () => true, 
     /**
      * Shield inline when the payer has no shielded funds. OFF by default, and
@@ -48,10 +54,24 @@ export class StealthCheckout {
             this.emit("expired", "This invoice has expired. Ask the merchant for a fresh one.", false);
             throw new Error("Invoice expired.");
         }
+        if (this.wallet.network !== invoice.network) {
+            const msg = `This invoice is for ${invoice.network}, but the wallet is on ${this.wallet.network}.`;
+            this.emit("failed", msg, false, undefined, msg);
+            throw new Error(msg);
+        }
         try {
             if (!this.wallet.isConnected()) {
                 this.emit("connecting", "Your wallet will pop up to connect.", true);
                 await this.wallet.connect();
+            }
+            // Already broadcast for this invoice? Never send again: only wait.
+            if (this.sentPayment && this.sentPayment.invoiceId === invoice.id) {
+                const prior = this.sentPayment;
+                this.emit("confirming", "Payment already sent. Waiting for on-chain confirmation…", false, prior.txHash);
+                const ok = await this.confirmPayment(invoice, prior.txHash);
+                if (!ok)
+                    throw new Error("Still not confirmed on-chain. Your payment was sent once and has not been repeated.");
+                return this.finish(invoice, prior.txHash, prior.shieldTxHash);
             }
             this.emit("preparing", "Checking your shielded balance…", false);
             const shielded = await this.wallet.shieldedBalance(invoice.token);
@@ -77,26 +97,12 @@ export class StealthCheckout {
                 }
                 ({ txHash } = await this.payStep(invoice));
             }
+            this.sentPayment = { invoiceId: invoice.id, txHash, shieldTxHash };
             this.emit("confirming", "Payment sent. Waiting for on-chain confirmation…", false, txHash);
             const confirmed = await this.confirmPayment(invoice, txHash);
             if (!confirmed)
-                throw new Error("The payment was not confirmed on-chain.");
-            const receipt = {
-                invoiceId: invoice.id,
-                token: invoice.token,
-                amount: invoice.amount,
-                network: invoice.network,
-                mode: invoice.mode,
-                txHash,
-                shieldTxHash,
-                confirmedAt: Date.now(),
-                disclosure: invoice.mode === "address"
-                    ? "Proves this invoice was paid. Does not link the payment to the payer's wallet."
-                    : "Proves a private note was sent. Amount and parties are not on-chain.",
-            };
-            this.emit("paid", "Paid. Receipt ready.", false, txHash);
-            this.listeners.forEach((l) => l({ type: "paid", receipt }));
-            return receipt;
+                throw new Error("The payment was not confirmed on-chain. It was sent once and will not be sent again.");
+            return this.finish(invoice, txHash, shieldTxHash);
         }
         catch (err) {
             const message = err instanceof WalletActionError
@@ -121,6 +127,25 @@ export class StealthCheckout {
             "Shield it in your wallet first, in one go and ahead of time: the pool charges a fee per deposit, " +
             "and a deposit made moments before a payment can be linked to it by amount and timing. " +
             "Wait about ten blocks after shielding, then come back to this invoice.");
+    }
+    finish(invoice, txHash, shieldTxHash) {
+        const receipt = {
+            invoiceId: invoice.id,
+            token: invoice.token,
+            amount: invoice.amount,
+            // The wallet decides which network the money moved on, not the invoice.
+            network: this.wallet.network,
+            mode: invoice.mode,
+            txHash,
+            shieldTxHash,
+            confirmedAt: Date.now(),
+            disclosure: invoice.mode === "address"
+                ? "Proves this invoice was paid. Does not link the payment to the payer's wallet."
+                : "Proves a private note was sent. Amount and parties are not on-chain.",
+        };
+        this.emit("paid", "Paid. Receipt ready.", false, txHash);
+        this.listeners.forEach((l) => l({ type: "paid", receipt }));
+        return receipt;
     }
     /** Shield, then block until the new notes are actually spendable. */
     async shieldStep(invoice) {
@@ -154,11 +179,18 @@ export class StealthCheckout {
         this.listeners.forEach((l) => l({ type: "progress", progress }));
     }
 }
-/** Compare two decimal-string amounts without floats. */
+/**
+ * Compare two decimal-string amounts without floats.
+ * Throws on anything that is not a plain non-negative decimal: this gates the
+ * shield-or-not decision, and silently ranking junk sends real money.
+ */
 export function compareAmounts(a, b) {
     const norm = (x) => {
-        const [ip = "0", fp = ""] = x.trim().split(".");
-        return [ip.replace(/^0+(?=\d)/, ""), fp.replace(/0+$/, "")];
+        const s = String(x).trim();
+        if (!/^\d+(\.\d+)?$|^\.\d+$/.test(s))
+            throw new Error(`Not a valid amount: ${JSON.stringify(x)}`);
+        const [ip = "0", fp = ""] = s.split(".");
+        return [(ip || "0").replace(/^0+(?=\d)/, ""), fp.replace(/0+$/, "")];
     };
     const [ai, af] = norm(a);
     const [bi, bf] = norm(b);

@@ -1,21 +1,54 @@
 #!/usr/bin/env node
-// Live proof, no funds needed: the watcher confirms a "payment" headlessly over
-// public mainnet RPC and fires a signed webhook. We watch an address that
-// already holds STRK (the STRK20 pool itself) as if it were an invoice address.
+// Live check against Starknet mainnet, spending nothing.
 //
 //   node server/watcher/e2e-live.mjs
 //
-// Expected output: status paid + webhook with a valid HMAC signature.
+// What this proves, and what it does not:
+//
+//   PROVES  the watcher reads a real mainnet balance over public RPC, measures
+//           payment as a delta from the baseline it captured at registration,
+//           and refuses to confirm an address that merely holds funds.
+//   PROVES  the signed webhook path end to end, including timestamp binding.
+//   DOES NOT prove a real payment was detected: that needs someone to actually
+//           pay, which this script deliberately will not do with your money.
+//
+// An earlier version of this file watched the STRK20 pool's own address, which
+// holds a lot of STRK, and reported "paid" as evidence that confirmation
+// worked. That was a false positive dressed up as a proof. The absolute-balance
+// bug it was hiding is fixed, and this script now asserts the opposite.
 
 import { createServer } from "node:http";
 import { verifySignature } from "./lib.mjs";
 
+process.env.WATCHER_TOKEN ??= "e2e-token";
 process.env.WEBHOOK_SECRET = "whsec_e2e";
 process.env.WEBHOOK_URL = "http://127.0.0.1:8788/hook";
-process.env.WATCHER_RPC = process.env.WATCHER_RPC ?? "https://rpc.starknet.lava.build";
+process.env.WATCHER_RPC ??= "https://rpc.starknet.lava.build";
 
 const { createInvoice, pollOnce, invoices } = await import("./watcher.mjs");
 
+// The STRK20 pool holds a large STRK balance. A correct watcher must NOT call
+// that a payment, because none of it arrived after we started watching.
+const POOL = "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a";
+
+console.log("reading mainnet…");
+const inv = await createInvoice({ id: "e2e_funded", token: "STRK", amount: "1", receiveAddress: POOL });
+console.log(`baseline captured: ${inv.baselineUnits} units (the address is already funded)`);
+
+await pollOnce();
+const after = invoices.get("e2e_funded");
+
+let failures = 0;
+const check = (label, ok) => {
+  console.log(`  ${ok ? "PASS" : "FAIL"}  ${label}`);
+  if (!ok) failures++;
+};
+
+check("a funded address is NOT confirmed as paid", after.status === "watching");
+check("a baseline was recorded at registration", BigInt(after.baselineUnits) > 0n);
+
+// Now prove the webhook path, by handing the deliverer an invoice already
+// marked paid rather than by faking a chain state.
 const received = new Promise((resolve) => {
   const server = createServer(async (req, res) => {
     let raw = "";
@@ -23,32 +56,30 @@ const received = new Promise((resolve) => {
     res.end("ok");
     server.close();
     resolve({
-      signatureValid: verifySignature("whsec_e2e", raw, req.headers["x-spay-signature"]),
-      payload: JSON.parse(raw),
+      signature: req.headers["x-spay-signature"],
+      timestamp: req.headers["x-spay-timestamp"],
+      raw,
     });
   });
   server.listen(8788, "127.0.0.1");
 });
 
-createInvoice({
-  id: "e2e_pool",
-  token: "STRK",
-  amount: "1",
-  // The STRK20 pool holds STRK on mainnet: perfect stand-in for a paid invoice.
-  receiveAddress: "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a",
-});
+const paid = { ...after, status: "paid", confirmedAt: Date.now(), receivedUnits: "1" };
+invoices.set(paid.id, paid);
+const { deliverWebhook } = await import("./watcher.mjs");
+await deliverWebhook(paid);
 
-console.log("polling mainnet…");
-await pollOnce();
-
-const inv = invoices.get("e2e_pool");
-console.log(`invoice status: ${inv.status}`);
-console.log(`tx hash lookup: ${inv.txHash ?? "(best-effort miss: balance is the source of truth)"}`);
-
-const hook = await Promise.race([received, new Promise((r) => setTimeout(() => r({ timeout: true }), 15_000))]);
-if (hook.timeout) {
-  console.error("webhook: TIMEOUT");
-  process.exit(1);
+const hook = await Promise.race([received, new Promise((r) => setTimeout(() => r(null), 15_000))]);
+if (!hook) {
+  check("webhook delivered", false);
+} else {
+  const body = JSON.parse(hook.raw);
+  check("webhook delivered", body.event === "payment.confirmed");
+  check("delivery carries an id merchants can dedupe on", typeof body.deliveryId === "string");
+  check("signature verifies with the timestamp", verifySignature("whsec_e2e", hook.raw, hook.signature, hook.timestamp));
+  const stale = Number(hook.timestamp) - 3600;
+  check("the same signature is rejected an hour later", !verifySignature("whsec_e2e", hook.raw, hook.signature, stale));
 }
-console.log(`webhook received: event=${hook.payload.event} signatureValid=${hook.signatureValid}`);
-process.exit(inv.status === "paid" && hook.signatureValid ? 0 : 1);
+
+console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) failed`);
+process.exit(failures === 0 ? 0 : 1);

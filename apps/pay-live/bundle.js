@@ -31541,7 +31541,7 @@ function revealReport(invoice, willShieldFirst) {
       {
         fact: "The link between your wallet and this payment",
         visibility: "hidden",
-        detail: "The withdrawal is submitted by the pool's relayers. Your wallet address appears nowhere in the paying transaction."
+        detail: "Privacy wallets submit this through the pool's relayers, so your address is not the sender of the paying transaction. The strength of that depends on your wallet, and on the deposit that funded it not standing out."
       },
       {
         fact: "The merchant's other income",
@@ -31566,8 +31566,15 @@ function revealReport(invoice, willShieldFirst) {
   items.push({
     fact: "Timing correlation",
     visibility: "public",
-    detail: "A distinctive amount paid shortly after a distinctive deposit can be correlated. Shield ahead of time, or shield more than you spend."
+    detail: "A distinctive amount paid shortly after a distinctive deposit can be correlated. Shield ahead of time, and shield more than you spend."
   });
+  if (willShieldFirst) {
+    items.push({
+      fact: "Shielding right now, for this payment",
+      visibility: "public",
+      detail: "Depositing the exact invoice amount moments before paying it is the strongest link an observer can get. This is why the checkout asks you to shield in your wallet ahead of time instead."
+    });
+  }
   return items;
 }
 
@@ -31590,6 +31597,12 @@ var StealthCheckout = class {
   }
   listeners = /* @__PURE__ */ new Set();
   phase = "idle";
+  /**
+   * Hash of a payment already broadcast for this invoice. Confirmation can
+   * fail while the money is genuinely gone (slow chain, flaky RPC), and the
+   * widget then offers a Retry button. Without this the retry pays twice.
+   */
+  sentPayment = null;
   on(listener) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -31608,10 +31621,22 @@ var StealthCheckout = class {
       this.emit("expired", "This invoice has expired. Ask the merchant for a fresh one.", false);
       throw new Error("Invoice expired.");
     }
+    if (this.wallet.network !== invoice.network) {
+      const msg = `This invoice is for ${invoice.network}, but the wallet is on ${this.wallet.network}.`;
+      this.emit("failed", msg, false, void 0, msg);
+      throw new Error(msg);
+    }
     try {
       if (!this.wallet.isConnected()) {
         this.emit("connecting", "Your wallet will pop up to connect.", true);
         await this.wallet.connect();
+      }
+      if (this.sentPayment && this.sentPayment.invoiceId === invoice.id) {
+        const prior = this.sentPayment;
+        this.emit("confirming", "Payment already sent. Waiting for on-chain confirmation\u2026", false, prior.txHash);
+        const ok = await this.confirmPayment(invoice, prior.txHash);
+        if (!ok) throw new Error("Still not confirmed on-chain. Your payment was sent once and has not been repeated.");
+        return this.finish(invoice, prior.txHash, prior.shieldTxHash);
       }
       this.emit("preparing", "Checking your shielded balance\u2026", false);
       const shielded = await this.wallet.shieldedBalance(invoice.token);
@@ -31631,23 +31656,11 @@ var StealthCheckout = class {
         }
         ({ txHash } = await this.payStep(invoice));
       }
+      this.sentPayment = { invoiceId: invoice.id, txHash, shieldTxHash };
       this.emit("confirming", "Payment sent. Waiting for on-chain confirmation\u2026", false, txHash);
       const confirmed = await this.confirmPayment(invoice, txHash);
-      if (!confirmed) throw new Error("The payment was not confirmed on-chain.");
-      const receipt = {
-        invoiceId: invoice.id,
-        token: invoice.token,
-        amount: invoice.amount,
-        network: invoice.network,
-        mode: invoice.mode,
-        txHash,
-        shieldTxHash,
-        confirmedAt: Date.now(),
-        disclosure: invoice.mode === "address" ? "Proves this invoice was paid. Does not link the payment to the payer's wallet." : "Proves a private note was sent. Amount and parties are not on-chain."
-      };
-      this.emit("paid", "Paid. Receipt ready.", false, txHash);
-      this.listeners.forEach((l) => l({ type: "paid", receipt }));
-      return receipt;
+      if (!confirmed) throw new Error("The payment was not confirmed on-chain. It was sent once and will not be sent again.");
+      return this.finish(invoice, txHash, shieldTxHash);
     } catch (err) {
       const message = err instanceof WalletActionError ? err.message : err instanceof Error ? err.message : "Payment failed for an unknown reason.";
       this.emit("failed", message, false, void 0, message);
@@ -31665,6 +31678,23 @@ var StealthCheckout = class {
     throw new Error(
       `You need at least ${invoice.amount} ${invoice.token} shielded before paying.${have} Shield it in your wallet first, in one go and ahead of time: the pool charges a fee per deposit, and a deposit made moments before a payment can be linked to it by amount and timing. Wait about ten blocks after shielding, then come back to this invoice.`
     );
+  }
+  finish(invoice, txHash, shieldTxHash) {
+    const receipt = {
+      invoiceId: invoice.id,
+      token: invoice.token,
+      amount: invoice.amount,
+      // The wallet decides which network the money moved on, not the invoice.
+      network: this.wallet.network,
+      mode: invoice.mode,
+      txHash,
+      shieldTxHash,
+      confirmedAt: Date.now(),
+      disclosure: invoice.mode === "address" ? "Proves this invoice was paid. Does not link the payment to the payer's wallet." : "Proves a private note was sent. Amount and parties are not on-chain."
+    };
+    this.emit("paid", "Paid. Receipt ready.", false, txHash);
+    this.listeners.forEach((l) => l({ type: "paid", receipt }));
+    return receipt;
   }
   /** Shield, then block until the new notes are actually spendable. */
   async shieldStep(invoice) {
@@ -31704,8 +31734,10 @@ var StealthCheckout = class {
 };
 function compareAmounts(a, b) {
   const norm = (x) => {
-    const [ip = "0", fp = ""] = x.trim().split(".");
-    return [ip.replace(/^0+(?=\d)/, ""), fp.replace(/0+$/, "")];
+    const s = String(x).trim();
+    if (!/^\d+(\.\d+)?$|^\.\d+$/.test(s)) throw new Error(`Not a valid amount: ${JSON.stringify(x)}`);
+    const [ip = "0", fp = ""] = s.split(".");
+    return [(ip || "0").replace(/^0+(?=\d)/, ""), fp.replace(/0+$/, "")];
   };
   const [ai, af] = norm(a);
   const [bi, bf] = norm(b);
@@ -31877,13 +31909,16 @@ var TOKENS = {
 function resolveToken(symbolOrAddress, registry = TOKENS) {
   const known = registry[symbolOrAddress];
   if (known) return known;
-  if (/^0x[0-9a-fA-F]+$/.test(symbolOrAddress)) return { address: symbolOrAddress, decimals: 18 };
-  throw new Error(`Unknown token "${symbolOrAddress}": register it with an address and decimals.`);
+  throw new Error(
+    `Unknown token "${symbolOrAddress}". Register it first: resolveToken("${symbolOrAddress}", { ...TOKENS, MYTOKEN: { address, decimals } }), or pass a registry entry via the tokens option. Decimals are never assumed.`
+  );
 }
 function amountToUnits(amount, decimals) {
-  const [ip = "0", fp = ""] = String(amount).trim().split(".");
-  if (!/^\d+$/.test(ip || "0") || !/^\d*$/.test(fp) || fp.length > decimals) {
-    throw new Error(`Invalid amount: ${amount}`);
+  const s = String(amount).trim();
+  if (!/^\d+(\.\d+)?$/.test(s)) throw new Error(`Invalid amount: ${JSON.stringify(amount)}`);
+  const [ip = "0", fp = ""] = s.split(".");
+  if (fp.length > decimals) {
+    throw new Error(`Invalid amount: ${amount} has more than ${decimals} decimal places`);
   }
   return BigInt(ip || "0") * 10n ** BigInt(decimals) + BigInt(fp.padEnd(decimals, "0") || "0");
 }
@@ -32098,17 +32133,33 @@ var params = new URLSearchParams(location.search);
 var to = params.get("to");
 if (!to) {
   renderCreator();
+} else if (!/^0x[0-9a-fA-F]{10,64}$/.test(to)) {
+  renderError("This invoice link has an invalid receive address, so it cannot be paid safely.");
 } else {
-  void renderPayer({
-    id: params.get("id") ?? `inv_${Date.now().toString(36)}`,
-    token: params.get("token") ?? "STRK",
-    amount: params.get("amount") ?? "2",
-    memo: params.get("memo") ?? void 0,
-    mode: "address",
-    receiveAddress: to,
-    network: "mainnet",
-    createdAt: Date.now()
-  });
+  const amount = params.get("amount") ?? "2";
+  if (!/^\d+(\.\d{1,18})?$/.test(amount) || Number(amount) <= 0) {
+    renderError("This invoice link has an invalid amount.");
+  } else {
+    void renderPayer({
+      id: (params.get("id") ?? `inv_${Date.now().toString(36)}`).slice(0, 64),
+      token: params.get("token") === "STRK" ? "STRK" : "STRK",
+      amount,
+      memo: params.get("memo")?.slice(0, 140) || void 0,
+      mode: "address",
+      receiveAddress: to,
+      network: "mainnet",
+      createdAt: Date.now()
+    });
+  }
+}
+function renderError(message) {
+  app.replaceChildren();
+  const h = document.createElement("h1");
+  h.textContent = "Invalid invoice link";
+  const p = document.createElement("p");
+  p.className = "muted";
+  p.textContent = message;
+  app.append(h, p);
 }
 function renderCreator() {
   app.innerHTML = `
@@ -32134,7 +32185,7 @@ function renderCreator() {
     const url2 = new URL(location.href);
     url2.search = new URLSearchParams({ to: toValue, amount, ...memo ? { memo } : {} }).toString();
     out.hidden = false;
-    out.innerHTML = "";
+    out.replaceChildren();
     const link = document.createElement("a");
     link.href = url2.toString();
     link.textContent = url2.toString();
@@ -32172,15 +32223,27 @@ async function reportWalletSupport(wallet) {
   }
 }
 async function renderPayer(invoice) {
-  app.innerHTML = `
-    <h1>Invoice ${invoice.id}</h1>
-    <p class="muted">${invoice.memo ?? "Private payment on Starknet mainnet"}</p>
-    <div id="wallet-check" class="check"></div>
-    <div id="checkout"></div>
-    <p class="muted small">Confirmation runs in this page over public RPC (balance delta on the
-    invoice address). Payer identity is severed by the STRK20 pool.
-    <a href="https://voyager.online/contract/${invoice.receiveAddress}" target="_blank" rel="noreferrer">address on Voyager \u2197</a></p>
-  `;
+  app.replaceChildren();
+  const title = document.createElement("h1");
+  title.textContent = `Invoice ${invoice.id}`;
+  const memo = document.createElement("p");
+  memo.className = "muted";
+  memo.textContent = invoice.memo ?? "Private payment on Starknet mainnet";
+  const check = document.createElement("div");
+  check.id = "wallet-check";
+  check.className = "check";
+  const host = document.createElement("div");
+  host.id = "checkout";
+  const foot = document.createElement("p");
+  foot.className = "muted small";
+  foot.textContent = "Confirmation runs in this page over public RPC (balance delta on the invoice address). Payer identity is severed by the STRK20 pool. ";
+  const link = document.createElement("a");
+  link.href = `https://voyager.online/contract/${encodeURIComponent(invoice.receiveAddress)}`;
+  link.target = "_blank";
+  link.rel = "noreferrer";
+  link.textContent = "address on Voyager";
+  foot.append(link);
+  app.append(title, memo, check, host, foot);
   const provider = new RpcProvider({ nodeUrl: RPC_URL });
   const token = resolveToken(invoice.token, TOKENS);
   const readBalance = async () => {
@@ -32192,10 +32255,18 @@ async function renderPayer(invoice) {
     return BigInt(res2[0] ?? "0x0") + (BigInt(res2[1] ?? "0x0") << 128n);
   };
   let baseline = null;
-  try {
-    baseline = await readBalance();
-  } catch {
-    baseline = null;
+  for (let attempt = 0; attempt < 5 && baseline === null; attempt++) {
+    try {
+      baseline = await readBalance();
+    } catch {
+      await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+    }
+  }
+  if (baseline === null) {
+    const box = document.getElementById("wallet-check");
+    box.className = "check bad";
+    box.textContent = "Could not read this invoice address from the network, so a payment cannot be confirmed here. Reload in a moment.";
+    return;
   }
   const wallet = new WalletApiAdapter({ network: "mainnet", rpcUrl: RPC_URL });
   void reportWalletSupport(wallet);
@@ -32207,9 +32278,8 @@ async function renderPayer(invoice) {
       const started = Date.now();
       while (Date.now() - started < 10 * 6e4) {
         try {
-          const now = await readBalance();
-          const delta = baseline === null ? now : now - baseline;
-          if (delta >= target) return true;
+          const received = await readBalance() - baseline;
+          if (received >= target) return true;
         } catch {
         }
         await new Promise((r) => setTimeout(r, 1e4));

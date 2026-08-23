@@ -14,12 +14,16 @@ export const TOKENS = {
   ETH: { address: "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7", decimals: 18 },
 };
 
-/** Decimal string → integer units for a given decimals count. */
+/**
+ * Decimal string to integer units. Strict on purpose: "" used to parse as 0,
+ * which made an invoice for nothing confirm against an empty address, and
+ * "1.2.3" silently became 1.2.
+ */
 export function toUnits(amount, decimals) {
-  const [ip = "0", fp = ""] = String(amount).trim().split(".");
-  if (!/^\d+$/.test(ip || "0") || !/^\d*$/.test(fp) || fp.length > decimals) {
-    throw new Error(`Invalid amount: ${amount}`);
-  }
+  const s = String(amount).trim();
+  if (!/^\d+(\.\d+)?$/.test(s)) throw new Error(`Invalid amount: ${JSON.stringify(amount)}`);
+  const [ip = "0", fp = ""] = s.split(".");
+  if (fp.length > decimals) throw new Error(`Invalid amount: ${amount} has more than ${decimals} decimal places`);
   return BigInt(ip || "0") * 10n ** BigInt(decimals) + BigInt(fp.padEnd(decimals, "0") || "0");
 }
 
@@ -40,26 +44,64 @@ export const INVOICE_STATES = ["watching", "paid", "expired"];
 
 /**
  * Decide the next state of one invoice given its on-chain balance.
- * Payment rule: the invoice's fresh address holds >= the invoiced amount.
+ *
+ * Payment is a DELTA against the baseline captured when the invoice was
+ * registered, never the absolute balance. An address can already hold funds:
+ * it needs STRK to pay for its own deployment before a merchant can sweep it,
+ * merchants reuse addresses by mistake, and airdrops happen. Confirming on the
+ * absolute balance marks such an invoice paid the instant it is created, and
+ * the merchant ships goods nobody paid for.
  */
 export function evaluateInvoice(invoice, balanceUnits, now = Date.now()) {
   if (invoice.status !== "watching") return invoice;
+
+  const baseline = BigInt(invoice.baselineUnits ?? "0");
+  const received = balanceUnits - baseline;
+  const target = toUnits(invoice.amount, invoice.decimals);
+  const paid = received >= target;
+
+  // A payment that landed before the deadline wins, even if this poll runs
+  // after it. Expiring an invoice the payer already settled strands their
+  // funds at an address the merchant never learns to watch.
+  if (paid) {
+    return {
+      ...invoice,
+      status: "paid",
+      confirmedAt: now,
+      balanceUnits: balanceUnits.toString(),
+      receivedUnits: received.toString(),
+    };
+  }
   if (invoice.expiresAt && now > invoice.expiresAt) {
     return { ...invoice, status: "expired", expiredAt: now };
-  }
-  if (balanceUnits >= toUnits(invoice.amount, invoice.decimals)) {
-    return { ...invoice, status: "paid", confirmedAt: now, balanceUnits: balanceUnits.toString() };
   }
   return invoice;
 }
 
-/** Webhook body + HMAC signature (hex). Verify with verifySignature on the merchant side. */
-export function signPayload(secret, body) {
-  return createHmac("sha256", secret).update(body).digest("hex");
+/**
+ * Sign `timestamp.body` rather than the body alone, so a captured delivery
+ * stops verifying once it ages out. Send the timestamp in X-Spay-Timestamp.
+ */
+export function signPayload(secret, body, timestamp) {
+  if (timestamp === undefined) throw new Error("signPayload requires a timestamp (seconds)");
+  return createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex");
 }
 
-export function verifySignature(secret, body, signature) {
-  const expected = Buffer.from(signPayload(secret, body), "hex");
+/**
+ * Verify a delivery. Rejects anything outside `toleranceSec` (default five
+ * minutes) so a leaked webhook cannot be replayed later, and compares in
+ * constant time. Callers should ALSO dedupe on the delivery id.
+ */
+export function verifySignature(secret, body, signature, timestamp, nowSec = Math.floor(Date.now() / 1000), toleranceSec = 300) {
+  const ts = Number(timestamp);
+  if (!Number.isFinite(ts)) return false;
+  if (Math.abs(nowSec - ts) > toleranceSec) return false;
+  let expected;
+  try {
+    expected = Buffer.from(signPayload(secret, body, ts), "hex");
+  } catch {
+    return false;
+  }
   const got = Buffer.from(String(signature ?? ""), "hex");
   return expected.length === got.length && timingSafeEqual(expected, got);
 }

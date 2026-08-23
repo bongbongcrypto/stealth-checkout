@@ -54,12 +54,14 @@ test("evaluateInvoice: expiry wins over a later payment, paid is terminal", () =
 });
 
 test("webhook signatures round-trip and reject tampering", () => {
+  // Signatures now cover `timestamp.body`; replay windows live in security.test.mjs.
   const body = JSON.stringify({ event: "payment.confirmed", invoice: { id: "inv_test" } });
-  const sig = signPayload("whsec_secret", body);
-  assert.ok(verifySignature("whsec_secret", body, sig));
-  assert.ok(!verifySignature("whsec_secret", body + " ", sig));
-  assert.ok(!verifySignature("whsec_other", body, sig));
-  assert.ok(!verifySignature("whsec_secret", body, "deadbeef"));
+  const ts = Math.floor(Date.now() / 1000);
+  const sig = signPayload("whsec_secret", body, ts);
+  assert.ok(verifySignature("whsec_secret", body, sig, ts));
+  assert.ok(!verifySignature("whsec_secret", body + " ", sig, ts));
+  assert.ok(!verifySignature("whsec_other", body, sig, ts));
+  assert.ok(!verifySignature("whsec_secret", body, "deadbeef", ts));
 });
 
 test("balanceOf request shape targets the holder at latest block", () => {

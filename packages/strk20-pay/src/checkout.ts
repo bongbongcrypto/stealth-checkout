@@ -57,6 +57,7 @@ export class StealthCheckout {
   }
 
   async pay(invoice: Invoice): Promise<Receipt> {
+    if (this.phase === "paid") this.phase = "idle"; // a settled instance is reusable
     if (this.phase !== "idle" && this.phase !== "failed" && this.phase !== "expired") {
       throw new Error(`A payment is already in progress (${this.phase}).`);
     }
@@ -80,8 +81,12 @@ export class StealthCheckout {
       // Already broadcast for this invoice? Never send again: only wait.
       // The record is matched on the terms of the payment, not just its id, so
       // a mutated invoice reusing an id cannot claim someone else's payment.
-      const prior = this.sentPayment ?? this.loadSent(invoice);
-      if (prior && matchesInvoice(prior, invoice)) {
+      // Check the in-memory record only if it is for THIS invoice: a stale one
+      // for another invoice used to shadow the persisted lookup entirely, and
+      // the payer paid an already-settled invoice a second time.
+      const cached = this.sentPayment && matchesInvoice(this.sentPayment, invoice) ? this.sentPayment : null;
+      const prior = cached ?? this.loadSent(invoice);
+      if (prior) {
         this.emit("confirming", "Payment already sent. Waiting for on-chain confirmation…", false, prior.txHash);
         const ok = await this.confirmPayment(invoice, prior.txHash);
         if (!ok) throw new Error("Still not confirmed on-chain. Your payment was sent once and has not been repeated.");
@@ -111,6 +116,8 @@ export class StealthCheckout {
         ({ txHash } = await this.payStep(invoice));
       }
 
+      // Recorded the instant it is broadcast, before anything that can throw:
+      // the money is already gone, and losing the record means paying twice.
       this.sentPayment = {
         invoiceId: invoice.id,
         amount: invoice.amount,
@@ -143,21 +150,41 @@ export class StealthCheckout {
     return `strk20-pay.sent.${this.wallet.network}.${invoiceId}`;
   }
 
+  /**
+   * A stored record only counts if it settles THIS invoice. The key is scoped
+   * by id, which is not enough on its own: an id can be reused with a
+   * different amount or recipient, and returning it unchecked would treat the
+   * new, larger invoice as already paid.
+   */
   private loadSent(invoice: Invoice): SentPayment | null {
     try {
       const raw = this.store?.getItem(this.storeKey(invoice.id));
-      return raw ? (JSON.parse(raw) as SentPayment) : null;
+      if (!raw) return null;
+      const record = JSON.parse(raw) as SentPayment;
+      return matchesInvoice(record, invoice) ? record : null;
     } catch {
       return null;
     }
   }
 
   private saveSent(record: SentPayment): void {
+    if (!this.store) return this.warnUnprotected("no storage is available");
     try {
-      this.store?.setItem(this.storeKey(record.invoiceId), JSON.stringify(record));
-    } catch {
-      // A blocked store is not a reason to fail a payment that already landed.
+      this.store.setItem(this.storeKey(record.invoiceId), JSON.stringify(record));
+    } catch (err) {
+      // Never fail a payment that already landed. Do say so, though: without a
+      // record, a reload can pay again.
+      this.warnUnprotected(err instanceof Error ? err.message : "storage rejected the write");
     }
+  }
+
+  private warnUnprotected(reason: string): void {
+    this.emit(
+      "confirming",
+      `Payment sent. Do not reload this page: it could not be remembered (${reason}), and reloading may pay again.`,
+      false,
+      this.sentPayment?.txHash,
+    );
   }
 
   /**
@@ -297,11 +324,30 @@ function defaultStore(): PaymentStore | null {
  * already-paid would hand over goods for a payment that never covered them.
  */
 export function matchesInvoice(sent: SentPayment, invoice: Invoice): boolean {
-  const recipient = invoice.receiveAddress ?? invoice.merchantPoolAddress ?? "";
-  return (
-    sent.invoiceId === invoice.id &&
-    sent.token === invoice.token &&
-    sent.recipient === recipient &&
-    compareAmounts(sent.amount, invoice.amount) === 0
-  );
+  try {
+    const recipient = invoice.receiveAddress ?? invoice.merchantPoolAddress ?? "";
+    return (
+      sent.invoiceId === invoice.id &&
+      sent.token === invoice.token &&
+      sameFelt(sent.recipient, recipient) &&
+      compareAmounts(sent.amount, invoice.amount) === 0
+    );
+  } catch {
+    // A malformed record must not throw out of pay(): that used to leave the
+    // payer unable to pay the invoice at all from this browser.
+    return false;
+  }
+}
+
+/**
+ * Compare Starknet addresses by value. Text form is not canonical, and
+ * comparing the strings made the SAME address re-rendered with different
+ * padding or case look like a different one, so the payment went out twice.
+ */
+export function sameFelt(a: string, b: string): boolean {
+  try {
+    return BigInt(a) === BigInt(b);
+  } catch {
+    return a === b;
+  }
 }

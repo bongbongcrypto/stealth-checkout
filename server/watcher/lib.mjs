@@ -40,7 +40,33 @@ export function normFelt(value) {
   return "0x" + BigInt(value).toString(16);
 }
 
-export const INVOICE_STATES = ["watching", "paid", "expired"];
+export const INVOICE_STATES = ["reserving", "watching", "paid", "expired", "needs_reregistration"];
+
+/** States whose row is not payable and must never be offered to a payer. */
+export const UNPAYABLE_STATES = new Set(["reserving", "expired", "needs_reregistration"]);
+
+/**
+ * The single test for "can this row be judged safely?". restore() and
+ * evaluateInvoice MUST share it: when they drifted apart, a baseline of the
+ * number 0 passed one and failed the other, so the row was watched forever
+ * while every poll threw.
+ */
+export function hasUsableBaseline(row) {
+  return typeof row?.baselineUnits === "string" && /^\d+$/.test(row.baselineUnits);
+}
+
+/**
+ * Compare two Starknet addresses by value. Text form is not canonical: the
+ * same address appears with or without leading zeros and in either case, and
+ * comparing the strings made a re-rendered address look like a new one.
+ */
+export function sameAddress(a, b) {
+  try {
+    return BigInt(a) === BigInt(b);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Decide the next state of one invoice given its on-chain balance.
@@ -58,7 +84,7 @@ export function evaluateInvoice(invoice, balanceUnits, now = Date.now()) {
   // A missing baseline must never mean zero. Rows written by an older build
   // have no baseline at all, and defaulting them to zero silently restores
   // absolute-balance semantics: the very bug this function exists to prevent.
-  if (typeof invoice.baselineUnits !== "string" || !/^\d+$/.test(invoice.baselineUnits)) {
+  if (!hasUsableBaseline(invoice)) {
     throw new Error(
       `invoice ${invoice.id} has no usable baseline (${JSON.stringify(invoice.baselineUnits)}); ` +
         "re-register it so a baseline is captured before it can be confirmed",

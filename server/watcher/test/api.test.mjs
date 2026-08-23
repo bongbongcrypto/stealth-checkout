@@ -102,7 +102,65 @@ test("two invoices cannot share a receive address", async () => {
   assert.equal((await call("/invoices", { method: "POST", headers: auth, body: body("share-a") })).status, 201);
   const second = await call("/invoices", { method: "POST", headers: auth, body: body("share-b") });
   assert.equal(second.status, 400);
-  assert.match((await second.json()).error, /already watched/);
+  assert.match((await second.json()).error, /already used/);
+});
+
+test("an address is never reused, even after its invoice settles", async () => {
+  // A late payment against an expired invoice would otherwise settle its
+  // successor at the same address.
+  const addr = "0x0aabbccddeeff01";
+  const first = await call("/invoices", {
+    method: "POST",
+    headers: auth,
+    body: JSON.stringify({ id: "expire-me", token: "STRK", amount: "1", receiveAddress: addr, expiresAt: Date.now() + 1 }),
+  });
+  assert.equal(first.status, 201);
+  const reuse = await call("/invoices", {
+    method: "POST",
+    headers: auth,
+    body: JSON.stringify({ id: "successor", token: "STRK", amount: "1", receiveAddress: addr }),
+  });
+  assert.equal(reuse.status, 400);
+});
+
+test("a stuck row can be released, a settled one cannot", async () => {
+  const res = await call("/invoices/does-not-exist", { method: "DELETE", headers: auth });
+  assert.equal(res.status, 404);
+  // A watching invoice must not be deletable: that would free its address.
+  const live = await call("/invoices/with-baseline", { method: "DELETE", headers: auth });
+  assert.equal(live.status, 409);
+  assert.match((await live.json()).error, /only reserving, expired or needs_reregistration/);
+});
+
+test("declaring the wrong decimals for a known token is refused, whatever the label", async () => {
+  const STRK_ADDR = "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
+  for (const label of ["STRK", "strk", "Strk", " STRK", undefined, null]) {
+    const res = await call("/invoices", {
+      method: "POST",
+      headers: auth,
+      body: JSON.stringify({
+        ...(label === undefined ? {} : { token: label }),
+        tokenAddress: STRK_ADDR,
+        decimals: 6,
+        amount: "1",
+        receiveAddress: `0x0dec${Math.random().toString(16).slice(2, 10)}`,
+      }),
+    });
+    assert.equal(res.status, 400, `label ${JSON.stringify(label)} must be refused`);
+    assert.match((await res.json()).error, /has 18 decimals, not 6|token must be a string/);
+  }
+});
+
+test("array and object values are refused rather than stringified", async () => {
+  const bad = async (payload) => {
+    const res = await call("/invoices", { method: "POST", headers: auth, body: JSON.stringify(payload) });
+    assert.equal(res.status, 400, JSON.stringify(payload));
+  };
+  await bad({ token: "STRK", amount: "1", receiveAddress: ["0x0123456789ab"] });
+  await bad({ token: ["STRK"], amount: "1", receiveAddress: "0x0123456789ab" });
+  await bad({ token: "STRK", amount: "1", receiveAddress: "0x0123456789ab", expiresAt: [] });
+  await bad({ token: "STRK", amount: "1", receiveAddress: "0x0123456789ab", expiresAt: true });
+  await bad({ token: "STRK", amount: "1", receiveAddress: "0x0123456789ab", id: 42 });
 });
 
 test("malformed invoices are refused", async () => {

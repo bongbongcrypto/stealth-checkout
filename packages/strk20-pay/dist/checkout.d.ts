@@ -58,8 +58,15 @@ export declare class StealthCheckout {
     preview(invoice: Invoice): Promise<RevealItem[]>;
     pay(invoice: Invoice): Promise<Receipt>;
     private storeKey;
+    /**
+     * A stored record only counts if it settles THIS invoice. The key is scoped
+     * by id, which is not enough on its own: an id can be reused with a
+     * different amount or recipient, and returning it unchecked would treat the
+     * new, larger invoice as already paid.
+     */
     private loadSent;
     private saveSent;
+    private warnUnprotected;
     /**
      * Either shield inline (opt-in) or stop and say why not. Refusing is the
      * privacy-preserving answer, so the message has to be genuinely useful.
@@ -100,3 +107,9 @@ export interface PaymentStore {
  * already-paid would hand over goods for a payment that never covered them.
  */
 export declare function matchesInvoice(sent: SentPayment, invoice: Invoice): boolean;
+/**
+ * Compare Starknet addresses by value. Text form is not canonical, and
+ * comparing the strings made the SAME address re-rendered with different
+ * padding or case look like a different one, so the payment went out twice.
+ */
+export declare function sameFelt(a: string, b: string): boolean;

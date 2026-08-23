@@ -262,3 +262,55 @@ test("a remembered payment cannot be claimed by a different invoice reusing its 
   assert.equal(receipt.amount, "50");
   assert.notEqual(await wallet.shieldedBalance("STRK"), before, "a genuinely different payment must be made");
 });
+
+test("the same address written differently is still the same address", async () => {
+  // Starknet addresses have no canonical text form. Comparing the strings made
+  // a re-rendered address look new, and the payment went out a second time.
+  const store = new Map();
+  const shared = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+  const wallet = fastWallet({ funded: { STRK: "100" } });
+  await wallet.connect();
+  await wallet.shield("STRK", "80");
+
+  const first = new StealthCheckout(wallet, async () => false, false, shared);
+  await assert.rejects(() => first.pay(invoice({ receiveAddress: "0x00abc" })));
+  const spent = await wallet.shieldedBalance("STRK");
+
+  for (const spelling of ["0xabc", "0x0ABC", "0x000000abc"]) {
+    const again = new StealthCheckout(wallet, async () => true, false, shared);
+    await again.pay(invoice({ receiveAddress: spelling }));
+    assert.equal(await wallet.shieldedBalance("STRK"), spent, `${spelling} must not re-send`);
+  }
+});
+
+test("a stale record for another invoice cannot shadow this one", async () => {
+  const store = new Map();
+  const shared = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+  const wallet = fastWallet({ funded: { STRK: "100" } });
+  await wallet.connect();
+  await wallet.shield("STRK", "80");
+
+  const paidB = new StealthCheckout(wallet, async () => true, false, shared);
+  await paidB.pay(invoice({ id: "B" }));
+  const afterB = await wallet.shieldedBalance("STRK");
+
+  // Same instance now attempts C and fails, leaving C in memory.
+  await assert.rejects(() => new StealthCheckout(wallet, async () => false, false, shared).pay(invoice({ id: "C" })));
+
+  // B is already settled: paying it again must not move money.
+  const again = new StealthCheckout(wallet, async () => true, false, shared);
+  again.sentPayment = { invoiceId: "C", amount: "1", token: "STRK", recipient: "0x0abc", txHash: "0xdead" };
+  const before = await wallet.shieldedBalance("STRK");
+  await again.pay(invoice({ id: "B" }));
+  assert.equal(await wallet.shieldedBalance("STRK"), before, "B must not be paid twice");
+  assert.ok(afterB >= "0");
+});
+
+test("a corrupt stored record is ignored, not fatal", async () => {
+  const store = new Map([["strk20-pay.sent.sepolia.inv-1", '{"amount":"abc","invoiceId":"inv-1"}']]);
+  const shared = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+  const wallet = fastWallet();
+  const checkout = new StealthCheckout(wallet, async () => true, true, shared);
+  const receipt = await checkout.pay(invoice());
+  assert.equal(receipt.invoiceId, "inv-1", "a poisoned record must not brick the invoice");
+});

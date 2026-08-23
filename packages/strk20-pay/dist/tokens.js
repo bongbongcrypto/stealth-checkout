@@ -9,8 +9,14 @@ export function resolveToken(symbolOrAddress, registry = TOKENS) {
     const known = Object.prototype.hasOwnProperty.call(registry, symbolOrAddress)
         ? registry[symbolOrAddress]
         : undefined;
-    if (known && typeof known.address === "string" && Number.isInteger(known.decimals))
+    if (known &&
+        typeof known.address === "string" &&
+        /^0x[0-9a-fA-F]+$/.test(known.address) &&
+        Number.isInteger(known.decimals) &&
+        known.decimals >= 0 &&
+        known.decimals <= 36) {
         return known;
+    }
     // Never guess decimals. Assuming 18 for a 6-decimal token such as USDC
     // builds a transfer for a million million times the intended amount, and
     // the payer signs it. Make the caller declare it.

@@ -2,7 +2,7 @@
 // corresponds to a way real money was lost or forged before the fix.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evaluateInvoice, signPayload, toUnits, verifySignature } from "../lib.mjs";
+import { evaluateInvoice, hasUsableBaseline, sameAddress, signPayload, toUnits, verifySignature } from "../lib.mjs";
 
 const invoice = (over = {}) => ({
   id: "inv",
@@ -95,4 +95,25 @@ test("an empty secret verifies nothing", () => {
   const ts = Math.floor(Date.now() / 1000);
   assert.ok(!verifySignature("", body, signPayload("x", body, ts), ts));
   assert.ok(!verifySignature(undefined, body, "aa", ts));
+});
+
+test("restore and evaluate agree on what a usable baseline is", () => {
+  // These drifted apart once: the number 0 passed the restorer's String()
+  // test and failed the evaluator's, so the row was watched forever while
+  // every poll threw.
+  for (const bad of [undefined, null, "", "   ", 0, 5, [5], ["5"], {}, true, "0x10", "-1", "1e3", "1.0"]) {
+    assert.equal(hasUsableBaseline({ baselineUnits: bad }), false, `${JSON.stringify(bad)} must be unusable`);
+    assert.throws(() => evaluateInvoice({ ...invoice(), baselineUnits: bad }, 10n ** 24n), /no usable baseline/);
+  }
+  for (const good of ["0", "007", "1000000000000000000000000"]) {
+    assert.equal(hasUsableBaseline({ baselineUnits: good }), true);
+  }
+});
+
+test("addresses compare by value, not by spelling", () => {
+  assert.ok(sameAddress("0xabc", "0x0ABC"));
+  assert.ok(sameAddress("0x000000abc", "0xabc"));
+  assert.ok(!sameAddress("0xabc", "0xabd"));
+  assert.ok(!sameAddress("not-hex", "0xabc"));
+  assert.ok(!sameAddress(undefined, "0xabc"));
 });

@@ -34,7 +34,13 @@ function short(addr) {
   return addr && addr.length > 16 ? `${addr.slice(0, 8)}…${addr.slice(-6)}` : (addr ?? "");
 }
 
+/** States that must never be handed to a payer: the watcher will not confirm them. */
+const UNPAYABLE = new Set(["reserving", "expired", "needs_reregistration", "paid"]);
+
 function payLink(inv) {
+  // A link for an invoice the watcher is not watching takes the payer's money
+  // and never fires a webhook: money in, order never shipped.
+  if (UNPAYABLE.has(inv.status)) return "";
   if (!/^0x[0-9a-fA-F]{10,}$/.test(inv.receiveAddress ?? "")) return "";
   const base = new URL("../pay-live/index.html", location.href);
   base.search = new URLSearchParams({ to: inv.receiveAddress, amount: inv.amount, id: inv.id }).toString();
@@ -58,8 +64,13 @@ function render(invoices, demo) {
       }
       const st = document.createElement("td");
       const badge = document.createElement("span");
-      badge.className = `badge b-${inv.status}`;
-      badge.textContent = inv.status.toUpperCase();
+      // Unknown states must still render: a raw class name with no CSS rule
+      // made a needs_reregistration row look like a normal payable one.
+      const status = typeof inv.status === "string" ? inv.status : "unknown";
+      badge.className = `badge b-${["watching", "paid", "expired"].includes(status) ? status : "attention"}`;
+      badge.textContent = status.replace(/_/g, " ").toUpperCase();
+      if (status === "needs_reregistration") badge.title = "No baseline: delete this row and create it again";
+      if (status === "reserving") badge.title = "Registration did not finish; delete this row and try again";
       st.append(badge);
       tr.append(st);
 
@@ -78,7 +89,28 @@ function render(invoices, demo) {
 
       const linkTd = document.createElement("td");
       const link = payLink(inv);
-      if (link && !demo) {
+      if (!demo && UNPAYABLE.has(inv.status) && inv.status !== "paid") {
+        const fix = document.createElement("button");
+        fix.className = "ghost";
+        fix.style.padding = "2px 8px";
+        fix.textContent = "delete";
+        fix.title = "Release this row so its id and address can be used again";
+        fix.addEventListener("click", async () => {
+          fix.disabled = true;
+          try {
+            const res = await fetch(`${watcherUrl()}/invoices/${encodeURIComponent(inv.id)}`, {
+              method: "DELETE",
+              headers: authHeaders(),
+            });
+            if (!res.ok) throw new Error((await res.json()).error ?? "delete failed");
+            await refresh();
+          } catch (err) {
+            statusEl.textContent = `error: ${err.message}`;
+            fix.disabled = false;
+          }
+        });
+        linkTd.append(fix);
+      } else if (link && !demo) {
         const a = document.createElement("a");
         a.href = link;
         a.target = "_blank";

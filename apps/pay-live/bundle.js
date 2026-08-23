@@ -31616,6 +31616,7 @@ var StealthCheckout = class {
     return revealReport(invoice, willShieldFirst);
   }
   async pay(invoice) {
+    if (this.phase === "paid") this.phase = "idle";
     if (this.phase !== "idle" && this.phase !== "failed" && this.phase !== "expired") {
       throw new Error(`A payment is already in progress (${this.phase}).`);
     }
@@ -31633,8 +31634,9 @@ var StealthCheckout = class {
         this.emit("connecting", "Your wallet will pop up to connect.", true);
         await this.wallet.connect();
       }
-      const prior = this.sentPayment ?? this.loadSent(invoice);
-      if (prior && matchesInvoice(prior, invoice)) {
+      const cached = this.sentPayment && matchesInvoice(this.sentPayment, invoice) ? this.sentPayment : null;
+      const prior = cached ?? this.loadSent(invoice);
+      if (prior) {
         this.emit("confirming", "Payment already sent. Waiting for on-chain confirmation\u2026", false, prior.txHash);
         const ok = await this.confirmPayment(invoice, prior.txHash);
         if (!ok) throw new Error("Still not confirmed on-chain. Your payment was sent once and has not been repeated.");
@@ -31681,19 +31683,37 @@ var StealthCheckout = class {
   storeKey(invoiceId) {
     return `strk20-pay.sent.${this.wallet.network}.${invoiceId}`;
   }
+  /**
+   * A stored record only counts if it settles THIS invoice. The key is scoped
+   * by id, which is not enough on its own: an id can be reused with a
+   * different amount or recipient, and returning it unchecked would treat the
+   * new, larger invoice as already paid.
+   */
   loadSent(invoice) {
     try {
       const raw = this.store?.getItem(this.storeKey(invoice.id));
-      return raw ? JSON.parse(raw) : null;
+      if (!raw) return null;
+      const record = JSON.parse(raw);
+      return matchesInvoice(record, invoice) ? record : null;
     } catch {
       return null;
     }
   }
   saveSent(record) {
+    if (!this.store) return this.warnUnprotected("no storage is available");
     try {
-      this.store?.setItem(this.storeKey(record.invoiceId), JSON.stringify(record));
-    } catch {
+      this.store.setItem(this.storeKey(record.invoiceId), JSON.stringify(record));
+    } catch (err) {
+      this.warnUnprotected(err instanceof Error ? err.message : "storage rejected the write");
     }
+  }
+  warnUnprotected(reason) {
+    this.emit(
+      "confirming",
+      `Payment sent. Do not reload this page: it could not be remembered (${reason}), and reloading may pay again.`,
+      false,
+      this.sentPayment?.txHash
+    );
   }
   /**
    * Either shield inline (opt-in) or stop and say why not. Refusing is the
@@ -31788,8 +31808,19 @@ function defaultStore() {
   }
 }
 function matchesInvoice(sent, invoice) {
-  const recipient = invoice.receiveAddress ?? invoice.merchantPoolAddress ?? "";
-  return sent.invoiceId === invoice.id && sent.token === invoice.token && sent.recipient === recipient && compareAmounts(sent.amount, invoice.amount) === 0;
+  try {
+    const recipient = invoice.receiveAddress ?? invoice.merchantPoolAddress ?? "";
+    return sent.invoiceId === invoice.id && sent.token === invoice.token && sameFelt(sent.recipient, recipient) && compareAmounts(sent.amount, invoice.amount) === 0;
+  } catch {
+    return false;
+  }
+}
+function sameFelt(a, b) {
+  try {
+    return BigInt(a) === BigInt(b);
+  } catch {
+    return a === b;
+  }
 }
 
 // packages/strk20-pay/src/ui.ts
@@ -31946,7 +31977,9 @@ var TOKENS = {
 };
 function resolveToken(symbolOrAddress, registry = TOKENS) {
   const known = Object.prototype.hasOwnProperty.call(registry, symbolOrAddress) ? registry[symbolOrAddress] : void 0;
-  if (known && typeof known.address === "string" && Number.isInteger(known.decimals)) return known;
+  if (known && typeof known.address === "string" && /^0x[0-9a-fA-F]+$/.test(known.address) && Number.isInteger(known.decimals) && known.decimals >= 0 && known.decimals <= 36) {
+    return known;
+  }
   throw new Error(
     `Unknown token "${symbolOrAddress}". Register it first: resolveToken("${symbolOrAddress}", { ...TOKENS, MYTOKEN: { address, decimals } }), or pass a registry entry via the tokens option. Decimals are never assumed.`
   );

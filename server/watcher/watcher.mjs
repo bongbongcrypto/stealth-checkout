@@ -8,9 +8,11 @@
 //   WEBHOOK_SECRET=whsec_xxx node server/watcher/watcher.mjs
 //
 // API (merchant-facing, bind localhost or put behind your own auth):
-//   POST /invoices  {id?, token|tokenAddress+decimals, amount, receiveAddress, webhookUrl?, expiresAt?}
-//   GET  /invoices/:id
-//   GET  /healthz
+//   POST   /invoices      {id?, token | tokenAddress+decimals, amount, receiveAddress, expiresAt?}
+//   GET    /invoices      every invoice, newest first
+//   GET    /invoices/:id  one invoice
+//   DELETE /invoices/:id  release a reserving / expired / needs_reregistration row
+//   GET    /healthz       unauthenticated liveness
 
 import { createServer } from "node:http";
 import { randomUUID, timingSafeEqual } from "node:crypto";
@@ -18,8 +20,11 @@ import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import {
   TOKENS,
+  UNPAYABLE_STATES,
   balanceOfRequest,
   evaluateInvoice,
+  hasUsableBaseline,
+  sameAddress,
   signPayload,
   toUnits,
   transferEventsRequest,
@@ -166,11 +171,13 @@ function resolveToken(body) {
       throw new Error("decimals must be an integer between 0 and 36");
     }
     // Declaring the wrong decimals for a token we know would confirm an
-    // invoice for "1 STRK" on a millionth of one, while the webhook still
-    // reports "1 STRK". Refuse the contradiction.
-    const named = knownToken(body.token);
-    if (named && BigInt(named.address) === BigInt(body.tokenAddress) && named.decimals !== body.decimals) {
-      throw new Error(`${body.token} has ${named.decimals} decimals, not ${body.decimals}`);
+    // invoice for "1 STRK" on a millionth of one while the webhook still
+    // reports "1 STRK". Look the token up BY ADDRESS: keying on the label let
+    // "strk", " STRK", or simply omitting the label walk straight past this.
+    for (const [symbol, known] of Object.entries(TOKENS)) {
+      if (sameAddress(known.address, body.tokenAddress) && known.decimals !== body.decimals) {
+        throw new Error(`${symbol} has ${known.decimals} decimals, not ${body.decimals}`);
+      }
     }
     return { token: body.token ?? "CUSTOM", tokenAddress: body.tokenAddress, decimals: body.decimals };
   }
@@ -186,26 +193,34 @@ function resolveToken(body) {
  * merchant's secret.
  */
 async function createInvoice(body) {
-  if (!body.receiveAddress || !/^0x[0-9a-fA-F]{10,}$/.test(body.receiveAddress)) {
-    throw new Error("receiveAddress (hex, 10+ digits) is required: one fresh address per invoice");
+  // Type checks, not coercion: `.test()` stringifies, so ["0x0abc…"] used to
+  // pass as an address and then silently never match on-chain.
+  if (body === null || typeof body !== "object" || Array.isArray(body)) throw new Error("body must be an object");
+  if (typeof body.receiveAddress !== "string" || !/^0x[0-9a-fA-F]{10,64}$/.test(body.receiveAddress)) {
+    throw new Error("receiveAddress must be a hex string (0x plus 10-64 digits): one fresh address per invoice");
+  }
+  if (body.token !== undefined && typeof body.token !== "string") throw new Error("token must be a string");
+  if (body.id !== undefined && typeof body.id !== "string") throw new Error("id must be a string");
+  if (body.expiresAt !== undefined && typeof body.expiresAt !== "number") {
+    throw new Error("expiresAt must be a number of milliseconds since the epoch");
   }
   const { token, tokenAddress, decimals } = resolveToken(body);
   const amount = String(body.amount ?? "").trim();
   const target = toUnits(amount, decimals); // validates format
   if (target <= 0n) throw new Error("amount must be greater than zero");
-  if (body.expiresAt !== undefined && !Number.isFinite(Number(body.expiresAt))) {
-    throw new Error("expiresAt must be a millisecond timestamp");
+  if (body.expiresAt !== undefined && (!Number.isFinite(body.expiresAt) || body.expiresAt <= 0)) {
+    throw new Error("expiresAt must be a positive millisecond timestamp");
   }
 
-  const id = String(body.id ?? `inv_${randomUUID().slice(0, 8)}`);
+  const id = body.id ?? `inv_${randomUUID().slice(0, 8)}`;
   if (!/^[\w.-]{1,64}$/.test(id)) throw new Error("id must be 1-64 chars of [A-Za-z0-9_.-]");
   if (invoices.has(id)) throw new Error(`Invoice ${id} already exists`);
 
-  // One address, one invoice. Sharing an address lets a single payment
-  // confirm several orders.
+  // Any invoice that ever used this address, not just a live one: a late
+  // payment against an expired invoice would otherwise settle its successor.
   for (const other of invoices.values()) {
-    if ((other.status === "watching" || other.status === "reserving") && BigInt(other.receiveAddress) === BigInt(body.receiveAddress)) {
-      throw new Error(`receiveAddress is already watched by invoice ${other.id}; use a fresh address`);
+    if (sameAddress(other.receiveAddress, body.receiveAddress)) {
+      throw new Error(`receiveAddress was already used by invoice ${other.id}; use a fresh address`);
     }
   }
 
@@ -254,13 +269,22 @@ async function restore() {
     return; // first run
   }
   try {
-    const rows = JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error("expected an array of invoices");
+    const rows = [];
+    let dropped = 0;
+    for (const row of parsed) {
+      // One malformed row must not stop the process from booting: that turns a
+      // hand-edit into a total outage with no repair tool.
+      if (row && typeof row === "object" && typeof row.id === "string") rows.push(row);
+      else dropped++;
+    }
     let quarantined = 0;
     for (const row of rows) {
       // Rows from a build that predates baselines cannot be judged safely.
       // Park them rather than watching them: watching would confirm on the
       // absolute balance and pay out orders nobody paid for.
-      if (row.status === "watching" && !/^\d+$/.test(String(row.baselineUnits ?? ""))) {
+      if (row.status === "watching" && !hasUsableBaseline(row)) {
         invoices.set(row.id, { ...row, status: "needs_reregistration" });
         quarantined++;
         continue;
@@ -268,8 +292,10 @@ async function restore() {
       invoices.set(row.id, row);
     }
     log(`restored ${rows.length} invoice(s)`);
+    if (dropped > 0) log(`${dropped} unreadable row(s) in the store were skipped`);
     if (quarantined > 0) {
-      log(`${quarantined} invoice(s) have no baseline and were NOT resumed: re-register them to watch again`);
+      log(`${quarantined} invoice(s) have no baseline and were NOT resumed: DELETE then re-create them`);
+      await persist(); // write the quarantine back, or the file keeps saying "watching"
     }
   } catch (err) {
     // Never silently start empty on a corrupt store: that looks identical to
@@ -294,7 +320,7 @@ function corsHeaders(req) {
   return {
     "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
     "Vary": "Origin",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
   };
 }
@@ -354,6 +380,23 @@ export function makeServer() {
       if (req.method === "GET" && match) {
         const inv = invoices.get(match[1]);
         return inv ? json(req, res, 200, inv) : json(req, res, 404, { error: "not found" });
+      }
+      // Recovery. A crash mid-create, or a row from an older build, otherwise
+      // locks its id AND its address forever with no way back but hand-editing
+      // the store. Settled invoices stay: deleting one would let its address be
+      // reused and a late payment settle the successor.
+      if (req.method === "DELETE" && match) {
+        const inv = invoices.get(match[1]);
+        if (!inv) return json(req, res, 404, { error: "not found" });
+        if (!UNPAYABLE_STATES.has(inv.status)) {
+          return json(req, res, 409, {
+            error: `invoice ${inv.id} is ${inv.status}; only reserving, expired or needs_reregistration rows can be deleted`,
+          });
+        }
+        invoices.delete(inv.id);
+        await persist();
+        log(`deleted ${inv.id} (was ${inv.status})`);
+        return json(req, res, 200, { deleted: inv.id, was: inv.status });
       }
       return json(req, res, 404, { error: "unknown route" });
     } catch (err) {

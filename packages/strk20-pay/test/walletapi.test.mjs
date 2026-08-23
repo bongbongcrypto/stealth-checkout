@@ -20,7 +20,15 @@ test("token registry: known symbols resolve, everything else must declare decima
   // payer signs it. Refusing is the only safe answer.
   assert.throws(() => resolveToken("0x0abc"), /Decimals are never assumed/);
   assert.throws(() => resolveToken("DOGE"), /Unknown token/);
-  const registry = { USDC: { address: "0x0usdc", decimals: 6 } };
+  // Prototype keys are not tokens.
+  for (const key of ["toString", "__proto__", "constructor", "hasOwnProperty"]) {
+    assert.throws(() => resolveToken(key), /Unknown token|Decimals are never assumed/);
+  }
+  // A registry entry with junk in it is refused rather than trusted.
+  assert.throws(() => resolveToken("BAD", { BAD: { address: "not-hex", decimals: 6 } }), /Unknown token|never assumed/);
+  assert.throws(() => resolveToken("NEG", { NEG: { address: "0x01", decimals: -6 } }), /Unknown token|never assumed/);
+  assert.throws(() => resolveToken("HUGE", { HUGE: { address: "0x01", decimals: 1e9 } }), /Unknown token|never assumed/);
+  const registry = { USDC: { address: "0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8", decimals: 6 } };
   assert.equal(resolveToken("USDC", registry).decimals, 6);
 });
 

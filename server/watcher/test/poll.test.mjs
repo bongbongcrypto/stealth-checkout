@@ -684,3 +684,32 @@ test("a reservation that is genuinely stuck can still be released", () => {
     assert.equal(invoices.get("stuck"), undefined, "a reserving row is exactly what this may remove");
   })();
 });
+
+test("the watcher publishes its own state lists, so a retyped copy can be checked", async () => {
+  // apps/dashboard retypes these lists because it is a plain browser script.
+  // They drifted once - cancelled and written_off were added here and not
+  // there - and the dashboard handed payers a live link for an invoice the
+  // watcher would never look at again.
+  const res = await fetch(`${base}/states`, { headers: auth });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+
+  // Every terminal state the poller refuses to watch must be unpayable.
+  for (const state of ["cancelled", "written_off", "expired", "underpaid", "paid", "paid_late", "reserving"]) {
+    assert.ok(body.unpayable.includes(state), `${state} must never be handed to a payer`);
+  }
+  // And every state the code knows about is accounted for in the list.
+  for (const state of body.states) {
+    const known = body.unpayable.includes(state) || state === "watching";
+    assert.ok(known, `${state} is neither watching nor unpayable: which is it?`);
+  }
+  assert.deepEqual(
+    body.deletable.filter((s) => !body.unpayable.includes(s)),
+    [],
+    "anything deletable must also be unpayable",
+  );
+});
+
+test("the state list needs the token like the rest of the ledger", async () => {
+  assert.equal((await fetch(`${base}/states`)).status, 401);
+});

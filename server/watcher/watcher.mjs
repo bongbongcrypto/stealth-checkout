@@ -28,6 +28,8 @@ import { readFile, rename, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import {
   DELETABLE_STATES,
+  INVOICE_STATES,
+  UNPAYABLE_STATES,
   LATE_GRACE_MS,
   SETTLED_STATES,
   TOKENS,
@@ -878,6 +880,17 @@ export function makeServer() {
       return json(req, res, 401, { error: "missing or invalid bearer token" });
     }
     try {
+      // What this watcher considers payable, so a dashboard that retypes these
+      // lists can notice when it has fallen behind instead of handing a payer
+      // a link to an invoice nothing is watching.
+      if (req.method === "GET" && url.pathname === "/states") {
+        return json(req, res, 200, {
+          states: INVOICE_STATES,
+          unpayable: [...UNPAYABLE_STATES],
+          deletable: [...DELETABLE_STATES],
+          settled: [...SETTLED_STATES],
+        });
+      }
       if (req.method === "GET" && url.pathname === "/invoices") {
         return json(req, res, 200, [...invoices.values()].sort((a, b) => b.createdAt - a.createdAt));
       }

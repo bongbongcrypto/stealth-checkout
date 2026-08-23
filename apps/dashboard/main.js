@@ -92,13 +92,37 @@ function short(addr) {
 // undeletable: real money is already sitting at its address, and releasing the
 // address for reuse would let a later invoice settle on it.
 
-/** Never hand these to a payer: the watcher will not confirm them. */
-const UNPAYABLE = new Set(["reserving", "expired", "needs_reregistration", "paid", "paid_late", "underpaid"]);
+// These lists are RETYPED from server/watcher/lib.mjs because this file is a
+// plain script served to a browser and cannot import from the server package.
+// They drifted: `cancelled` and `written_off` were added to the watcher and
+// not here, so the dashboard offered a payer a live link for an invoice the
+// watcher will never look at again - money in, order never shipped, which is
+// the exact outcome payLink() below says it exists to prevent.
+//
+// If a state is added to lib.mjs, add it here. The check at the bottom of this
+// file fails loudly against the watcher's own list rather than letting the two
+// drift again in silence.
+const UNPAYABLE = new Set([
+  "reserving",
+  "expired",
+  "cancelled",
+  "written_off",
+  "needs_reregistration",
+  "underpaid",
+  "paid",
+  "paid_late",
+]);
 
-/** Only these may be released. */
+/** Only these may be released: everything else either holds money or is live. */
 const DELETABLE = new Set(["reserving", "expired", "needs_reregistration"]);
 
+const STATE_HELP_EXTRA = {
+  cancelled: "Withdrawn before anything arrived. Its address stays claimed and is never watched again",
+  written_off: "Abandoned by you. Its address stays claimed forever and is never watched again",
+};
+
 const STATUS_HELP = {
+  ...STATE_HELP_EXTRA,
   needs_reregistration: "No baseline: delete this row and create it again",
   reserving: "Registration did not finish; delete this row and try again",
   underpaid: "Money arrived but not enough. The address is NOT released: sweep or refund it by hand",
@@ -346,3 +370,26 @@ document.getElementById("f-export").addEventListener("click", async () => {
 document.getElementById("f-refresh").addEventListener("click", refresh);
 setInterval(refresh, 10_000);
 void refresh();
+void checkStateListsAgree();
+
+/**
+ * Ask the watcher which states it considers unpayable and shout if this file
+ * disagrees. Retyped constants drift; this makes the drift visible on the
+ * screen of the person it would cost money, rather than in a later audit.
+ */
+async function checkStateListsAgree() {
+  try {
+    const res = await fetch(`${watcherUrl()}/states`, { headers: authHeaders(), signal: AbortSignal.timeout(3000) });
+    if (!res.ok) return;
+    const server = await res.json();
+    const missing = (server.unpayable ?? []).filter((s) => !UNPAYABLE.has(s));
+    if (missing.length > 0) {
+      statusEl.textContent =
+        `This dashboard is out of date: the watcher treats ${missing.join(", ")} as unpayable and this page does not. ` +
+        "Do not hand out pay links until it is updated.";
+      statusEl.style.color = "var(--red)";
+    }
+  } catch {
+    /* an old watcher has no /states; nothing to compare against */
+  }
+}

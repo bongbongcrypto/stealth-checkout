@@ -10,11 +10,8 @@ wherever your users are: a button, a QR, a chat message.
 1. Open the [invoice creator](https://bongbongcrypto.github.io/stealth-checkout/apps/pay-live/index.html).
 2. Enter a FRESH receive address (one per invoice: that is what keeps your
    revenue untotalable) and the amount.
-3. Optionally fill in your watcher URL and the invoice id you registered it
-   under. Do this if you can: without it, the amount lives in the link, and a
-   payer who edits the link pays the edited amount and still sees a receipt.
-   With it, the payer's page fetches the amount from your server and refuses
-   the link if your server does not recognise it or has already settled it.
+3. Optionally give the invoice id you registered with your watcher, so the
+   webhook and the link agree on which order this is.
 4. Share the generated link. The payer gets a full checkout: wallet connect,
    private payment from their shielded balance, receipt. If they have not
    shielded yet, the widget tells them what to shield and why, rather than
@@ -22,9 +19,18 @@ wherever your users are: a button, a QR, a chat message.
 
 Watch the address yourself, or run the watcher (Tier 2) for webhooks.
 
-**A receipt on the payer's screen is not proof of payment to you.** Without a
-watcher, that page is only telling the payer what it observed on-chain. Confirm
-independently, from your own ledger, before you ship anything.
+**The amount and the destination live in the link, and the payer controls it.**
+There is deliberately no field for naming a server to check them against: a
+link cannot vouch for itself, and honouring one would let a phishing link issue
+itself a trust badge. The payer's page decides its authority from where it was
+deployed, so to have the terms come from your server, serve `apps/pay-live`
+from the same origin as your watcher. Anywhere else - including the copy on
+GitHub Pages - it renders a payable checkout behind a plain warning that
+nothing has checked the amount or the destination.
+
+**A receipt on the payer's screen is not proof of payment to you.** It tells
+the payer what that page observed on-chain, nothing more. Confirm independently
+from your own ledger before you ship anything.
 
 ## Tier 1: drop-in widget (a few lines)
 
@@ -147,8 +153,10 @@ have no token:
   what a payment link carries. It is readable from any origin
   (`Access-Control-Allow-Origin: *`) because a payer's page is not your
   dashboard; it carries no credentials, so that grant gives a script nothing a
-  plain `fetch` could not already have. It never returns baselines, webhook
-  state, or anything else from your ledger.
+  plain `fetch` could not already have. It returns exactly `id`, `token`,
+  `amount`, `decimals`, `receiveAddress`, `status`, `expiresAt`,
+  `receivedUnits` and `txHash` - never baselines, webhook state, or anything
+  else from your ledger.
 
 Bind the watcher to loopback and put your own proxy in front if that is not the
 trade you want.

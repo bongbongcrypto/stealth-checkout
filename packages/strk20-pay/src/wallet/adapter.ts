@@ -3,9 +3,12 @@ import type { Amount, Network } from "../types.js";
 /**
  * The only surface the checkout core is allowed to touch.
  *
- * Deliberately mirrors the four actions the Privacy Wallet API ships today
- * (shield / private transfer / unshield / swap): nothing in the core may
- * assume capabilities beyond these, so the mainnet path stays unblocked.
+ * Deliberately a subset of what the Privacy Wallet API ships today: shield,
+ * private transfer and unshield. Its fourth action, swap, is not declared here
+ * because nothing in this package uses it, and an interface that promises a
+ * method no implementation provides is a trap for whoever writes the next
+ * adapter. Nothing in the core may assume capabilities beyond these three, so
+ * the mainnet path stays unblocked.
  */
 export interface WalletAdapter {
   readonly network: Network;

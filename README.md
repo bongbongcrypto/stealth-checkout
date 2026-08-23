@@ -41,7 +41,7 @@ Invoice addresses can already hold funds — they need STRK to deploy before a m
 
 ## Design constraints honoured
 
-- **Composes only shipped wallet actions** (shield / private transfer / unshield / swap via the Privacy Wallet API). Nothing in the core loop depends on unpublished mainnet infrastructure.
+- **Composes only shipped wallet actions** (shield, private transfer and unshield via the Privacy Wallet API; its fourth action, swap, is not used here). Nothing in the core loop depends on unpublished mainnet infrastructure.
 - **Honest privacy accounting.** Deposits into the pool are public and compliance-screened. Note-to-note transfers hide amounts and parties. An unshield shows destination and amount, while the payer's identity stays severed by the pool. The widget says exactly this, every time, before signing.
 - **Pending states are first-class.** Pool notes take about 10 blocks to mature; every wait is shown next to the button that caused it, and wallet popups are announced before they appear.
 - **Money is never dropped on a technicality.** A partial payment becomes `underpaid`, not `expired`. A payment that lands after the deadline becomes `paid_late`, not lost. An address is never released for reuse once anything has arrived on it.

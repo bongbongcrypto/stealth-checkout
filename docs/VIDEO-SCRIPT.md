@@ -94,8 +94,9 @@ worth showing on camera rather than hiding. To demo server-verified terms, serve
 
 *Screen: the invoice link. Point at the green wallet check.*
 
-> A hosted invoice, on Starknet mainnet. The widget checks the wallet can actually make
-> private payments before offering the button.
+> A hosted invoice, on Starknet mainnet. The page checks which wallets are installed and
+> whether any of them can make private payments, and says so up front rather than letting
+> you find out from a failure halfway through.
 
 *Click pay. Approve in Ready X. Wait for the receipt.*
 

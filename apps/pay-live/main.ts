@@ -113,6 +113,25 @@ function linkId(to: string, amount: string, memo: string): string {
   return `lnk_${h1.toString(36)}${h2.toString(36)}`;
 }
 
+/**
+ * Is there a watcher at this origin at all?
+ *
+ * The difference between "your server does not know this invoice" and "this
+ * page is not served by a server that knows about invoices" decides whether an
+ * unrecognised link is refused or merely flagged, and only one of those two
+ * answers is safe in each case.
+ */
+async function originRunsAWatcher(origin: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${origin}/healthz`, { signal: AbortSignal.timeout(4000) });
+    if (!res.ok) return false;
+    const body = (await res.json()) as { ok?: unknown };
+    return body?.ok === true;
+  } catch {
+    return false;
+  }
+}
+
 /** Terms as the merchant's server states them. */
 interface ServerInvoice {
   id: string;
@@ -170,10 +189,20 @@ async function start(fromUrl: Invoice): Promise<void> {
     server = null;
   }
   if (!server) {
-    // No server here is the normal case for the hosted copy of this page: it
-    // is served from GitHub Pages, which runs no watcher. Fall through to the
-    // link-only mode, which says exactly what it is, rather than refusing to
-    // render anything at all.
+    // Two very different situations, and they need opposite answers.
+    //
+    // If this origin runs a watcher and that watcher has never heard of this
+    // invoice, the link is not one the merchant issued: refuse it. If this
+    // origin runs no watcher at all - the normal case for the hosted copy on
+    // GitHub Pages - there is nothing to have recognised it, so fall through
+    // to link-only mode and say exactly what that means.
+    const host = new URL(origin).host;
+    if (await originRunsAWatcher(origin)) {
+      return renderError(
+        `The merchant's server at ${host} does not recognise this invoice. Do not pay it: the amount and the ` +
+          "destination in this link are not ones that server issued. Ask the merchant for a fresh link.",
+      );
+    }
     return renderPayer(fromUrl, null, foreign, reachable ? "unknown-invoice" : null);
   }
   if (server.status !== "watching") {

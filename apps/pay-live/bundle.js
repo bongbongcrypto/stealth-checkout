@@ -32689,6 +32689,16 @@ function linkId(to2, amount, memo) {
   }
   return `lnk_${h1.toString(36)}${h2.toString(36)}`;
 }
+async function originRunsAWatcher(origin) {
+  try {
+    const res2 = await fetch(`${origin}/healthz`, { signal: AbortSignal.timeout(4e3) });
+    if (!res2.ok) return false;
+    const body = await res2.json();
+    return body?.ok === true;
+  } catch {
+    return false;
+  }
+}
 async function fetchServerInvoice(origin, invoice) {
   const url2 = `${origin}/public/invoices/${encodeURIComponent(invoice.id)}?to=${encodeURIComponent(invoice.receiveAddress)}`;
   const res2 = await fetch(url2, { signal: AbortSignal.timeout(8e3) });
@@ -32721,6 +32731,12 @@ async function start(fromUrl) {
     server = null;
   }
   if (!server) {
+    const host = new URL(origin).host;
+    if (await originRunsAWatcher(origin)) {
+      return renderError(
+        `The merchant's server at ${host} does not recognise this invoice. Do not pay it: the amount and the destination in this link are not ones that server issued. Ask the merchant for a fresh link.`
+      );
+    }
     return renderPayer(fromUrl, null, foreign, reachable ? "unknown-invoice" : null);
   }
   if (server.status !== "watching") {

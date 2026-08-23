@@ -15,10 +15,15 @@ afterwards; the script below is what to say, roughly, not word for word.
 2. Close every tab except the ones below. Zoom the browser to 110% so text reads on a
    phone.
 3. Have these open as tabs, in order:
+   - `https://bongbongcrypto.github.io/stealth-checkout/` (the landing page)
    - `https://bongbongcrypto.github.io/stealth-checkout/apps/demo-arcade/index.html`
    - the invoice link (below)
    - `https://voyager.online/`
    - `https://github.com/bongbongcrypto/stealth-checkout`
+4. Start the watcher in a terminal you can show:
+   `WATCHER_TOKEN=demo node server/watcher/watcher.mjs`, and open the dashboard with
+   that token pasted in. Register the invoice below through the dashboard so the
+   payer page can read its terms from the server on camera.
 
 **Invoice link for the live payment** (pays account 2, so money moves to a different
 address on camera):
@@ -28,6 +33,11 @@ https://bongbongcrypto.github.io/stealth-checkout/apps/pay-live/index.html?to=0x
 ```
 
 Cost of the take: 5 STRK paid plus 6 STRK pool fee, out of what you shielded.
+
+If the watcher is reachable from the public page, append
+`&watcher=https://<your tunnel>` so the amount comes from the server on camera. If it
+is not, drop the parameter: the page then says plainly that its receipt is a payer-side
+observation, which is worth showing too.
 
 ---
 
@@ -51,15 +61,28 @@ Cost of the take: 5 STRK paid plus 6 STRK pool fee, out of what you shielded.
 > Watch the flow: it checks the shielded balance, pays the invoice privately, the
 > arcade's backend confirms it, and a credit lands.
 
+*Before clicking pay, point at the confirmation block and the amber warning.*
+
+> Look at this before anything is signed. The invoice is one STRK. The payer pays
+> seven, because the pool charges a **flat six STRK per operation**, whatever the
+> amount, and that number is documented nowhere in STRK20's docs. We found it by
+> calling the contract and by making the arithmetic on our own seven mainnet
+> transactions balance.
+> So the widget reads it live, adds it to the total, and warns you when the fee is
+> bigger than the thing you are buying. Which on a one-STRK coin it is.
+> That is a real constraint on what private payments can be used for today, and a
+> checkout that showed a price and hid it would be lying.
+
 *Let the phases play. Point at the progress line.*
 
 > Every wait says what it is waiting for, right next to the button that caused it, and
 > the wallet popup is announced before it appears.
 
-*Open the honesty panel.*
+*Point at the honesty panel, already open.*
 
-> And before signing, it tells the payer exactly what goes on-chain and what does not.
-> Public in red, hidden in green. No privacy overclaiming.
+> And it is open by default, because a disclosure collapsed under the pay button is not
+> a disclosure. Amber is what goes on-chain, green is what stays hidden. No privacy
+> overclaiming.
 
 *Click START and play for five seconds.*
 
@@ -97,18 +120,27 @@ Cost of the take: 5 STRK paid plus 6 STRK pool fee, out of what you shielded.
 > No proving service, no discovery endpoint, no infrastructure that is not published
 > yet. That is the whole trick that makes accepting payments work today.
 
-*Dashboard: create an invoice, show it flip to PAID.*
+*Dashboard: create an invoice, show it flip to PAID, then hit Export CSV.*
 
-> Create an invoice, watch it confirm, copy the pay link. That is the merchant loop.
+> Create an invoice, watch it confirm, copy the pay link, export the ledger. That is
+> the merchant loop.
+
+*Point at the UNDERPAID row.*
+
+> And the states are the ones a real merchant needs. A partial payment is not
+> "expired", it is underpaid, with the shortfall, and its address stays reserved so a
+> later invoice cannot settle on the money sitting there. A payment that lands after
+> the deadline is paid late, not lost. Deliveries survive a restart, and there is a
+> redeliver endpoint for when your endpoint was the thing that was down.
 
 ## 2:40 to 3:00 - take it
 
-*Screen: docs/INTEGRATION.md.*
+*Screen: docs/INTEGRATION.md, then `npm install strk20-pay`.*
 
-> Three ways in. An invoice link with zero code. The widget in one mount call. Or the
-> watcher with webhooks if you want your own backend.
-> All MIT. If your sprint project needs to get paid, this is the layer, and I will fix
-> whatever breaks the same day.
+> Three ways in. An invoice link with zero code. The widget in one mount call, vanilla
+> or React. Or the watcher with webhooks if you want your own backend.
+> It is on npm and it is MIT. If your sprint project needs to get paid, this is the
+> layer, and I will fix whatever breaks the same day.
 > Repo is in the description.
 
 ---

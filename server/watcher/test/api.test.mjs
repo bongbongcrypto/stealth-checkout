@@ -154,7 +154,7 @@ test("declaring the wrong decimals for a known token is refused, whatever the la
       }),
     });
     assert.equal(res.status, 400, `label ${JSON.stringify(label)} must be refused`);
-    assert.match((await res.json()).error, /has 18 decimals, not 6|token must be a string/);
+    assert.match((await res.json()).error, /has 18 decimals, not 6|token must be 1-16 chars/);
   }
 });
 
@@ -263,7 +263,8 @@ test("a retried create with the same Idempotency-Key returns the first invoice",
 });
 
 test("CSV export quotes properly and cannot inject a spreadsheet formula", async () => {
-  const { csvCell, invoicesCsv } = await import("../watcher.mjs");
+  const { invoicesCsv } = await import("../watcher.mjs");
+  const { csvCell } = await import("../lib.mjs");
   assert.equal(csvCell("plain"), "plain");
   assert.equal(csvCell('say "hi", ok'), '"say ""hi"", ok"');
   assert.equal(csvCell("=1+1"), "'=1+1");

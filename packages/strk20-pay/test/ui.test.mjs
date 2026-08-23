@@ -40,6 +40,17 @@ const withTimeout = (promise, label, ms = 5000) =>
     new Promise((_, reject) => setTimeout(() => reject(new Error(`timed out waiting for ${label}`)), ms).unref?.()),
   ]);
 
+/**
+ * A store per test. Without it, the widget correctly recognises the payment an
+ * EARLIER test in this file already made for invoice "inv_1" and goes straight
+ * to the receipt: right behaviour, wrong test. That it happens at all is the
+ * cross-tab double-pay guard working.
+ */
+const freshStore = () => {
+  const m = new Map();
+  return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => m.set(k, v) };
+};
+
 const confirmRows = (root) => {
   const dl = root.find("spay-confirm");
   const out = {};
@@ -51,21 +62,23 @@ const confirmRows = (root) => {
 
 test("the payer is shown the total, the fee, and the destination before signing", async () => {
   const wallet = new MockWallet({ funded: { STRK: "100" }, latency: 0 });
-  mountCheckout(host, { invoice: invoice(), wallet });
+  mountCheckout(host, { invoice: invoice(), wallet, store: freshStore() });
   await settle();
 
   const rows = confirmRows(host);
   assert.equal(rows["Merchant receives"], "10 STRK");
-  assert.equal(rows["Pool fee"], "6 STRK");
-  // The number that leaves the payer's balance, which is the one that matters.
-  assert.equal(rows["You pay"], "16 STRK");
+  // Before connecting, the widget must assume the payer has to deposit, which
+  // costs the pool's fee twice: once taken out of the deposit, once off the
+  // payment. Showing one fee understated a 5 STRK invoice by 55%.
+  assert.equal(rows["Pool fee"], "6 STRK × 2 (deposit + payment)");
+  assert.equal(rows["You pay"], "22 STRK", "10 + 6 + 6");
   assert.equal(rows["Network"], "Starknet sepolia");
   assert.match(rows["To"], /^0x0abc00/);
 });
 
 test("a fee larger than the invoice is called out, not buried", async () => {
   const wallet = new MockWallet({ funded: { STRK: "100" }, latency: 0 });
-  mountCheckout(host, { invoice: invoice({ amount: "1" }), wallet });
+  mountCheckout(host, { invoice: invoice({ amount: "1", store: freshStore() }), wallet });
   await settle();
 
   const warn = host.find("spay-fee-warn");
@@ -73,16 +86,28 @@ test("a fee larger than the invoice is called out, not buried", async () => {
   assert.match(warn.textContent, /larger than this invoice/);
 });
 
+test("a payer who already holds shielded funds is quoted one fee, not two", async () => {
+  const wallet = new MockWallet({ funded: { STRK: "100" }, shielded: { STRK: "50" }, latency: 0 });
+  await wallet.connect();
+  mountCheckout(host, { invoice: invoice(), wallet, store: freshStore() });
+  await settle();
+  await settle();
+
+  const rows = confirmRows(host);
+  assert.equal(rows["Pool fee"], "6 STRK");
+  assert.equal(rows["You pay"], "16 STRK", "10 to the merchant, 6 to the pool, no deposit leg");
+});
+
 test("a fee smaller than the invoice does not nag", async () => {
   const wallet = new MockWallet({ funded: { STRK: "100" }, latency: 0 });
-  mountCheckout(host, { invoice: invoice({ amount: "500" }), wallet });
+  mountCheckout(host, { invoice: invoice({ amount: "500", store: freshStore() }), wallet });
   await settle();
   assert.equal(host.find("spay-fee-warn").hidden, true);
 });
 
 test("the honesty panel sits above the button and starts open", async () => {
   const wallet = new MockWallet({ funded: { STRK: "100" }, latency: 0 });
-  mountCheckout(host, { invoice: invoice(), wallet });
+  mountCheckout(host, { invoice: invoice(), wallet, store: freshStore() });
   await settle();
 
   const root = host.children[0];
@@ -104,7 +129,7 @@ test("a receipt links hashes only where they can actually be looked up", async (
   const wallet = new MockWallet({ funded: { STRK: "100" }, latency: 0 });
   const paid = withTimeout(
     new Promise((resolve) => {
-      mountCheckout(host, { invoice: invoice(), wallet, allowInlineShield: true, onPaid: resolve });
+      mountCheckout(host, { invoice: invoice(), wallet, allowInlineShield: true, onPaid: resolve, store: freshStore() });
     }),
     "onPaid",
   );
@@ -128,7 +153,7 @@ test("with an explorer-aware wallet the same hashes become links", async () => {
   wallet.explorerUrl = (kind, value) => `https://example.test/${kind}/${value}`;
   const paid = withTimeout(
     new Promise((resolve) => {
-      mountCheckout(host, { invoice: invoice(), wallet, allowInlineShield: true, onPaid: resolve });
+      mountCheckout(host, { invoice: invoice(), wallet, allowInlineShield: true, onPaid: resolve, store: freshStore() });
     }),
     "onPaid",
   );
@@ -144,11 +169,24 @@ test("with an explorer-aware wallet the same hashes become links", async () => {
 test("the button reports progress, and failure is announced assertively", async () => {
   const wallet = new MockWallet({ funded: { STRK: "0" }, latency: 0 });
   let failure = null;
-  mountCheckout(host, { invoice: invoice(), wallet, onFailed: (e) => (failure = e) });
+  mountCheckout(host, { invoice: invoice(), wallet, onFailed: (e) => (failure = e), store: freshStore() });
   await settle();
 
   host.find("spay-btn").click();
-  await new Promise((r) => setTimeout(r, 20));
+  // Wait on the signal, not on a guess: a fixed sleep passes until the widget
+  // gains one more await and then fails for reasons that have nothing to do
+  // with what is being tested.
+  await withTimeout(
+    new Promise((resolve) => {
+      const poll = setInterval(() => {
+        if (failure) {
+          clearInterval(poll);
+          resolve();
+        }
+      }, 5);
+    }),
+    "onFailed",
+  );
 
   const status = host.find("spay-status");
   // Inline shielding is off by default, so an unfunded payer must be refused
@@ -163,7 +201,7 @@ test("the button reports progress, and failure is announced assertively", async 
 
 test("unmount removes the widget and stops listening", async () => {
   const wallet = new MockWallet({ funded: { STRK: "100" }, latency: 0 });
-  const mounted = mountCheckout(host, { invoice: invoice(), wallet });
+  const mounted = mountCheckout(host, { invoice: invoice(), wallet, store: freshStore() });
   await settle();
   assert.equal(host.children.length, 1);
   mounted.unmount();

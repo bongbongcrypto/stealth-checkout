@@ -24,10 +24,18 @@ let coinSeq = 0;
  */
 let paying = false;
 
-// One wallet per visitor session, funded with play money. The full flow:
-// shield (public, screened) → note maturation → private payment: runs
-// exactly as it will on Sepolia/mainnet, just faster.
-const wallet = new MockWallet({ funded: { STRK: "25" }, latency: 650 });
+// One wallet per visitor session, with play money on both sides.
+//
+// It starts with a SHIELDED balance because that is the flow the product
+// actually recommends: shield once, ahead of time, then spend from it. A coin
+// then costs 1 + the pool's 6 STRK fee, and there is no public deposit leg to
+// correlate.
+//
+// It also has to be enough. Funded with 25 public and nothing shielded, the
+// first coin consumed 13 (deposit 1 + 6 + 6) and the second could not be
+// afforded at all: a judge who pressed INSERT COIN twice, which the UI invites,
+// watched the demo break with "Insufficient STRK balance" and no way back.
+const wallet = new MockWallet({ funded: { STRK: "200" }, shielded: { STRK: "70" }, latency: 650 });
 
 const game = createGame(canvas, {
   onGameOver({ score, mode }) {
@@ -78,9 +86,20 @@ function insertCoin() {
       credits += 1;
       updateButtons();
     },
-    onFailed() {
+    onFailed(error) {
       paying = false;
       updateButtons();
+      // A demo that dead-ends on an error with no way back is worse than one
+      // that never started. Play money is finite; say what to do about it.
+      if (/insufficient|not enough|credit nothing/i.test(error)) {
+        const note = document.createElement("p");
+        note.className = "pitch";
+        note.style.color = "#f0c674";
+        note.textContent =
+          "That is the play money gone. Reload the page for a fresh wallet. On mainnet this is exactly the " +
+          "moment the widget tells you to shield more, in one go and ahead of time, rather than per purchase.";
+        checkoutHost.append(note);
+      }
     },
   });
   // Any phase past "idle" means a wallet action is either open or already

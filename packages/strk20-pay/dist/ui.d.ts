@@ -1,4 +1,5 @@
 import { StealthCheckout } from "./checkout.js";
+import type { PaymentStore } from "./checkout.js";
 import type { Invoice, Receipt } from "./types.js";
 import type { WalletAdapter } from "./wallet/adapter.js";
 export interface MountOptions {
@@ -16,6 +17,15 @@ export interface MountOptions {
      * payment unlinkable, and it avoids paying the pool's per-deposit fee twice.
      */
     allowInlineShield?: boolean;
+    /**
+     * Where a broadcast payment is remembered, so a reload or a second tab
+     * cannot pay twice. Defaults to localStorage. Pass your own to share the
+     * record with a backend, or `null` to opt out and accept that risk.
+     *
+     * This was unreachable from here, which meant every widget consumer was
+     * locked to whatever the core happened to choose.
+     */
+    store?: PaymentStore | null;
 }
 export interface MountedCheckout {
     unmount(): void;

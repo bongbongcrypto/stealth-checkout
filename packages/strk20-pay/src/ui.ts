@@ -1,4 +1,5 @@
-import { StealthCheckout, addAmounts, compareAmounts } from "./checkout.js";
+import { StealthCheckout, compareAmounts, depositNeededFor, shieldedNeededFor } from "./checkout.js";
+import type { PaymentStore } from "./checkout.js";
 import { TOKENS, resolveToken } from "./tokens.js";
 import type { Invoice, PaymentProgress, Receipt, RevealItem } from "./types.js";
 import type { WalletAdapter } from "./wallet/adapter.js";
@@ -18,6 +19,15 @@ export interface MountOptions {
    * payment unlinkable, and it avoids paying the pool's per-deposit fee twice.
    */
   allowInlineShield?: boolean;
+  /**
+   * Where a broadcast payment is remembered, so a reload or a second tab
+   * cannot pay twice. Defaults to localStorage. Pass your own to share the
+   * record with a backend, or `null` to opt out and accept that risk.
+   *
+   * This was unreachable from here, which meant every widget consumer was
+   * locked to whatever the core happened to choose.
+   */
+  store?: PaymentStore | null;
 }
 
 export interface MountedCheckout {
@@ -34,7 +44,12 @@ export interface MountedCheckout {
 export function mountCheckout(container: HTMLElement, opts: MountOptions): MountedCheckout {
   injectStylesOnce();
   const { invoice, wallet } = opts;
-  const checkout = new StealthCheckout(wallet, opts.confirm, opts.allowInlineShield ?? false);
+  const checkout = new StealthCheckout(
+    wallet,
+    opts.confirm,
+    opts.allowInlineShield ?? false,
+    opts.store,
+  );
 
   const root = el("div", "spay");
   const amountLine = el("div", "spay-amount");
@@ -88,23 +103,60 @@ export function mountCheckout(container: HTMLElement, opts: MountOptions): Mount
     }
   })();
 
-  void (async () => {
-    const fee = (await wallet.poolFee?.(invoice.token)) ?? null;
+  /**
+   * Fill in the fee, the real total, and the small-invoice warning.
+   *
+   * Run again once the wallet is connected, because the total depends on
+   * something we cannot know before then: whether this payer has to deposit
+   * first. The pool charges its fee on every operation and takes it out of a
+   * deposit, so a payer who must shield pays it TWICE. Rendering one fee while
+   * the honesty panel beside it announced a coming deposit understated the
+   * cost by 55% on a 5 STRK invoice.
+   */
+  const renderTotals = async (): Promise<void> => {
+    let fee: string | null = null;
+    try {
+      fee = (await wallet.poolFee?.(invoice.token)) ?? null;
+    } catch {
+      fee = null; // an unreadable fee must not leave the row saying "checking..." forever
+    }
     if (fee === null) {
       feeCell.textContent = "unknown";
       totalCell.textContent = `${invoice.amount} ${invoice.token} plus the pool fee`;
       return;
     }
-    feeCell.textContent = `${fee} ${invoice.token}`;
-    totalCell.textContent = `${addAmounts(invoice.amount, fee, decimals)} ${invoice.token}`;
+
+    let mustDeposit = true; // the safe assumption until a balance says otherwise
+    try {
+      if (wallet.isConnected()) {
+        const shielded = await wallet.shieldedBalance(invoice.token);
+        mustDeposit =
+          shielded === null || compareAmounts(shielded, shieldedNeededFor(invoice.amount, fee, decimals), decimals) < 0;
+      }
+    } catch {
+      /* keep the safe assumption */
+    }
+
+    const total = mustDeposit
+      ? depositNeededFor(invoice.amount, fee, decimals)
+      : shieldedNeededFor(invoice.amount, fee, decimals);
+    feeCell.textContent = mustDeposit
+      ? `${fee} ${invoice.token} \u00d7 2 (deposit + payment)`
+      : `${fee} ${invoice.token}`;
+    totalCell.textContent = `${total} ${invoice.token}`;
+
     if (compareAmounts(fee, invoice.amount, decimals) > 0) {
       feeWarning.hidden = false;
       feeWarning.textContent =
         `Heads up: the pool's flat fee of ${fee} ${invoice.token} is larger than this invoice. ` +
-        `Private payments through the pool cost the same fee whatever the amount, so small ones carry most of it. ` +
-        `Shield once for several purchases rather than once per purchase.`;
+        `The pool charges it per operation whatever the amount, and takes it out of a deposit as well as off a payment, ` +
+        `so shielding once for several purchases costs far less than shielding per purchase.`;
+    } else {
+      feeWarning.hidden = true;
     }
-  })();
+  };
+
+  void renderTotals();
 
   const button = el("button", "spay-btn") as HTMLButtonElement;
   button.type = "button";
@@ -131,6 +183,7 @@ export function mountCheckout(container: HTMLElement, opts: MountOptions): Mount
     // inaccurate is its own kind of dishonesty.
     if (event.type === "progress" && event.progress.phase === "preparing") {
       void checkout.preview(invoice).then((rows) => honesty.render(rows));
+      void renderTotals();
     }
     if (event.type === "progress") renderProgress(event.progress);
     if (event.type === "paid") renderReceipt(event.receipt);
@@ -148,10 +201,11 @@ export function mountCheckout(container: HTMLElement, opts: MountOptions): Mount
   });
 
   function renderProgress(p: PaymentProgress): void {
-    status.setAttribute("aria-live", p.phase === "failed" ? "assertive" : "polite");
+    const loud = p.phase === "failed" || p.severity === "warning";
+    status.setAttribute("aria-live", loud ? "assertive" : "polite");
     status.textContent = p.message;
-    status.classList.toggle("spay-status-popup", p.walletPopupImminent);
-    status.classList.toggle("spay-status-error", p.phase === "failed");
+    status.classList.toggle("spay-status-popup", p.walletPopupImminent && !loud);
+    status.classList.toggle("spay-status-error", loud);
     const labels: Partial<Record<PaymentProgress["phase"], string>> = {
       connecting: "Connecting…",
       preparing: "Checking balance…",
@@ -168,7 +222,10 @@ export function mountCheckout(container: HTMLElement, opts: MountOptions): Mount
     receiptBox.setAttribute("role", "status");
     receiptBox.tabIndex = -1;
     button.hidden = true;
-    honesty.root.hidden = true;
+    // The honesty panel STAYS. Hiding it here removed every caveat at exactly
+    // the moment the receipt made its claim, which is the one moment they
+    // matter: the payer is about to decide what this receipt means.
+    honesty.root.open = false;
     receiptBox.hidden = false;
     receiptBox.replaceChildren(
       line("spay-receipt-title", "Receipt"),

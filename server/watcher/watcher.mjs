@@ -32,8 +32,12 @@ import {
   SETTLED_STATES,
   TOKENS,
   balanceOfRequest,
+  csvCell,
+  isHexFelt,
+  receivedFromEvents,
   evaluateInvoice,
   hasUsableBaseline,
+  normFelt,
   sameAddress,
   shouldPoll,
   signPayload,
@@ -55,13 +59,25 @@ const ALLOWED_ORIGIN = process.env.WATCHER_ORIGIN ?? "";
 const STORE_PATH = process.env.WATCHER_STORE ?? fileURLToPath(new URL("./invoices.json", import.meta.url));
 /** Give up after this many webhook attempts. The row stays redeliverable. */
 const WEBHOOK_MAX_ATTEMPTS = Number(process.env.WEBHOOK_MAX_ATTEMPTS ?? 8);
+/** And after this many manual redeliveries, stop obliging. */
+const WEBHOOK_MAX_REDELIVERIES = Number(process.env.WEBHOOK_MAX_REDELIVERIES ?? 20);
 
 /**
  * Replayed POST /invoices calls, keyed by Idempotency-Key. A merchant's retry
  * after a timeout used to hit "Invoice already exists" and read as a failure,
  * so orders were created twice or not at all.
+ *
+ * Each entry stores a fingerprint of the request that first used the key, so a
+ * key cannot be reused for a DIFFERENT invoice: keying on an internal order id
+ * is the natural integration, and returning the old 10 STRK row for a new 500
+ * STRK request would have the merchant ship 500 STRK of goods against it.
+ * Persisted with the ledger, because the retry a client is most likely to send
+ * is the one after a crash.
  */
 const idempotency = new Map();
+/** Keys currently mid-create, so two concurrent POSTs cannot both proceed. */
+const idempotencyInFlight = new Map();
+const IDEMPOTENCY_MAX = 10_000;
 
 /** @type {Map<string, any>} */
 const invoices = new Map();
@@ -107,13 +123,22 @@ async function pollOnce() {
     try {
       const result = await rpc(balanceOfRequest(inv.tokenAddress, inv.receiveAddress, ++rpcId));
       const balance = u256FromCallResult(result);
-      const next = evaluateInvoice(inv, balance);
+      // What the payer actually sent, summed from transfers into this address
+      // since it was registered. The balance delta is only a fallback: it
+      // cannot see money that has already been moved out, so a merchant
+      // sweeping the address made a full payment read as nothing.
+      const inflow = await totalReceived(inv).catch((err) => {
+        log(`${id} event scan failed (${err.message}); falling back to the balance delta`);
+        return null;
+      });
+      const next = evaluateInvoice(inv, balance, Date.now(), inflow?.units ?? null);
       if (next === inv) continue;
+      if (inflow?.txHash && !next.txHash) next.txHash = inflow.txHash;
       invoices.set(id, next);
       await persist();
       if (next.status !== inv.status) {
         if (SETTLED_STATES.has(next.status)) {
-          next.txHash = await findTxHash(next).catch(() => undefined);
+          next.txHash ??= await findTxHash(next).catch(() => undefined);
           await persist();
           queueWebhook(next, "payment.confirmed");
         } else if (next.status === "underpaid") {
@@ -125,12 +150,10 @@ async function pollOnce() {
       } else if (next.receivedUnits !== inv.receivedUnits) {
         log(`${id} partial: ${next.receivedUnits} / ${toUnits(inv.amount, inv.decimals)} units`);
       }
-      // Delta accounting reads a balance, so it cannot see money that has
-      // already been moved out. A merchant sweeping an address before its
-      // invoice settles will under-credit the payer, and silence about it is
-      // how that becomes an argument.
+      // Even with event accounting, a swept address is worth saying out loud:
+      // the merchant has moved a payer's money before the invoice resolved.
       if (balance < BigInt(inv.baselineUnits) + BigInt(next.receivedUnits ?? "0")) {
-        log(`${id} WARNING: balance is below what this invoice recorded; do not sweep an address still being watched`);
+        log(`${id} note: this address holds less than it received; it was swept while still being watched`);
       }
     } catch (err) {
       // RPC refusal is not a chain answer: keep watching, never mark unpaid.
@@ -143,7 +166,37 @@ async function findTxHash(inv) {
   const head = await currentBlock();
   const from = Math.max(0, head - 2000);
   const events = await rpc(transferEventsRequest(inv.tokenAddress, inv.receiveAddress, from, ++rpcId));
-  return txHashFromEvents(events, inv.receiveAddress);
+  const hash = txHashFromEvents(events, inv.receiveAddress);
+  // A hash from a third-party RPC is exported to CSV and rendered as a link.
+  return isHexFelt(hash) ? hash : undefined;
+}
+
+/**
+ * Sum every transfer into this invoice's address since it was registered.
+ * Returns null when the row predates block recording, when a page of events
+ * cannot be read, or when the scan runs longer than it is worth: a partial sum
+ * would under-credit the payer, which is exactly the bug this replaces.
+ */
+async function totalReceived(inv) {
+  if (typeof inv.createdBlock !== "number") return null;
+  let token;
+  let total = 0n;
+  let txHash;
+  let pages = 0;
+  do {
+    const page = await rpc(
+      transferEventsRequest(inv.tokenAddress, inv.receiveAddress, inv.createdBlock, ++rpcId, token),
+    );
+    const summed = receivedFromEvents(page, inv.receiveAddress);
+    if (summed === null) return null; // an unreadable amount: do not guess
+    total += summed.units;
+    txHash ??= summed.txHash;
+    token = page?.continuation_token;
+  } while (token && ++pages < 50);
+  // Still paginating after fifty pages means something is wrong with the
+  // filter, not that the payer sent that many transfers.
+  if (token) return null;
+  return { units: total, txHash };
 }
 
 /**
@@ -155,9 +208,14 @@ async function findTxHash(inv) {
  */
 function queueWebhook(inv, event) {
   const row = invoices.get(inv.id) ?? inv;
+  // A NEW id for a new event. Reusing the previous one meant an invoice that
+  // went underpaid and was then topped up sent payment.confirmed under the id
+  // its payment.underpaid had already used, and every merchant deduping on
+  // deliveryId (as the docs instruct) discarded the confirmation. Money in,
+  // order never shipped. Only a redelivery of the SAME event keeps its id.
   row.webhook = {
     event,
-    deliveryId: row.webhook?.deliveryId ?? `dlv_${randomUUID()}`,
+    deliveryId: `dlv_${randomUUID()}`,
     attempts: 0,
     nextAttemptAt: Date.now(),
     lastError: undefined,
@@ -165,6 +223,9 @@ function queueWebhook(inv, event) {
   invoices.set(row.id, row);
   void persist();
 }
+
+/** Deliveries in flight right now, so two drains cannot send the same one. */
+const sending = new Set();
 
 /** Send everything that is due. Called from the same loop as the poller. */
 async function drainWebhooks(now = Date.now()) {
@@ -188,6 +249,11 @@ async function deliverWebhook(inv) {
   const row = invoices.get(inv.id) ?? inv;
   const w = row.webhook ?? { event: "payment.confirmed", deliveryId: `dlv_${randomUUID()}`, attempts: 0 };
   row.webhook = w;
+  // The poll loop's drain and a manual redeliver can overlap, and without this
+  // the same delivery went out twice, both labelled "attempt 1", with the
+  // backoff state of whichever finished last.
+  if (sending.has(row.id)) return;
+  sending.add(row.id);
   const attempt = w.attempts + 1;
   const body = JSON.stringify({
     event: w.event,
@@ -237,6 +303,39 @@ async function deliverWebhook(inv) {
     if (attempt >= WEBHOOK_MAX_ATTEMPTS) {
       log(`webhook ${row.id} GAVE UP after ${attempt} attempts; POST /invoices/${row.id}/redeliver to retry`);
     }
+  } finally {
+    sending.delete(row.id);
+  }
+}
+
+/**
+ * What makes two creates "the same request". Only the fields that decide what
+ * is owed and where: a merchant re-sending with a different id is still asking
+ * for the same invoice, but a different amount or address is not.
+ */
+function requestFingerprint(body) {
+  const norm = (v) => {
+    try {
+      return normFelt(v);
+    } catch {
+      return String(v ?? "");
+    }
+  };
+  return JSON.stringify([
+    String(body?.amount ?? ""),
+    String(body?.token ?? ""),
+    String(body?.tokenAddress ?? ""),
+    body?.decimals ?? null,
+    norm(body?.receiveAddress),
+    body?.expiresAt ?? null,
+  ]);
+}
+
+function rememberIdempotency(key, id, fingerprint) {
+  idempotency.set(key, { id, fingerprint, at: Date.now() });
+  // Oldest first: a long-running merchant must not grow this without bound.
+  while (idempotency.size > IDEMPOTENCY_MAX) {
+    idempotency.delete(idempotency.keys().next().value);
   }
 }
 
@@ -258,9 +357,19 @@ function resolveToken(body) {
     // reports "1 STRK". Look the token up BY ADDRESS: keying on the label let
     // "strk", " STRK", or simply omitting the label walk straight past this.
     for (const [symbol, known] of Object.entries(TOKENS)) {
-      if (sameAddress(known.address, body.tokenAddress) && known.decimals !== body.decimals) {
+      if (!sameAddress(known.address, body.tokenAddress)) continue;
+      if (known.decimals !== body.decimals) {
         throw new Error(`${symbol} has ${known.decimals} decimals, not ${body.decimals}`);
       }
+      // The label is what the webhook, the CSV, the dashboard and the payer's
+      // page all display, and nothing was checking it against the address.
+      // `{token:"ETH", tokenAddress:<STRK>}` watched STRK while every screen
+      // said ETH: one side ships against the wrong price, whichever way it
+      // is read.
+      if (body.token !== undefined && body.token !== symbol) {
+        throw new Error(`tokenAddress ${body.tokenAddress} is ${symbol}, not ${body.token}`);
+      }
+      return { token: symbol, tokenAddress: body.tokenAddress, decimals: body.decimals };
     }
     return { token: body.token ?? "CUSTOM", tokenAddress: body.tokenAddress, decimals: body.decimals };
   }
@@ -282,7 +391,11 @@ async function createInvoice(body) {
   if (typeof body.receiveAddress !== "string" || !/^0x[0-9a-fA-F]{10,64}$/.test(body.receiveAddress)) {
     throw new Error("receiveAddress must be a hex string (0x plus 10-64 digits): one fresh address per invoice");
   }
-  if (body.token !== undefined && typeof body.token !== "string") throw new Error("token must be a string");
+  // Not just a string: this label is exported to CSV, where a control
+  // character ends the record early and turns the rest into a new row.
+  if (body.token !== undefined && (typeof body.token !== "string" || !/^[\w.+-]{1,16}$/.test(body.token))) {
+    throw new Error("token must be 1-16 chars of [A-Za-z0-9_.+-]");
+  }
   if (body.id !== undefined && typeof body.id !== "string") throw new Error("id must be a string");
   if (body.expiresAt !== undefined && typeof body.expiresAt !== "number") {
     throw new Error("expiresAt must be a number of milliseconds since the epoch");
@@ -328,6 +441,9 @@ async function createInvoice(body) {
     invoices.delete(id); // never leave a half-created row behind
     throw err;
   }
+  // Where to start counting transfers in. Best effort: without it the row
+  // falls back to balance-delta accounting, which is what it used to do.
+  const createdBlock = await currentBlock().catch(() => undefined);
   const inv = {
     id,
     token,
@@ -336,6 +452,7 @@ async function createInvoice(body) {
     amount,
     receiveAddress: body.receiveAddress,
     baselineUnits: baseline.toString(),
+    createdBlock: typeof createdBlock === "number" ? createdBlock : undefined,
     expiresAt: body.expiresAt === undefined ? undefined : Number(body.expiresAt),
     status: "watching",
     createdAt: Date.now(),
@@ -346,7 +463,13 @@ async function createInvoice(body) {
 
 async function persist() {
   try {
-    await writeFile(STORE_PATH, JSON.stringify([...invoices.values()], null, 2));
+    // The idempotency table rides with the ledger. It used to be memory-only,
+    // so the retry a client sends after a crash - the one the feature exists
+    // for - hit "invoice already exists" and read as a failure.
+    await writeFile(
+      STORE_PATH,
+      JSON.stringify({ invoices: [...invoices.values()], idempotency: [...idempotency.entries()] }, null, 2),
+    );
   } catch (err) {
     // Loud, because the invoice-to-order mapping lives ONLY here. Losing it
     // means a paid invoice can never be matched back to an order.
@@ -363,10 +486,15 @@ async function restore() {
   }
   try {
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) throw new Error("expected an array of invoices");
+    // Older stores are a bare array. Read both, write only the new shape.
+    const invoiceList = Array.isArray(parsed) ? parsed : parsed?.invoices;
+    if (!Array.isArray(invoiceList)) throw new Error("expected an array of invoices");
+    for (const [key, value] of Array.isArray(parsed?.idempotency) ? parsed.idempotency : []) {
+      if (typeof key === "string" && value && typeof value.id === "string") idempotency.set(key, value);
+    }
     const rows = [];
     let dropped = 0;
-    for (const row of parsed) {
+    for (const row of invoiceList) {
       // One malformed row must not stop the process from booting: that turns a
       // hand-edit into a total outage with no repair tool.
       if (row && typeof row === "object" && typeof row.id === "string") rows.push(row);
@@ -454,14 +582,6 @@ const CSV_COLUMNS = [
   "overpaidUnits",
   "txHash",
 ];
-
-/** RFC 4180 quoting, and a guard against spreadsheet formula injection. */
-function csvCell(value) {
-  if (value === undefined || value === null) return "";
-  let s = String(value);
-  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
-  return /["\n,]/.test(s) ? '"' + s.replaceAll('"', '""') + '"' : s;
-}
 
 function invoicesCsv() {
   const rows = [...invoices.values()].sort((a, b) => b.createdAt - a.createdAt);
@@ -555,25 +675,79 @@ export function makeServer() {
         if (key !== undefined && (typeof key !== "string" || key.length > 200)) {
           throw new Error("Idempotency-Key must be a string of at most 200 characters");
         }
-        // A retried POST returns the row it already created, rather than the
-        // 409 that used to read as "creation failed".
-        if (key && idempotency.has(key)) {
-          const priorId = idempotency.get(key);
-          const prior = invoices.get(priorId);
-          if (prior) return json(req, res, 200, prior);
-          idempotency.delete(key); // the row is gone; let the caller create it again
+        const raw = (await readBody(req)) || "{}";
+        const parsed = JSON.parse(raw);
+        const fingerprint = key ? requestFingerprint(parsed) : null;
+
+        if (key) {
+          const prior = idempotency.get(key);
+          if (prior) {
+            // The key must name the SAME request. Merchants key on their own
+            // order id, so reusing one for a repriced order used to return the
+            // old row with a 200 and ship the new goods against it.
+            if (prior.fingerprint !== fingerprint) {
+              return json(req, res, 409, {
+                error: `Idempotency-Key ${key} was already used for a different invoice`,
+              });
+            }
+            const row = invoices.get(prior.id);
+            if (row) return json(req, res, 200, row);
+            idempotency.delete(key); // the row is gone; let the caller create it again
+          }
+          // Two concurrent POSTs with one key: the check and the write used to
+          // straddle an await, so a double-submit produced 201 and 400.
+          if (idempotencyInFlight.has(key)) {
+            return json(req, res, 409, { error: `Idempotency-Key ${key} is already being processed` });
+          }
+          idempotencyInFlight.set(key, fingerprint);
         }
-        const inv = await createInvoice(JSON.parse((await readBody(req)) || "{}"));
-        if (key) idempotency.set(key, inv.id);
+        let inv;
+        try {
+          inv = await createInvoice(parsed);
+        } finally {
+          if (key) idempotencyInFlight.delete(key);
+        }
+        if (key) rememberIdempotency(key, inv.id, fingerprint);
         await persist();
         log(`watching ${inv.id} -> ${inv.receiveAddress} for ${inv.amount} ${inv.token} (baseline ${inv.baselineUnits})`);
         return json(req, res, 201, inv);
+      }
+      // A watching invoice used to be immortal: never overdue without an
+      // expiresAt, polled every cycle for the life of the process, and
+      // undeletable because only terminal rows may be released. Cancelling
+      // retires it without freeing its address, which is the part that must
+      // never be reused.
+      const cancel = url.pathname.match(/^\/invoices\/([\w.-]{1,64})\/cancel$/);
+      if (req.method === "POST" && cancel) {
+        const inv = invoices.get(cancel[1]);
+        if (!inv) return json(req, res, 404, { error: "not found" });
+        if (inv.status !== "watching") {
+          return json(req, res, 409, { error: `invoice ${inv.id} is ${inv.status}; only a watching invoice can be cancelled` });
+        }
+        if (BigInt(inv.receivedUnits ?? "0") > 0n) {
+          return json(req, res, 409, {
+            error: `invoice ${inv.id} has already received ${inv.receivedUnits} units; resolve it rather than cancelling it`,
+          });
+        }
+        const next = { ...inv, status: "cancelled", cancelledAt: Date.now() };
+        invoices.set(inv.id, next);
+        await persist();
+        log(`${inv.id} → cancelled`);
+        return json(req, res, 200, next);
       }
       const redeliver = url.pathname.match(/^\/invoices\/([\w.-]{1,64})\/redeliver$/);
       if (req.method === "POST" && redeliver) {
         const inv = invoices.get(redeliver[1]);
         if (!inv) return json(req, res, 404, { error: "not found" });
         if (!inv.webhook) return json(req, res, 409, { error: `invoice ${inv.id} has no webhook to redeliver` });
+        // Bounded: resetting attempts to zero on demand let one authenticated
+        // caller aim an unlimited stream of signed deliveries at the endpoint.
+        inv.webhook.redeliveries = (inv.webhook.redeliveries ?? 0) + 1;
+        if (inv.webhook.redeliveries > WEBHOOK_MAX_REDELIVERIES) {
+          return json(req, res, 429, {
+            error: `invoice ${inv.id} has been redelivered ${WEBHOOK_MAX_REDELIVERIES} times; fix the endpoint rather than retrying`,
+          });
+        }
         inv.webhook.attempts = 0;
         inv.webhook.nextAttemptAt = Date.now();
         delete inv.webhook.deliveredAt;
@@ -611,7 +785,7 @@ export function makeServer() {
   });
 }
 
-export { createInvoice, pollOnce, invoices, deliverWebhook, drainWebhooks, queueWebhook, invoicesCsv, csvCell };
+export { createInvoice, pollOnce, invoices, deliverWebhook, drainWebhooks, queueWebhook, invoicesCsv, restore };
 
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replaceAll("\\", "/").split("/").pop());
 if (isMain) {

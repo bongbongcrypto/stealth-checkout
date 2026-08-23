@@ -7,12 +7,25 @@ interface MockOptions {
   latency?: number;
   /** Starting public balance per token. */
   funded?: Record<string, string>;
+  /**
+   * Starting SHIELDED balance per token, for a payer who did the sensible
+   * thing and shielded ahead of time. Without this every demo has to open with
+   * a public deposit, which is both the slow path and the one the product
+   * spends a panel telling people not to take.
+   */
+  shielded?: Record<string, string>;
   /** Force a failure at a given action, for UX-path testing. */
   failAt?: "connect" | "shield" | "privateTransfer" | "unshield";
   /**
-   * Flat fee per pool operation, matching mainnet's 6 STRK. Charging nothing
-   * let tests pass flows that can never work on chain: shielding exactly the
-   * invoice amount credits amount-fee, which is then too little to pay with.
+   * Flat fee per pool operation, matching mainnet's 6 STRK.
+   *
+   * The DIRECTION matters and was modelled backwards here for a while. On
+   * chain the pool takes its fee out of the deposit: sending 20 to the pool
+   * credits 14. This mock charged the fee to the public balance and credited
+   * the deposit in full, which is the opposite, and a test asserting a
+   * mainnet property against it passed while the real flow could not work at
+   * any invoice size. Verified against the account's own seven mainnet
+   * transactions: 20-6, -5-6, +5-6, +5-6, +20-6, -5-6, +5-6 = 3 STRK left.
    */
   poolFeeStrk?: string;
 }
@@ -43,6 +56,9 @@ export class MockWallet implements WalletAdapter {
     for (const [token, amount] of Object.entries(opts.funded ?? { STRK: "100" })) {
       this.pub.set(token, toUnits(amount));
     }
+    for (const [token, amount] of Object.entries(opts.shielded ?? {})) {
+      this.shielded.set(token, toUnits(amount));
+    }
   }
 
   async connect(): Promise<{ address: string }> {
@@ -72,9 +88,18 @@ export class MockWallet implements WalletAdapter {
     this.assertConnected("shield");
     await wait(this.latency * 2); // screening + acceptance
     if (this.failAt === "shield") throw new WalletActionError("shield", "Deposit rejected by compliance screening.");
-    // Public funds pay amount + fee; the pool credits the amount.
-    this.take(this.pub, token, fromUnits(toUnits(amount) + this.fee), "shield");
-    this.shielded.set(token, (this.shielded.get(token) ?? 0n) + toUnits(amount));
+    // The pool takes its fee OUT of the deposit: send X, get X - fee credited.
+    // A deposit at or below the fee buys nothing and is refused here rather
+    // than silently crediting zero.
+    const deposited = toUnits(amount);
+    if (deposited <= this.fee) {
+      throw new WalletActionError(
+        "shield",
+        `A deposit of ${amount} is not more than the pool's ${fromUnits(this.fee)} fee, so it would credit nothing.`,
+      );
+    }
+    this.take(this.pub, token, amount, "shield");
+    this.shielded.set(token, (this.shielded.get(token) ?? 0n) + deposited - this.fee);
     return { txHash: this.hash() };
   }
 

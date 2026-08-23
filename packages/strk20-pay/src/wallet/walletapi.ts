@@ -315,7 +315,11 @@ export function explainWalletError(err: unknown, action: "shield" | "privateTran
   if (/SCREENING|COMPLIANCE|BLOCKED/i.test(raw)) {
     return "The privacy pool's compliance screening rejected this deposit. Deposits are screened on every route.";
   }
-  if (/INSUFFICIENT|BALANCE/i.test(raw)) {
+  // Deliberately narrow. `BALANCE` with no word boundary swallowed unrelated
+  // errors - BALANCE_QUERY_FAILED, an RPC complaining about a balance lookup -
+  // and relabelled them "not enough balance", which the checkout reads as
+  // permission to deposit and try again.
+  if (/INSUFFICIENT|NOT ENOUGH|BALANCE TOO LOW|\bBALANCE_(TOO_)?LOW\b/i.test(raw)) {
     return `Not enough balance to ${action === "shield" ? "shield" : "pay"}, including fees.`;
   }
   if (/reject|denied|USER_REFUSED|cancel/i.test(raw)) {

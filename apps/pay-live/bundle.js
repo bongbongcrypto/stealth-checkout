@@ -31536,7 +31536,7 @@ function revealReport(invoice, willShieldFirst) {
       {
         fact: "Invoice address and amount",
         visibility: "public",
-        detail: `The payment lands on a fresh address created only for this invoice, so the amount (${invoice.amount} ${invoice.token}) and that address are visible.`
+        detail: `The amount (${invoice.amount} ${invoice.token}) and the address it lands on are visible. That address is meant to be fresh, used for this invoice only, which is what stops an observer totalling the merchant's revenue. Only the merchant can guarantee it: this page is given the address, and cannot check it.`
       },
       {
         fact: "The link between your wallet and this payment",
@@ -31546,7 +31546,7 @@ function revealReport(invoice, willShieldFirst) {
       {
         fact: "The merchant's other income",
         visibility: "hidden",
-        detail: "Each invoice uses its own address, so observers cannot total a merchant's revenue by watching one address."
+        detail: "Each invoice uses its own address, so observers cannot total a merchant's revenue by watching one address. Two limits on that: sweeping several invoice addresses into one treasury links them back together, and the merchant's own records know everything either way."
       }
     );
   } else {
@@ -31562,6 +31562,18 @@ function revealReport(invoice, willShieldFirst) {
         detail: "The transfer's existence and timing are visible, without amounts or identities."
       }
     );
+  }
+  items.push({
+    fact: "Your network address, to whoever runs the RPC",
+    visibility: "public",
+    detail: "Confirming a payment means asking a public Starknet node about this invoice's address, repeatedly, from your browser. Whoever operates that node sees one IP watching one invoice. Nothing about the pool hides that."
+  });
+  if (invoice.mode === "note") {
+    items.push({
+      fact: "Whether the merchant can see this payment at all",
+      visibility: "public",
+      detail: "Note transfers are not discoverable on Starknet mainnet today, so a merchant cannot confirm one headlessly. Only send this way if the merchant has told you how they will credit it."
+    });
   }
   items.push({
     fact: "Timing correlation",
@@ -31653,7 +31665,7 @@ var StealthCheckout = class {
     const shielded = await this.wallet.shieldedBalance(invoice.token);
     const fee = await this.wallet.poolFee?.(invoice.token) ?? "0";
     const dp = decimalsOf(invoice.token);
-    const willShieldFirst = shielded === null || compareAmounts(shielded, addAmounts(invoice.amount, fee, dp), dp) < 0;
+    const willShieldFirst = shielded === null || compareAmounts(shielded, shieldedNeededFor(invoice.amount, fee, dp), dp) < 0;
     return revealReport(invoice, willShieldFirst);
   }
   async pay(invoice) {
@@ -31677,6 +31689,11 @@ var StealthCheckout = class {
       }
       const cached = this.sentPayment && matchesInvoice(this.sentPayment, invoice) ? this.sentPayment : null;
       const prior = cached ?? this.loadSent(invoice);
+      if (prior && !prior.txHash) {
+        throw new Error(
+          "A payment for this invoice was already sent to your wallet, and this page never learned whether it went through. Check your wallet's activity before paying again: paying now could pay twice. If nothing was sent, clear this page's site data and reload."
+        );
+      }
       if (prior) {
         this.emit("confirming", "Payment already sent. Waiting for on-chain confirmation\u2026", false, prior.txHash);
         const ok = await this.confirmPayment(invoice, prior.txHash);
@@ -31692,6 +31709,7 @@ var StealthCheckout = class {
           ({ txHash } = await this.payStep(invoice));
         } catch (err) {
           if (!isInsufficientFunds(err)) throw err;
+          this.clearPending(invoice);
           const fee = await this.wallet.poolFee?.(invoice.token) ?? "0";
           shieldTxHash = await this.shieldOrExplain(invoice, void 0, fee);
           ({ txHash } = await this.payStep(invoice));
@@ -31699,7 +31717,7 @@ var StealthCheckout = class {
       } else {
         const fee = await this.wallet.poolFee?.(invoice.token) ?? "0";
         const dp = decimalsOf(invoice.token);
-        const needed = addAmounts(invoice.amount, fee, dp);
+        const needed = shieldedNeededFor(invoice.amount, fee, dp);
         if (compareAmounts(shielded, needed, dp) < 0) {
           shieldTxHash = await this.shieldOrExplain(invoice, shielded, fee);
         }
@@ -31719,6 +31737,7 @@ var StealthCheckout = class {
       if (!confirmed) throw new Error("The payment was not confirmed on-chain. It was sent once and will not be sent again.");
       return this.finish(invoice, txHash, shieldTxHash);
     } catch (err) {
+      if (didNotReachTheChain(err)) this.clearPending(invoice);
       const message = err instanceof WalletActionError ? err.message : err instanceof Error ? err.message : "Payment failed for an unknown reason.";
       this.emit("failed", message, false, void 0, message);
       this.listeners.forEach((l) => l({ type: "failed", error: message, phase: this.phase }));
@@ -31744,20 +31763,43 @@ var StealthCheckout = class {
       return null;
     }
   }
-  saveSent(record) {
-    if (!this.store) return this.warnUnprotected("no storage is available");
+  /** Remember that a payment was requested, before it can possibly land. */
+  markPending(invoice) {
+    const record = {
+      invoiceId: invoice.id,
+      amount: invoice.amount,
+      token: invoice.token,
+      recipient: invoice.receiveAddress ?? invoice.merchantPoolAddress ?? "",
+      txHash: ""
+    };
+    this.sentPayment = record;
+    this.saveSent(record, { quiet: true });
+  }
+  /** Forget it, once the wallet has made clear nothing was submitted. */
+  clearPending(invoice) {
+    if (this.sentPayment && !this.sentPayment.txHash) this.sentPayment = null;
+    try {
+      this.store?.setItem(this.storeKey(invoice.id), "");
+    } catch {
+    }
+  }
+  saveSent(record, opts = {}) {
+    if (!this.store) return opts.quiet ? void 0 : this.warnUnprotected("no storage is available");
+    if (isEphemeral(this.store) && !opts.quiet) this.warnUnprotected("this browser is not storing anything");
     try {
       this.store.setItem(this.storeKey(record.invoiceId), JSON.stringify(record));
     } catch (err) {
-      this.warnUnprotected(err instanceof Error ? err.message : "storage rejected the write");
+      if (!opts.quiet) this.warnUnprotected(err instanceof Error ? err.message : "storage rejected the write");
     }
   }
   warnUnprotected(reason) {
     this.emit(
       "confirming",
-      `Payment sent. Do not reload this page: it could not be remembered (${reason}), and reloading may pay again.`,
+      `DO NOT RELOAD THIS PAGE. Your payment was sent, but it could not be remembered (${reason}), so reloading would pay again. Wait here until the receipt appears.`,
       false,
-      this.sentPayment?.txHash
+      this.sentPayment?.txHash,
+      void 0,
+      "warning"
     );
   }
   /**
@@ -31766,11 +31808,13 @@ var StealthCheckout = class {
    */
   async shieldOrExplain(invoice, shielded, fee = "0") {
     if (this.allowInlineShield) return this.shieldStep(invoice, fee);
-    const needed = addAmounts(invoice.amount, fee, decimalsOf(invoice.token));
+    const dp = decimalsOf(invoice.token);
+    const needed = shieldedNeededFor(invoice.amount, fee, dp);
+    const deposit = depositNeededFor(invoice.amount, fee, dp);
     const have = shielded !== void 0 ? ` You have ${shielded} ${invoice.token} shielded right now.` : "";
-    const feeNote = compareAmounts(fee, "0") > 0 ? ` The pool charges a flat ${fee} ${invoice.token} for the payment itself, on top of the ${invoice.amount} the merchant receives.` : "";
+    const feeNote = compareAmounts(fee, "0") > 0 ? ` The pool charges a flat ${fee} ${invoice.token} per operation and takes it out of a deposit, so send ${deposit} ${invoice.token} to end up with ${needed} spendable.` : "";
     throw new Error(
-      `You need ${needed} ${invoice.token} shielded to pay this invoice.${have}${feeNote} Shield it in your wallet first, in one go and ahead of time: each deposit costs the same flat fee again, and a deposit made moments before a payment can be linked to it by amount and timing. Wait about ten blocks after shielding, then come back to this invoice.`
+      `You need ${needed} ${invoice.token} shielded to pay this invoice.${have}${feeNote} Do it in your wallet, in one go and ahead of time: every deposit costs that fee again, and a deposit made moments before a payment can be linked to it by amount and timing. Wait about ten blocks after shielding, then come back to this invoice.`
     );
   }
   finish(invoice, txHash, shieldTxHash) {
@@ -31784,7 +31828,22 @@ var StealthCheckout = class {
       txHash,
       shieldTxHash,
       confirmedAt: Date.now(),
-      disclosure: invoice.mode === "address" ? "Proves this invoice was paid. Does not link the payment to the payer's wallet." : "Proves a private note was sent. Amount and parties are not on-chain."
+      // Three things this string used to get wrong, all in eleven words.
+      //
+      // "Proves" was false: `confirmPayment` defaults to a function that
+      // returns true, so an integrator who never wired a backend got a receipt
+      // asserting proof of nothing. It now says who checked.
+      //
+      // "Does not link the payment to the payer's wallet" was contradicted on
+      // the line above it, which prints the public deposit that names the
+      // payer, and by the honesty panel that had just called a deposit made
+      // moments before a payment the strongest link an observer can get.
+      disclosure: [
+        invoice.mode === "address" ? `Records that ${invoice.amount} ${invoice.token} reached this invoice's address.` : `Records that a private note for ${invoice.amount} ${invoice.token} was sent.`,
+        invoice.mode === "address" ? "The paying transaction is submitted through the pool's relayers, so it does not name your wallet." : "The transfer publishes no amount, sender or recipient.",
+        shieldTxHash ? "The deposit above is public and names you. Made this close to the payment, the two can be linked by amount and timing." : "",
+        "This is your record, not the merchant's: they confirm independently from the chain."
+      ].filter(Boolean).join(" ")
     };
     this.emit("paid", "Paid. Receipt ready.", false, txHash);
     this.listeners.forEach((l) => l({ type: "paid", receipt }));
@@ -31792,10 +31851,11 @@ var StealthCheckout = class {
   }
   /** Shield, then block until the new notes are actually spendable. */
   async shieldStep(invoice, fee = "0") {
-    const deposit = addAmounts(invoice.amount, fee, decimalsOf(invoice.token));
+    const deposit = depositNeededFor(invoice.amount, fee, decimalsOf(invoice.token));
+    const feeNote = compareAmounts(fee, "0") > 0 ? ` That covers the ${invoice.amount} the merchant receives plus the pool's ${fee} fee twice: once on this deposit, once on the payment.` : "";
     this.emit(
       "shielding",
-      `Your wallet will pop up to shield ${deposit} ${invoice.token}. This deposit is public and screened.`,
+      `Your wallet will pop up to shield ${deposit} ${invoice.token}. This deposit is public and screened.${feeNote}`,
       true
     );
     const { txHash } = await this.wallet.shield(invoice.token, deposit);
@@ -31806,6 +31866,7 @@ var StealthCheckout = class {
     return txHash;
   }
   async payStep(invoice) {
+    this.markPending(invoice);
     this.emit(
       "paying",
       invoice.mode === "address" ? "Your wallet will pop up to pay the invoice address privately." : "Your wallet will pop up to send a private note to the merchant.",
@@ -31821,9 +31882,9 @@ var StealthCheckout = class {
     if (!invoice.merchantPoolAddress) throw new Error("Invoice is missing the merchant pool address.");
     return this.wallet.privateTransfer(invoice.token, invoice.amount, invoice.merchantPoolAddress);
   }
-  emit(phase, message, walletPopupImminent, txHash, error3) {
+  emit(phase, message, walletPopupImminent, txHash, error3, severity) {
     this.phase = phase;
-    const progress = { phase, message, walletPopupImminent, txHash, error: error3 };
+    const progress = { phase, message, walletPopupImminent, txHash, error: error3, severity };
     this.listeners.forEach((l) => l({ type: "progress", progress }));
   }
 };
@@ -31843,6 +31904,12 @@ function decimalsOf(token) {
     return 18;
   }
 }
+function depositNeededFor(amount, fee, decimals = 18) {
+  return addAmounts(amount, addAmounts(fee, fee, decimals), decimals);
+}
+function shieldedNeededFor(amount, fee, decimals = 18) {
+  return addAmounts(amount, fee, decimals);
+}
 function compareAmounts(a, b, decimals = 18) {
   const [ai, af] = parseAmount(a, decimals);
   const [bi, bf] = parseAmount(b, decimals);
@@ -31854,16 +31921,39 @@ function compareAmounts(a, b, decimals = 18) {
   const bp = bf.padEnd(len, "0");
   return ap === bp ? 0 : ap < bp ? -1 : 1;
 }
+function didNotReachTheChain(err) {
+  const raw = err instanceof Error ? err.message : String(err ?? "");
+  return isInsufficientFunds(err) || /dismissed the wallet prompt|user (rejected|refused|denied)|USER_REFUSED|is not connected|expired|invalid|missing its receive address|wrong network|is for (mainnet|sepolia)/i.test(
+    raw
+  );
+}
 function isInsufficientFunds(err) {
   const raw = err instanceof Error ? err.message : String(err ?? "");
   return /insufficient|not enough|no (unspent )?notes|balance too low|NOT_ENOUGH/i.test(raw);
 }
 function defaultStore() {
-  try {
-    return typeof sessionStorage === "undefined" ? null : sessionStorage;
-  } catch {
-    return null;
-  }
+  const probe = "strk20-pay.probe";
+  const usable = (get) => {
+    try {
+      const s = get();
+      if (!s) return null;
+      s.setItem(probe, "1");
+      return s;
+    } catch {
+      return null;
+    }
+  };
+  return usable(() => typeof localStorage === "undefined" ? void 0 : localStorage) ?? usable(() => typeof sessionStorage === "undefined" ? void 0 : sessionStorage) ?? memoryStore;
+}
+var memoryStore = /* @__PURE__ */ (() => {
+  const map = /* @__PURE__ */ new Map();
+  return {
+    getItem: (k) => map.get(k) ?? null,
+    setItem: (k, v) => void map.set(k, v)
+  };
+})();
+function isEphemeral(store) {
+  return store === memoryStore;
 }
 function matchesInvoice(sent, invoice) {
   try {
@@ -31896,7 +31986,12 @@ function addAmounts(a, b, decimals = 18) {
 function mountCheckout(container, opts) {
   injectStylesOnce();
   const { invoice, wallet } = opts;
-  const checkout = new StealthCheckout(wallet, opts.confirm, opts.allowInlineShield ?? false);
+  const checkout = new StealthCheckout(
+    wallet,
+    opts.confirm,
+    opts.allowInlineShield ?? false,
+    opts.store
+  );
   const root = el("div", "spay");
   const amountLine = el("div", "spay-amount");
   amountLine.textContent = `${invoice.amount} ${invoice.token}`;
@@ -31934,20 +32029,37 @@ function mountCheckout(container, opts) {
       return 18;
     }
   })();
-  void (async () => {
-    const fee = await wallet.poolFee?.(invoice.token) ?? null;
+  const renderTotals = async () => {
+    let fee = null;
+    try {
+      fee = await wallet.poolFee?.(invoice.token) ?? null;
+    } catch {
+      fee = null;
+    }
     if (fee === null) {
       feeCell.textContent = "unknown";
       totalCell.textContent = `${invoice.amount} ${invoice.token} plus the pool fee`;
       return;
     }
-    feeCell.textContent = `${fee} ${invoice.token}`;
-    totalCell.textContent = `${addAmounts(invoice.amount, fee, decimals)} ${invoice.token}`;
+    let mustDeposit = true;
+    try {
+      if (wallet.isConnected()) {
+        const shielded = await wallet.shieldedBalance(invoice.token);
+        mustDeposit = shielded === null || compareAmounts(shielded, shieldedNeededFor(invoice.amount, fee, decimals), decimals) < 0;
+      }
+    } catch {
+    }
+    const total = mustDeposit ? depositNeededFor(invoice.amount, fee, decimals) : shieldedNeededFor(invoice.amount, fee, decimals);
+    feeCell.textContent = mustDeposit ? `${fee} ${invoice.token} \xD7 2 (deposit + payment)` : `${fee} ${invoice.token}`;
+    totalCell.textContent = `${total} ${invoice.token}`;
     if (compareAmounts(fee, invoice.amount, decimals) > 0) {
       feeWarning.hidden = false;
-      feeWarning.textContent = `Heads up: the pool's flat fee of ${fee} ${invoice.token} is larger than this invoice. Private payments through the pool cost the same fee whatever the amount, so small ones carry most of it. Shield once for several purchases rather than once per purchase.`;
+      feeWarning.textContent = `Heads up: the pool's flat fee of ${fee} ${invoice.token} is larger than this invoice. The pool charges it per operation whatever the amount, and takes it out of a deposit as well as off a payment, so shielding once for several purchases costs far less than shielding per purchase.`;
+    } else {
+      feeWarning.hidden = true;
     }
-  })();
+  };
+  void renderTotals();
   const button = el("button", "spay-btn");
   button.type = "button";
   const defaultLabel = opts.label ?? `Pay ${invoice.amount} ${invoice.token} privately`;
@@ -31963,6 +32075,7 @@ function mountCheckout(container, opts) {
   const off = checkout.on((event) => {
     if (event.type === "progress" && event.progress.phase === "preparing") {
       void checkout.preview(invoice).then((rows) => honesty.render(rows));
+      void renderTotals();
     }
     if (event.type === "progress") renderProgress(event.progress);
     if (event.type === "paid") renderReceipt(event.receipt);
@@ -31976,10 +32089,11 @@ function mountCheckout(container, opts) {
     });
   });
   function renderProgress(p) {
-    status.setAttribute("aria-live", p.phase === "failed" ? "assertive" : "polite");
+    const loud = p.phase === "failed" || p.severity === "warning";
+    status.setAttribute("aria-live", loud ? "assertive" : "polite");
     status.textContent = p.message;
-    status.classList.toggle("spay-status-popup", p.walletPopupImminent);
-    status.classList.toggle("spay-status-error", p.phase === "failed");
+    status.classList.toggle("spay-status-popup", p.walletPopupImminent && !loud);
+    status.classList.toggle("spay-status-error", loud);
     const labels = {
       connecting: "Connecting\u2026",
       preparing: "Checking balance\u2026",
@@ -31995,7 +32109,7 @@ function mountCheckout(container, opts) {
     receiptBox.setAttribute("role", "status");
     receiptBox.tabIndex = -1;
     button.hidden = true;
-    honesty.root.hidden = true;
+    honesty.root.open = false;
     receiptBox.hidden = false;
     receiptBox.replaceChildren(
       line("spay-receipt-title", "Receipt"),
@@ -32349,7 +32463,7 @@ function explainWalletError(err, action) {
   if (/SCREENING|COMPLIANCE|BLOCKED/i.test(raw)) {
     return "The privacy pool's compliance screening rejected this deposit. Deposits are screened on every route.";
   }
-  if (/INSUFFICIENT|BALANCE/i.test(raw)) {
+  if (/INSUFFICIENT|NOT ENOUGH|BALANCE TOO LOW|\bBALANCE_(TOO_)?LOW\b/i.test(raw)) {
     return `Not enough balance to ${action === "shield" ? "shield" : "pay"}, including fees.`;
   }
   if (/reject|denied|USER_REFUSED|cancel/i.test(raw)) {

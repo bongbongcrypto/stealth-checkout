@@ -23,6 +23,9 @@ export class MockWallet {
         for (const [token, amount] of Object.entries(opts.funded ?? { STRK: "100" })) {
             this.pub.set(token, toUnits(amount));
         }
+        for (const [token, amount] of Object.entries(opts.shielded ?? {})) {
+            this.shielded.set(token, toUnits(amount));
+        }
     }
     async connect() {
         await wait(this.latency);
@@ -48,9 +51,15 @@ export class MockWallet {
         await wait(this.latency * 2); // screening + acceptance
         if (this.failAt === "shield")
             throw new WalletActionError("shield", "Deposit rejected by compliance screening.");
-        // Public funds pay amount + fee; the pool credits the amount.
-        this.take(this.pub, token, fromUnits(toUnits(amount) + this.fee), "shield");
-        this.shielded.set(token, (this.shielded.get(token) ?? 0n) + toUnits(amount));
+        // The pool takes its fee OUT of the deposit: send X, get X - fee credited.
+        // A deposit at or below the fee buys nothing and is refused here rather
+        // than silently crediting zero.
+        const deposited = toUnits(amount);
+        if (deposited <= this.fee) {
+            throw new WalletActionError("shield", `A deposit of ${amount} is not more than the pool's ${fromUnits(this.fee)} fee, so it would credit nothing.`);
+        }
+        this.take(this.pub, token, amount, "shield");
+        this.shielded.set(token, (this.shielded.get(token) ?? 0n) + deposited - this.fee);
         return { txHash: this.hash() };
     }
     async privateTransfer(token, amount, _toPoolAddress) {

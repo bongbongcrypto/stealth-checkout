@@ -22,7 +22,10 @@ export function revealReport(invoice: Invoice, willShieldFirst: boolean): Reveal
       {
         fact: "Invoice address and amount",
         visibility: "public",
-        detail: `The payment lands on a fresh address created only for this invoice, so the amount (${invoice.amount} ${invoice.token}) and that address are visible.`,
+        detail:
+          `The amount (${invoice.amount} ${invoice.token}) and the address it lands on are visible. ` +
+          "That address is meant to be fresh, used for this invoice only, which is what stops an observer totalling " +
+          "the merchant's revenue. Only the merchant can guarantee it: this page is given the address, and cannot check it.",
       },
       {
         fact: "The link between your wallet and this payment",
@@ -35,7 +38,9 @@ export function revealReport(invoice: Invoice, willShieldFirst: boolean): Reveal
         fact: "The merchant's other income",
         visibility: "hidden",
         detail:
-          "Each invoice uses its own address, so observers cannot total a merchant's revenue by watching one address.",
+          "Each invoice uses its own address, so observers cannot total a merchant's revenue by watching one address. " +
+          "Two limits on that: sweeping several invoice addresses into one treasury links them back together, and the " +
+          "merchant's own records know everything either way.",
       },
     );
   } else {
@@ -52,6 +57,24 @@ export function revealReport(invoice: Invoice, willShieldFirst: boolean): Reveal
         detail: "The transfer's existence and timing are visible, without amounts or identities.",
       },
     );
+  }
+
+  items.push({
+    fact: "Your network address, to whoever runs the RPC",
+    visibility: "public",
+    detail:
+      "Confirming a payment means asking a public Starknet node about this invoice's address, repeatedly, from your " +
+      "browser. Whoever operates that node sees one IP watching one invoice. Nothing about the pool hides that.",
+  });
+
+  if (invoice.mode === "note") {
+    items.push({
+      fact: "Whether the merchant can see this payment at all",
+      visibility: "public",
+      detail:
+        "Note transfers are not discoverable on Starknet mainnet today, so a merchant cannot confirm one headlessly. " +
+        "Only send this way if the merchant has told you how they will credit it.",
+    });
   }
 
   items.push({

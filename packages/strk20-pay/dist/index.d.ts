@@ -1,4 +1,4 @@
-export { StealthCheckout, addAmounts, compareAmounts, isInsufficientFunds, matchesInvoice, sameFelt } from "./checkout.js";
+export { StealthCheckout, addAmounts, compareAmounts, depositNeededFor, didNotReachTheChain, isInsufficientFunds, matchesInvoice, sameFelt, shieldedNeededFor, } from "./checkout.js";
 export type { SentPayment, PaymentStore } from "./checkout.js";
 export { mountCheckout } from "./ui.js";
 export type { MountOptions, MountedCheckout } from "./ui.js";

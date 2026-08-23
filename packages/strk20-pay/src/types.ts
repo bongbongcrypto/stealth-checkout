@@ -52,6 +52,12 @@ export interface PaymentProgress {
   message: string;
   /** True right before a wallet popup, so the UI can announce it. */
   walletPopupImminent: boolean;
+  /**
+   * Set when the message is a warning the payer must act on, without the
+   * payment having failed. Styling this by moving the phase to "failed" broke
+   * the phase sequence for everyone reading it, so severity travels separately.
+   */
+  severity?: "warning";
   /** Terminal error, present only in "failed". */
   error?: string;
   txHash?: string;

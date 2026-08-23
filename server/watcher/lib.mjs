@@ -47,6 +47,7 @@ export const INVOICE_STATES = [
   "paid_late", // settled in full, after the deadline but inside the grace window
   "underpaid", // deadline passed with some money received, but not enough
   "expired", // deadline passed with nothing received
+  "cancelled", // withdrawn by the merchant before anything arrived
   "needs_reregistration", // pre-baseline row: cannot be judged safely
 ];
 
@@ -65,6 +66,7 @@ export const SETTLED_STATES = new Set(["paid", "paid_late"]);
 export const UNPAYABLE_STATES = new Set([
   "reserving",
   "expired",
+  "cancelled",
   "needs_reregistration",
   "underpaid",
   "paid",
@@ -74,7 +76,7 @@ export const UNPAYABLE_STATES = new Set([
 /** Only these may be deleted. Deleting a row with funds at its address would
  * release that address for reuse and let the stranded money settle a later
  * invoice. */
-export const DELETABLE_STATES = new Set(["reserving", "expired", "needs_reregistration"]);
+export const DELETABLE_STATES = new Set(["reserving", "expired", "cancelled", "needs_reregistration"]);
 
 /**
  * How long after the deadline a payment still counts. Payers hit "pay" at
@@ -83,9 +85,30 @@ export const DELETABLE_STATES = new Set(["reserving", "expired", "needs_reregist
  */
 export const LATE_GRACE_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * How long a `watching` invoice with no deadline of its own is watched before
+ * the poller stops spending RPC calls on it. Without this, an invoice created
+ * without `expiresAt` was immortal: never overdue, so never expired, polled
+ * every cycle for the life of the process, and undeletable because only
+ * terminal rows may be released.
+ */
+export const NO_DEADLINE_MAX_WATCH_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** The deadline this invoice is actually judged against. */
+export function effectiveDeadline(invoice) {
+  if (typeof invoice?.expiresAt === "number") return invoice.expiresAt;
+  if (typeof invoice?.createdAt === "number") return invoice.createdAt + NO_DEADLINE_MAX_WATCH_MS;
+  return null; // nothing to judge against: never auto-expire, but see cancel
+}
+
 /** Should the poller still spend an RPC call on this row? */
 export function shouldPoll(invoice, now = Date.now()) {
-  if (invoice?.status === "watching") return true;
+  if (invoice?.status === "watching") {
+    const deadline = effectiveDeadline(invoice);
+    // A row past even its fallback deadline still gets one more look, so the
+    // poll that notices it is the poll that retires it.
+    return deadline === null || now <= deadline + LATE_GRACE_MS;
+  }
   if (invoice?.status !== "expired" && invoice?.status !== "underpaid") return false;
   // Keep looking during the grace window, and only there: polling settled or
   // abandoned rows forever turns one busy merchant into an RPC bill.
@@ -126,7 +149,7 @@ export function sameAddress(a, b) {
  * absolute balance marks such an invoice paid the instant it is created, and
  * the merchant ships goods nobody paid for.
  */
-export function evaluateInvoice(invoice, balanceUnits, now = Date.now()) {
+export function evaluateInvoice(invoice, balanceUnits, now = Date.now(), receivedOverride = null) {
   if (!shouldPoll(invoice, now)) return invoice;
 
   // A missing baseline must never mean zero. Rows written by an older build
@@ -139,10 +162,16 @@ export function evaluateInvoice(invoice, balanceUnits, now = Date.now()) {
     );
   }
   const baseline = BigInt(invoice.baselineUnits);
-  const received = balanceUnits - baseline;
+  // `receivedOverride` is the sum of transfers INTO this address since it was
+  // registered, which is what the payer actually sent. The balance delta is a
+  // fallback, and it is only equal to that while nobody has moved money out:
+  // a merchant sweeping the address made a payer's full payment read as
+  // nothing at all, because the balance had gone back down.
+  const received = receivedOverride === null ? balanceUnits - baseline : receivedOverride;
   const target = toUnits(invoice.amount, invoice.decimals);
   if (target <= 0n) throw new Error(`invoice ${invoice.id} has a non-positive amount and can never be paid`);
-  const overdue = Boolean(invoice.expiresAt) && now > invoice.expiresAt;
+  const deadline = effectiveDeadline(invoice);
+  const overdue = deadline !== null && now > deadline;
 
   // A payment that landed before the deadline wins, even if this poll runs
   // after it. Expiring an invoice the payer already settled strands their
@@ -156,6 +185,10 @@ export function evaluateInvoice(invoice, balanceUnits, now = Date.now()) {
       confirmedAt: now,
       balanceUnits: balanceUnits.toString(),
       receivedUnits: received.toString(),
+      // Cleared, not left over from the underpaid state this row may have
+      // passed through: a payload saying paid_late AND shortfall 3 STRK at the
+      // same time is one a merchant has to guess at.
+      shortfallUnits: undefined,
       // Excess is the merchant's problem to resolve, but only if they are told
       // about it. Silently pocketing an overpayment is how chargebacks start.
       overpaidUnits: received > target ? (received - target).toString() : undefined,
@@ -225,6 +258,28 @@ export function verifySignature(secret, body, signature, timestamp, nowSec = Mat
   return expected.length === got.length && timingSafeEqual(expected, got);
 }
 
+/**
+ * One CSV cell, RFC 4180 quoted and inert in a spreadsheet.
+ *
+ * A lone carriage return is the reason this is a named function with tests. It
+ * is not a character the quoting rule looked for, so a value containing one
+ * ended the record early and its remainder became a NEW row whose first cell
+ * was whatever followed: `0xdead\r=cmd|'/C calc'!A0` smuggled a live formula
+ * past the leading-character guard. Values reach here from a third-party RPC,
+ * so "no attacker can put a CR in there" was never true.
+ */
+export function csvCell(value) {
+  if (value === undefined || value === null) return "";
+  let s = String(value);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  return /["\n\r,]/.test(s) ? '"' + s.replaceAll('"', '""') + '"' : s;
+}
+
+/** A transaction hash we are willing to store, log, and export. */
+export function isHexFelt(value, maxDigits = 64) {
+  return typeof value === "string" && new RegExp(`^0x[0-9a-fA-F]{1,${maxDigits}}$`).test(value);
+}
+
 /** JSON-RPC request body for a balanceOf call at the latest block. */
 export function balanceOfRequest(tokenAddress, holderAddress, id = 1) {
   return {
@@ -243,7 +298,7 @@ export function balanceOfRequest(tokenAddress, holderAddress, id = 1) {
  * Keys filter: [ [Transfer], [] (from: any), [to] ]. Some RPCs cap key filters:
  * callers must treat a miss as "hash unknown", never as "not paid".
  */
-export function transferEventsRequest(tokenAddress, toAddress, fromBlock, id = 1) {
+export function transferEventsRequest(tokenAddress, toAddress, fromBlock, id = 1, continuationToken = undefined) {
   return {
     jsonrpc: "2.0",
     id,
@@ -255,9 +310,52 @@ export function transferEventsRequest(tokenAddress, toAddress, fromBlock, id = 1
         from_block: { block_number: fromBlock },
         to_block: "latest",
         chunk_size: 100,
+        ...(continuationToken ? { continuation_token: continuationToken } : {}),
       },
     ],
   };
+}
+
+/**
+ * Total value transferred INTO `toAddress` by these events, and the hash of
+ * the first one. Standard ERC-20 layout is keys [selector, from, to] with the
+ * u256 amount in data[0..1]; the older layout carries from/to in data as well,
+ * so both are read and only events actually addressed to us are counted.
+ *
+ * Returns null when an event matches but its amount cannot be read: a partial
+ * sum would be worse than no sum, because it would silently under-credit.
+ */
+export function receivedFromEvents(eventsResult, toAddress) {
+  const target = normFelt(toAddress);
+  let total = 0n;
+  let txHash;
+  let matched = 0;
+  for (const ev of eventsResult?.events ?? []) {
+    const keys = ev.keys ?? [];
+    const data = ev.data ?? [];
+    const keyed = keys.length >= 3 && normFelt(keys[2]) === target;
+    const dataBorne = !keyed && data.length >= 2 && (() => {
+      try {
+        return normFelt(data[1]) === target;
+      } catch {
+        return false;
+      }
+    })();
+    if (!keyed && !dataBorne) continue;
+    // Keyed layout: amount is data[0..1]. Data-borne layout: from, to, amount.
+    const lowIdx = keyed ? 0 : 2;
+    if (data.length < lowIdx + 1) return null;
+    let amount;
+    try {
+      amount = BigInt(data[lowIdx]) + (data.length > lowIdx + 1 ? BigInt(data[lowIdx + 1]) << 128n : 0n);
+    } catch {
+      return null;
+    }
+    total += amount;
+    matched++;
+    if (!txHash && isHexFelt(ev.transaction_hash)) txHash = ev.transaction_hash;
+  }
+  return { units: total, txHash, count: matched };
 }
 
 /** Pick the tx hash of the first Transfer event whose `to` matches. */

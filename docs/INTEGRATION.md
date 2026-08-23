@@ -60,7 +60,10 @@ export function PayButton({ invoice, wallet }) {
   const ref = useCheckout({
     invoice,
     wallet,
-    confirm: (inv) => fetch(`/api/confirm/${inv.id}`).then((r) => r.ok),
+    // Resolve to a BOOLEAN meaning "the money arrived", computed from your
+    // ledger. `r.ok` only means the server answered, and an unpaid invoice
+    // answers 200 as readily as a paid one.
+    confirm: (inv) => fetch(`/api/paid/${inv.id}`).then((r) => r.json()).then((b) => b.paid === true),
     onPaid: (receipt) => console.log(receipt),
   });
   return <div ref={ref} />;

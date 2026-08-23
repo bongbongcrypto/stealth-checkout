@@ -31,8 +31,10 @@ mountCheckout(document.getElementById("checkout"), {
     createdAt: Date.now(),
   },
   wallet: new WalletApiAdapter({ network: "mainnet", rpcUrl: "https://rpc.starknet.lava.build" }),
-  // Your backend, watching the invoice address. Never `async () => true`.
-  confirm: (invoice, txHash) => fetch(`/api/confirm/${invoice.id}`).then((r) => r.ok),
+  // Your backend, watching the invoice address. Never `async () => true`,
+  // and never `r.ok`: that means "the server answered", not "the money
+  // arrived". It must resolve to a boolean you computed from your ledger.
+  confirm: (invoice) => fetch(`/api/paid/${invoice.id}`).then((r) => r.json()).then((b) => b.paid === true),
   onPaid: (receipt) => console.log(receipt),
 });
 ```

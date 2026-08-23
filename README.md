@@ -55,7 +55,7 @@ Invoice addresses can already hold funds — they need STRK to deploy before a m
 
 ```bash
 npm install
-npm test                 # 99 tests: widget, checkout core, watcher logic, HTTP API
+npm test                 # 115 tests: widget, checkout core, watcher logic, HTTP API
 npm run build:all        # widget dist + hosted-page bundle
 npm run dev              # demos at http://127.0.0.1:4173
 WATCHER_TOKEN=dev node server/watcher/watcher.mjs
@@ -95,9 +95,12 @@ strk20.json            # sprint manifest (txs, demo, video)
 
 **What these do and do not show.** The two withdrawals exercise the exact
 operation an invoice payment uses: shielded funds leaving the pool to a
-destination address, submitted by a relayer. Decode the STRK transfers and the
-sender of each is a different address, none of them the pool account: that is
-the pool severing the payer's identity, and it is real.
+destination address. Each transaction's `sender_address` is a different
+address, and none of them is the pool account that owns the funds: nobody
+reading the chain learns who asked for the withdrawal. That is the pool
+severing the payer's identity, and it is real. (Inside the transaction the STRK
+transfer is emitted by the pool contract, as it must be; the identity that is
+hidden is the one that submitted it.)
 
 They are **not** end-to-end payments to a merchant. Both sent their 5 STRK to
 `0x4ea15bf3…`, the same address that made all five deposits, because they were

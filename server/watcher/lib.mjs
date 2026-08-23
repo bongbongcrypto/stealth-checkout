@@ -76,7 +76,7 @@ export const UNPAYABLE_STATES = new Set([
 /** Only these may be deleted. Deleting a row with funds at its address would
  * release that address for reuse and let the stranded money settle a later
  * invoice. */
-export const DELETABLE_STATES = new Set(["reserving", "expired", "cancelled", "needs_reregistration"]);
+export const DELETABLE_STATES = new Set(["reserving", "expired", "needs_reregistration"]);
 
 /**
  * How long after the deadline a payment still counts. Payers hit "pay" at
@@ -261,7 +261,7 @@ export function verifySignature(secret, body, signature, timestamp, nowSec = Mat
 /**
  * One CSV cell, RFC 4180 quoted and inert in a spreadsheet.
  *
- * A lone carriage return is the reason this is a named function with tests. It
+ * A lone carriage return is the reason this is a named, exported function. It
  * is not a character the quoting rule looked for, so a value containing one
  * ended the record early and its remainder became a NEW row whose first cell
  * was whatever followed: `0xdead\r=cmd|'/C calc'!A0` smuggled a live formula
@@ -333,7 +333,18 @@ export function receivedFromEvents(eventsResult, toAddress) {
   for (const ev of eventsResult?.events ?? []) {
     const keys = ev.keys ?? [];
     const data = ev.data ?? [];
-    const keyed = keys.length >= 3 && normFelt(keys[2]) === target;
+    // Both branches have to tolerate junk. The keyed one called normFelt
+    // unguarded while its sibling was wrapped, so one malformed key from an
+    // RPC threw out of the whole scan.
+    const keyed =
+      keys.length >= 3 &&
+      (() => {
+        try {
+          return normFelt(keys[2]) === target;
+        } catch {
+          return false;
+        }
+      })();
     const dataBorne = !keyed && data.length >= 2 && (() => {
       try {
         return normFelt(data[1]) === target;

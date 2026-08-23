@@ -131,8 +131,26 @@ async function pollOnce() {
         log(`${id} event scan failed (${err.message}); falling back to the balance delta`);
         return null;
       });
-      const next = evaluateInvoice(inv, balance, Date.now(), inflow?.units ?? null);
+      // Whichever saw more. The event sum is right after a sweep, where the
+      // balance has gone back down; the balance delta is right when the event
+      // filter matches nothing, which a token with an unusual event layout
+      // does silently. Taking the larger can only ever fail towards crediting
+      // a payer for money that did arrive, never away from it.
+      const delta = balance - BigInt(inv.baselineUnits);
+      const received = inflow === null ? null : inflow.units > delta ? inflow.units : delta;
+      if (inflow !== null && inflow.count === 0 && delta > 0n) {
+        log(`${id} note: no matching transfer events; judging on the balance delta instead`);
+      }
+      const next = evaluateInvoice(inv, balance, Date.now(), received);
       if (next === inv) continue;
+      // Never write back onto a row that changed underneath us: this loop
+      // awaits twice, and a DELETE or a cancel landing in between used to be
+      // undone by the write, resurrecting a row nobody had a record of.
+      const current = invoices.get(id);
+      if (current !== inv) {
+        log(`${id} changed while polling; skipping this write`);
+        continue;
+      }
       if (inflow?.txHash && !next.txHash) next.txHash = inflow.txHash;
       invoices.set(id, next);
       await persist();
@@ -182,21 +200,34 @@ async function totalReceived(inv) {
   let token;
   let total = 0n;
   let txHash;
+  let matched = 0;
   let pages = 0;
+  const seenTokens = new Set();
   do {
     const page = await rpc(
-      transferEventsRequest(inv.tokenAddress, inv.receiveAddress, inv.createdBlock, ++rpcId, token),
+      // createdBlock + 1, NOT createdBlock. The baseline balance is read at
+      // `latest`, which is that same block, so scanning from it counted every
+      // transfer in it TWICE: once inside the baseline and once as a payment.
+      // A pre-funded address whose funds arrived in the registration block
+      // confirmed instantly with nobody having paid, which is precisely the
+      // bug the baseline exists to prevent.
+      transferEventsRequest(inv.tokenAddress, inv.receiveAddress, inv.createdBlock + 1, ++rpcId, token),
     );
     const summed = receivedFromEvents(page, inv.receiveAddress);
     if (summed === null) return null; // an unreadable amount: do not guess
     total += summed.units;
+    matched += summed.count;
     txHash ??= summed.txHash;
     token = page?.continuation_token;
+    // A repeated cursor means the same page again, and adding it again is a
+    // silent over-credit.
+    if (token && seenTokens.has(token)) return null;
+    if (token) seenTokens.add(token);
   } while (token && ++pages < 50);
   // Still paginating after fifty pages means something is wrong with the
   // filter, not that the payer sent that many transfers.
   if (token) return null;
-  return { units: total, txHash };
+  return { units: total, txHash, count: matched };
 }
 
 /**
@@ -724,9 +755,22 @@ export function makeServer() {
         if (inv.status !== "watching") {
           return json(req, res, 409, { error: `invoice ${inv.id} is ${inv.status}; only a watching invoice can be cancelled` });
         }
-        if (BigInt(inv.receivedUnits ?? "0") > 0n) {
+        // Ask the chain, not the cached field. `receivedUnits` is only written
+        // by a poll, so between a payer's transfer landing and the next cycle
+        // this guard read zero and cancelled an invoice with money at its
+        // address, into a state that is never polled again.
+        let live;
+        try {
+          live = u256FromCallResult(await rpc(balanceOfRequest(inv.tokenAddress, inv.receiveAddress, ++rpcId)));
+        } catch (err) {
+          return json(req, res, 503, {
+            error: `cannot reach the chain to check ${inv.id} for funds before cancelling it: ${err.message}`,
+          });
+        }
+        const arrived = live - BigInt(inv.baselineUnits);
+        if (arrived > 0n || BigInt(inv.receivedUnits ?? "0") > 0n) {
           return json(req, res, 409, {
-            error: `invoice ${inv.id} has already received ${inv.receivedUnits} units; resolve it rather than cancelling it`,
+            error: `invoice ${inv.id} has ${arrived > 0n ? arrived : inv.receivedUnits} units at its address; resolve it rather than cancelling it`,
           });
         }
         const next = { ...inv, status: "cancelled", cancelledAt: Date.now() };

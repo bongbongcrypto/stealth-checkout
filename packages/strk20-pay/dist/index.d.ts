@@ -1,5 +1,5 @@
-export { StealthCheckout, addAmounts, compareAmounts, depositNeededFor, didNotReachTheChain, isInsufficientFunds, matchesInvoice, sameFelt, shieldedNeededFor, } from "./checkout.js";
-export type { SentPayment, PaymentStore } from "./checkout.js";
+export { PendingPaymentError, StealthCheckout, addAmounts, compareAmounts, depositNeededFor, didNotReachTheChain, isInsufficientFunds, matchesInvoice, sameFelt, shieldedNeededFor, } from "./checkout.js";
+export type { SentPayment, PaymentStore, PayOptions } from "./checkout.js";
 export { mountCheckout } from "./ui.js";
 export type { MountOptions, MountedCheckout } from "./ui.js";
 export { revealReport } from "./honesty.js";

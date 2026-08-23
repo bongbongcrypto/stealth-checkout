@@ -61,7 +61,7 @@ export declare class StealthCheckout {
      * coming, and then one was.
      */
     preview(invoice: Invoice): Promise<RevealItem[]>;
-    pay(invoice: Invoice): Promise<Receipt>;
+    pay(invoice: Invoice, opts?: PayOptions): Promise<Receipt>;
     private storeKey;
     /**
      * A stored record only counts if it settles THIS invoice. The key is scoped
@@ -72,7 +72,15 @@ export declare class StealthCheckout {
     private loadSent;
     /** Remember that a payment was requested, before it can possibly land. */
     private markPending;
-    /** Forget it, once the wallet has made clear nothing was submitted. */
+    /**
+     * Forget the marker, once the wallet has made clear nothing was submitted.
+     *
+     * ONLY the marker. This used to blank the stored key unconditionally while
+     * the in-memory guard beside it was careful, so a `confirm` that threw with
+     * the word "invalid" anywhere in its text erased the durable record of a
+     * payment that had genuinely been broadcast. The next tab found nothing and
+     * paid again: the whole cross-tab guard, undone by one word of error text.
+     */
     private clearPending;
     private saveSent;
     private warnUnprotected;
@@ -118,6 +126,25 @@ export declare function compareAmounts(a: string, b: string, decimals?: number):
 export declare function didNotReachTheChain(err: unknown): boolean;
 /** Does this wallet error mean "you do not have enough shielded funds"? */
 export declare function isInsufficientFunds(err: unknown): boolean;
+export interface PayOptions {
+    /**
+     * The payer has looked in their wallet and confirmed nothing was sent.
+     *
+     * Only meaningful after a `PendingPaymentError`. It exists because only a
+     * human can answer the question that error asks, and because guessing on
+     * their behalf means either paying twice or bricking the invoice.
+     */
+    paidNothingLastTime?: boolean;
+}
+/**
+ * An earlier attempt may or may not have spent money, and nothing here can
+ * tell. Distinct from a plain failure so a UI can offer the one action that
+ * resolves it, instead of a Retry button that might pay twice.
+ */
+export declare class PendingPaymentError extends Error {
+    readonly needsPayerCheck = true;
+    constructor(message: string);
+}
 /** A payment already broadcast. Persisted so a reload cannot re-send it. */
 export interface SentPayment {
     invoiceId: string;

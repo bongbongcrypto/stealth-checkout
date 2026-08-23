@@ -97,7 +97,9 @@ mountCheckout(document.getElementById("checkout")!, {
     createdAt: Date.now(),
   },
   wallet: new WalletApiAdapter({ network: "mainnet", rpcUrl: "https://rpc.starknet.lava.build" }),
-  confirm: (invoice, txHash) =&gt; fetch(`/api/confirm/${invoice.id}`).then((r) =&gt; r.ok),
+  // Must resolve to a BOOLEAN meaning "the money arrived". `r.ok` is only
+  // "the server answered", and an unpaid invoice answers 200 too.
+  confirm: (invoice) =&gt; fetch(`/api/paid/${invoice.id}`).then((r) =&gt; r.json()).then((b) =&gt; b.paid === true),
   onPaid: (receipt) =&gt; console.log(receipt),
 });</code></pre>
 

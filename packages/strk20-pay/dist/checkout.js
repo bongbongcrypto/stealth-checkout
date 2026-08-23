@@ -25,7 +25,7 @@ export class StealthCheckout {
      * be sent again, so this is persisted through `store` and survives a reload.
      */
     sentPayment = null;
-    constructor(wallet, confirmPayment = async () => true, 
+    constructor(wallet, confirmPayment = alwaysConfirm, 
     /**
      * Shield inline when the payer has no shielded funds. OFF by default, and
      * that default is the protocol's own advice: a deposit is a public leg
@@ -65,7 +65,7 @@ export class StealthCheckout {
         const willShieldFirst = shielded === null || compareAmounts(shielded, shieldedNeededFor(invoice.amount, fee, dp), dp) < 0;
         return revealReport(invoice, willShieldFirst);
     }
-    async pay(invoice) {
+    async pay(invoice, opts = {}) {
         if (this.phase === "paid")
             this.phase = "idle"; // a settled instance is reusable
         if (this.phase !== "idle" && this.phase !== "failed" && this.phase !== "expired") {
@@ -95,11 +95,22 @@ export class StealthCheckout {
             const prior = cached ?? this.loadSent(invoice);
             if (prior && !prior.txHash) {
                 // We asked a wallet to pay this invoice and never learned the outcome.
-                // Paying again might be a second payment; the payer is the only one
-                // who can look and say.
-                throw new Error("A payment for this invoice was already sent to your wallet, and this page never learned whether it went " +
-                    "through. Check your wallet's activity before paying again: paying now could pay twice. " +
-                    "If nothing was sent, clear this page's site data and reload.");
+                // Ask the merchant first: they can see the chain, and if the money
+                // arrived there is nothing left to do.
+                this.emit("confirming", "Checking whether that earlier attempt went through…", false);
+                const settled = await this.confirmPayment(invoice, "").catch(() => false);
+                if (settled)
+                    return this.finish(invoice, "", undefined);
+                if (!opts.paidNothingLastTime) {
+                    // Not settled is not proof that nothing was sent: a payment can be
+                    // in flight. The payer is the only one who can look in their wallet,
+                    // so this stops and hands them that decision instead of guessing.
+                    // Without the escape they were locked out of the invoice forever.
+                    throw new PendingPaymentError("This page asked your wallet to pay this invoice earlier and never learned the outcome, and the " +
+                        "merchant does not see the money. Open your wallet and check its recent activity. If a payment " +
+                        "went out, wait for it rather than paying again. If nothing did, choose to pay again below.");
+                }
+                this.clearPending(invoice);
             }
             if (prior) {
                 this.emit("confirming", "Payment already sent. Waiting for on-chain confirmation…", false, prior.txHash);
@@ -210,8 +221,19 @@ export class StealthCheckout {
         this.sentPayment = record;
         this.saveSent(record, { quiet: true });
     }
-    /** Forget it, once the wallet has made clear nothing was submitted. */
+    /**
+     * Forget the marker, once the wallet has made clear nothing was submitted.
+     *
+     * ONLY the marker. This used to blank the stored key unconditionally while
+     * the in-memory guard beside it was careful, so a `confirm` that threw with
+     * the word "invalid" anywhere in its text erased the durable record of a
+     * payment that had genuinely been broadcast. The next tab found nothing and
+     * paid again: the whole cross-tab guard, undone by one word of error text.
+     */
     clearPending(invoice) {
+        const stored = this.loadSent(invoice);
+        if (stored?.txHash)
+            return; // a real payment: this is not ours to forget
         if (this.sentPayment && !this.sentPayment.txHash)
             this.sentPayment = null;
         try {
@@ -266,6 +288,11 @@ export class StealthCheckout {
             "Wait about ten blocks after shielding, then come back to this invoice.");
     }
     finish(invoice, txHash, shieldTxHash) {
+        // Whether anyone actually checked. The default confirm returns true
+        // without looking, so a receipt that reads the same either way is telling
+        // an integrator who forgot to wire a backend exactly what they want to
+        // hear.
+        const checked = this.confirmPayment !== alwaysConfirm;
         const receipt = {
             invoiceId: invoice.id,
             token: invoice.token,
@@ -288,8 +315,11 @@ export class StealthCheckout {
             // moments before a payment the strongest link an observer can get.
             disclosure: [
                 invoice.mode === "address"
-                    ? `Records that ${invoice.amount} ${invoice.token} reached this invoice's address.`
+                    ? checked
+                        ? `Records that ${invoice.amount} ${invoice.token} reached this invoice's address.`
+                        : `Records that this page asked your wallet to send ${invoice.amount} ${invoice.token} to this invoice's address. Nothing checked that it arrived.`
                     : `Records that a private note for ${invoice.amount} ${invoice.token} was sent.`,
+                txHash ? "" : "The paying transaction's hash is not known to this page, so this receipt cannot point at it.",
                 invoice.mode === "address"
                     ? "The paying transaction is submitted through the pool's relayers, so it does not name your wallet."
                     : "The transfer publishes no amount, sender or recipient.",
@@ -440,6 +470,23 @@ export function didNotReachTheChain(err) {
 export function isInsufficientFunds(err) {
     const raw = err instanceof Error ? err.message : String(err ?? "");
     return /insufficient|not enough|no (unspent )?notes|balance too low|NOT_ENOUGH/i.test(raw);
+}
+/**
+ * The default "confirmation", which confirms nothing. Named so the receipt can
+ * tell whether a real check happened, and so the name shows up in a stack.
+ */
+const alwaysConfirm = async () => true;
+/**
+ * An earlier attempt may or may not have spent money, and nothing here can
+ * tell. Distinct from a plain failure so a UI can offer the one action that
+ * resolves it, instead of a Retry button that might pay twice.
+ */
+export class PendingPaymentError extends Error {
+    needsPayerCheck = true;
+    constructor(message) {
+        super(message);
+        this.name = "PendingPaymentError";
+    }
 }
 function defaultStore() {
     const probe = "strk20-pay.probe";

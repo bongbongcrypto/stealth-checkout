@@ -118,11 +118,70 @@ test("the honesty panel sits above the button and starts open", async () => {
     "spay-fee-warn",
     "spay-honesty",
     "spay-btn",
+    "spay-btn spay-btn-danger",
     "spay-status",
     "spay-receipt",
   ]);
   // A disclosure collapsed under the call to action is not a disclosure.
   assert.equal(root.find("spay-honesty").open, true);
+  // And the pay-anyway escape must stay hidden until a payment is actually
+  // pending: offered up front it is just a way to pay twice.
+  assert.equal(root.findAll("spay-btn-danger")[0].hidden, true);
+});
+
+test("the honesty panel is still open, and still visible, once the receipt appears", async () => {
+  const wallet = new MockWallet({ funded: { STRK: "100" }, latency: 0 });
+  const paid = withTimeout(
+    new Promise((resolve) => {
+      mountCheckout(host, { invoice: invoice(), wallet, allowInlineShield: true, onPaid: resolve, store: freshStore() });
+    }),
+    "onPaid",
+  );
+  await settle();
+  host.find("spay-btn").click();
+  await paid;
+
+  const panel = host.find("spay-honesty");
+  assert.equal(panel.hidden, false, "the caveats must not vanish when the claim appears");
+  assert.equal(panel.open, true, "and collapsing them is the same thing with extra steps");
+});
+
+test("a receipt says whether anything actually checked the payment", async () => {
+  // The default confirm returns true without looking. A receipt that reads
+  // identically either way tells an integrator who forgot to wire a backend
+  // exactly what they want to hear.
+  const wallet = new MockWallet({ funded: { STRK: "100" }, latency: 0 });
+  const unchecked = withTimeout(
+    new Promise((resolve) => {
+      mountCheckout(host, { invoice: invoice(), wallet, allowInlineShield: true, onPaid: resolve, store: freshStore() });
+    }),
+    "onPaid",
+  );
+  await settle();
+  host.find("spay-btn").click();
+  const receiptA = await unchecked;
+  assert.match(receiptA.disclosure, /Nothing checked that it arrived/);
+
+  const { host: host2 } = installDom();
+  const wallet2 = new MockWallet({ funded: { STRK: "100" }, latency: 0 });
+  const checked = withTimeout(
+    new Promise((resolve) => {
+      mountCheckout(host2, {
+        invoice: invoice(),
+        wallet: wallet2,
+        allowInlineShield: true,
+        confirm: async () => true,
+        onPaid: resolve,
+        store: freshStore(),
+      });
+    }),
+    "onPaid",
+  );
+  await settle();
+  host2.find("spay-btn").click();
+  const receiptB = await checked;
+  assert.match(receiptB.disclosure, /Records that 10 STRK reached this invoice's address/);
+  assert.doesNotMatch(receiptB.disclosure, /Nothing checked/);
 });
 
 test("a receipt links hashes only where they can actually be looked up", async () => {

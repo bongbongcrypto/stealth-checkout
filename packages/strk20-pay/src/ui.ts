@@ -1,5 +1,5 @@
 import { StealthCheckout, compareAmounts, depositNeededFor, shieldedNeededFor } from "./checkout.js";
-import type { PaymentStore } from "./checkout.js";
+import type { PaymentStore, PayOptions } from "./checkout.js";
 import { TOKENS, resolveToken } from "./tokens.js";
 import type { Invoice, PaymentProgress, Receipt, RevealItem } from "./types.js";
 import type { WalletAdapter } from "./wallet/adapter.js";
@@ -163,6 +163,16 @@ export function mountCheckout(container: HTMLElement, opts: MountOptions): Mount
   const defaultLabel = opts.label ?? `Pay ${invoice.amount} ${invoice.token} privately`;
   button.textContent = defaultLabel;
 
+  /**
+   * Offered only after a PendingPaymentError: an earlier attempt may or may
+   * not have spent money, and a plain Retry there can pay twice. This says
+   * what it means, and it is the payer asserting a fact only they can check.
+   */
+  const payAnywayButton = el("button", "spay-btn spay-btn-danger") as HTMLButtonElement;
+  payAnywayButton.type = "button";
+  payAnywayButton.hidden = true;
+  payAnywayButton.textContent = "I checked my wallet: nothing was sent. Pay now";
+
   const status = el("div", "spay-status");
   status.setAttribute("role", "status");
 
@@ -172,7 +182,7 @@ export function mountCheckout(container: HTMLElement, opts: MountOptions): Mount
 
   // The honesty panel sits ABOVE the button and starts open: it exists to be
   // read before signing, and a collapsed footnote under the CTA was not.
-  root.append(amountLine, confirmBox, feeWarning, honesty.root, button, status, receiptBox);
+  root.append(amountLine, confirmBox, feeWarning, honesty.root, button, payAnywayButton, status, receiptBox);
   container.append(root);
 
   void checkout.preview(invoice).then((rows) => honesty.render(rows));
@@ -189,16 +199,26 @@ export function mountCheckout(container: HTMLElement, opts: MountOptions): Mount
     if (event.type === "paid") renderReceipt(event.receipt);
   });
 
-  button.addEventListener("click", () => {
+
+  const attempt = (payOpts: PayOptions = {}): void => {
     button.disabled = true;
-    checkout
-      .pay(invoice)
-      .catch((err: unknown) => {
-        opts.onFailed?.(err instanceof Error ? err.message : String(err));
-        button.disabled = false;
-        button.textContent = `Retry: ${defaultLabel}`;
-      });
-  });
+    payAnywayButton.disabled = true;
+    checkout.pay(invoice, payOpts).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      opts.onFailed?.(message);
+      button.disabled = false;
+      button.textContent = `Retry: ${defaultLabel}`;
+      // A pending payment is not a retryable failure. Hide the button that
+      // implies it is, and show the one that resolves it.
+      const pending = Boolean(err && typeof err === "object" && "needsPayerCheck" in err);
+      button.hidden = pending;
+      payAnywayButton.hidden = !pending;
+      payAnywayButton.disabled = false;
+    });
+  };
+
+  button.addEventListener("click", () => attempt());
+  payAnywayButton.addEventListener("click", () => attempt({ paidNothingLastTime: true }));
 
   function renderProgress(p: PaymentProgress): void {
     const loud = p.phase === "failed" || p.severity === "warning";
@@ -222,10 +242,10 @@ export function mountCheckout(container: HTMLElement, opts: MountOptions): Mount
     receiptBox.setAttribute("role", "status");
     receiptBox.tabIndex = -1;
     button.hidden = true;
-    // The honesty panel STAYS. Hiding it here removed every caveat at exactly
-    // the moment the receipt made its claim, which is the one moment they
-    // matter: the payer is about to decide what this receipt means.
-    honesty.root.open = false;
+    payAnywayButton.hidden = true;
+    // The honesty panel STAYS, and stays OPEN. Hiding it removed every caveat
+    // at exactly the moment the receipt made its claim; collapsing it did the
+    // same thing while looking like it had not, including to a screen reader.
     receiptBox.hidden = false;
     receiptBox.replaceChildren(
       line("spay-receipt-title", "Receipt"),
@@ -340,6 +360,7 @@ function injectStylesOnce(): void {
 .spay-btn{width:100%;margin-top:10px;padding:12px 14px;min-height:44px;border:0;border-radius:8px;cursor:pointer;
   background:var(--spay-accent);color:#08110a;font-weight:700;font-size:14px}
 .spay-btn:disabled{opacity:.75;cursor:progress}
+.spay-btn-danger{background:#f0c674;color:#231f00;font-size:13px}
 .spay-status{min-height:1.4em;margin-top:8px;font-size:12.5px;color:var(--spay-muted)}
 .spay-status-popup{color:var(--spay-accent)}
 .spay-status-popup::before{content:"↗ ";font-weight:700}

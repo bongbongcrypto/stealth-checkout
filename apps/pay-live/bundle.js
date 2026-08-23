@@ -31635,7 +31635,7 @@ var WalletActionError = class extends Error {
 
 // packages/strk20-pay/src/checkout.ts
 var StealthCheckout = class {
-  constructor(wallet, confirmPayment = async () => true, allowInlineShield = false, store = defaultStore()) {
+  constructor(wallet, confirmPayment = alwaysConfirm, allowInlineShield = false, store = defaultStore()) {
     this.wallet = wallet;
     this.confirmPayment = confirmPayment;
     this.allowInlineShield = allowInlineShield;
@@ -31668,7 +31668,7 @@ var StealthCheckout = class {
     const willShieldFirst = shielded === null || compareAmounts(shielded, shieldedNeededFor(invoice.amount, fee, dp), dp) < 0;
     return revealReport(invoice, willShieldFirst);
   }
-  async pay(invoice) {
+  async pay(invoice, opts = {}) {
     if (this.phase === "paid") this.phase = "idle";
     if (this.phase !== "idle" && this.phase !== "failed" && this.phase !== "expired") {
       throw new Error(`A payment is already in progress (${this.phase}).`);
@@ -31690,9 +31690,15 @@ var StealthCheckout = class {
       const cached = this.sentPayment && matchesInvoice(this.sentPayment, invoice) ? this.sentPayment : null;
       const prior = cached ?? this.loadSent(invoice);
       if (prior && !prior.txHash) {
-        throw new Error(
-          "A payment for this invoice was already sent to your wallet, and this page never learned whether it went through. Check your wallet's activity before paying again: paying now could pay twice. If nothing was sent, clear this page's site data and reload."
-        );
+        this.emit("confirming", "Checking whether that earlier attempt went through\u2026", false);
+        const settled = await this.confirmPayment(invoice, "").catch(() => false);
+        if (settled) return this.finish(invoice, "", void 0);
+        if (!opts.paidNothingLastTime) {
+          throw new PendingPaymentError(
+            "This page asked your wallet to pay this invoice earlier and never learned the outcome, and the merchant does not see the money. Open your wallet and check its recent activity. If a payment went out, wait for it rather than paying again. If nothing did, choose to pay again below."
+          );
+        }
+        this.clearPending(invoice);
       }
       if (prior) {
         this.emit("confirming", "Payment already sent. Waiting for on-chain confirmation\u2026", false, prior.txHash);
@@ -31775,8 +31781,18 @@ var StealthCheckout = class {
     this.sentPayment = record;
     this.saveSent(record, { quiet: true });
   }
-  /** Forget it, once the wallet has made clear nothing was submitted. */
+  /**
+   * Forget the marker, once the wallet has made clear nothing was submitted.
+   *
+   * ONLY the marker. This used to blank the stored key unconditionally while
+   * the in-memory guard beside it was careful, so a `confirm` that threw with
+   * the word "invalid" anywhere in its text erased the durable record of a
+   * payment that had genuinely been broadcast. The next tab found nothing and
+   * paid again: the whole cross-tab guard, undone by one word of error text.
+   */
   clearPending(invoice) {
+    const stored = this.loadSent(invoice);
+    if (stored?.txHash) return;
     if (this.sentPayment && !this.sentPayment.txHash) this.sentPayment = null;
     try {
       this.store?.setItem(this.storeKey(invoice.id), "");
@@ -31818,6 +31834,7 @@ var StealthCheckout = class {
     );
   }
   finish(invoice, txHash, shieldTxHash) {
+    const checked = this.confirmPayment !== alwaysConfirm;
     const receipt = {
       invoiceId: invoice.id,
       token: invoice.token,
@@ -31839,7 +31856,8 @@ var StealthCheckout = class {
       // payer, and by the honesty panel that had just called a deposit made
       // moments before a payment the strongest link an observer can get.
       disclosure: [
-        invoice.mode === "address" ? `Records that ${invoice.amount} ${invoice.token} reached this invoice's address.` : `Records that a private note for ${invoice.amount} ${invoice.token} was sent.`,
+        invoice.mode === "address" ? checked ? `Records that ${invoice.amount} ${invoice.token} reached this invoice's address.` : `Records that this page asked your wallet to send ${invoice.amount} ${invoice.token} to this invoice's address. Nothing checked that it arrived.` : `Records that a private note for ${invoice.amount} ${invoice.token} was sent.`,
+        txHash ? "" : "The paying transaction's hash is not known to this page, so this receipt cannot point at it.",
         invoice.mode === "address" ? "The paying transaction is submitted through the pool's relayers, so it does not name your wallet." : "The transfer publishes no amount, sender or recipient.",
         shieldTxHash ? "The deposit above is public and names you. Made this close to the payment, the two can be linked by amount and timing." : "",
         "This is your record, not the merchant's: they confirm independently from the chain."
@@ -31931,6 +31949,14 @@ function isInsufficientFunds(err) {
   const raw = err instanceof Error ? err.message : String(err ?? "");
   return /insufficient|not enough|no (unspent )?notes|balance too low|NOT_ENOUGH/i.test(raw);
 }
+var alwaysConfirm = async () => true;
+var PendingPaymentError = class extends Error {
+  needsPayerCheck = true;
+  constructor(message) {
+    super(message);
+    this.name = "PendingPaymentError";
+  }
+};
 function defaultStore() {
   const probe = "strk20-pay.probe";
   const usable = (get) => {
@@ -32064,12 +32090,16 @@ function mountCheckout(container, opts) {
   button.type = "button";
   const defaultLabel = opts.label ?? `Pay ${invoice.amount} ${invoice.token} privately`;
   button.textContent = defaultLabel;
+  const payAnywayButton = el("button", "spay-btn spay-btn-danger");
+  payAnywayButton.type = "button";
+  payAnywayButton.hidden = true;
+  payAnywayButton.textContent = "I checked my wallet: nothing was sent. Pay now";
   const status = el("div", "spay-status");
   status.setAttribute("role", "status");
   const honesty = buildHonestyPanel();
   const receiptBox = el("div", "spay-receipt");
   receiptBox.hidden = true;
-  root.append(amountLine, confirmBox, feeWarning, honesty.root, button, status, receiptBox);
+  root.append(amountLine, confirmBox, feeWarning, honesty.root, button, payAnywayButton, status, receiptBox);
   container.append(root);
   void checkout.preview(invoice).then((rows) => honesty.render(rows));
   const off = checkout.on((event) => {
@@ -32080,14 +32110,22 @@ function mountCheckout(container, opts) {
     if (event.type === "progress") renderProgress(event.progress);
     if (event.type === "paid") renderReceipt(event.receipt);
   });
-  button.addEventListener("click", () => {
+  const attempt = (payOpts = {}) => {
     button.disabled = true;
-    checkout.pay(invoice).catch((err) => {
-      opts.onFailed?.(err instanceof Error ? err.message : String(err));
+    payAnywayButton.disabled = true;
+    checkout.pay(invoice, payOpts).catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      opts.onFailed?.(message);
       button.disabled = false;
       button.textContent = `Retry: ${defaultLabel}`;
+      const pending = Boolean(err && typeof err === "object" && "needsPayerCheck" in err);
+      button.hidden = pending;
+      payAnywayButton.hidden = !pending;
+      payAnywayButton.disabled = false;
     });
-  });
+  };
+  button.addEventListener("click", () => attempt());
+  payAnywayButton.addEventListener("click", () => attempt({ paidNothingLastTime: true }));
   function renderProgress(p) {
     const loud = p.phase === "failed" || p.severity === "warning";
     status.setAttribute("aria-live", loud ? "assertive" : "polite");
@@ -32109,7 +32147,7 @@ function mountCheckout(container, opts) {
     receiptBox.setAttribute("role", "status");
     receiptBox.tabIndex = -1;
     button.hidden = true;
-    honesty.root.open = false;
+    payAnywayButton.hidden = true;
     receiptBox.hidden = false;
     receiptBox.replaceChildren(
       line("spay-receipt-title", "Receipt"),
@@ -32209,6 +32247,7 @@ function injectStylesOnce() {
 .spay-btn{width:100%;margin-top:10px;padding:12px 14px;min-height:44px;border:0;border-radius:8px;cursor:pointer;
   background:var(--spay-accent);color:#08110a;font-weight:700;font-size:14px}
 .spay-btn:disabled{opacity:.75;cursor:progress}
+.spay-btn-danger{background:#f0c674;color:#231f00;font-size:13px}
 .spay-status{min-height:1.4em;margin-top:8px;font-size:12.5px;color:var(--spay-muted)}
 .spay-status-popup{color:var(--spay-accent)}
 .spay-status-popup::before{content:"\u2197 ";font-weight:700}

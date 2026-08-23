@@ -6,9 +6,13 @@ import {
   DELETABLE_STATES,
   LATE_GRACE_MS,
   SETTLED_STATES,
+  NO_DEADLINE_MAX_WATCH_MS,
   UNPAYABLE_STATES,
+  csvCell,
+  effectiveDeadline,
   evaluateInvoice,
   hasUsableBaseline,
+  receivedFromEvents,
   sameAddress,
   shouldPoll,
   signPayload,
@@ -232,4 +236,142 @@ test("an underpaid row at an unchanged level is not rewritten every poll", () =>
   // expiredAt must be the moment it expired, not the moment of the last poll.
   assert.equal(under.expiredAt, 9_999);
   assert.equal(evaluateInvoice(under, toUnits("4", 18), 20_000).expiredAt, 9_999);
+});
+
+// ---------------------------------------------------------------------------
+// Event-sum accounting. This code shipped with no tests at all, and its first
+// audit found it re-introducing the exact bug the baseline exists to prevent.
+// ---------------------------------------------------------------------------
+
+const transferEvent = (to, amount, hash = "0x0abc") => ({
+  keys: ["0x0099cd8bde557814842a3121e8ddfd433a539b8c9f14bf31ebf108d12e6196e9", "0x0111", to],
+  data: ["0x" + amount.toString(16), "0x0"],
+  transaction_hash: hash,
+});
+
+test("receivedFromEvents sums only transfers addressed to us", () => {
+  const me = "0x0abc";
+  const r = receivedFromEvents(
+    {
+      events: [
+        transferEvent(me, toUnits("2", 18)),
+        transferEvent("0x0def", toUnits("99", 18)), // someone else's payment
+        transferEvent(me, toUnits("3", 18)),
+      ],
+    },
+    me,
+  );
+  assert.equal(r.units, toUnits("5", 18));
+  assert.equal(r.count, 2);
+  assert.equal(r.txHash, "0x0abc");
+});
+
+test("receivedFromEvents matches addresses by value, not by spelling", () => {
+  // The same address turns up zero-padded, unpadded, and in either case.
+  const padded = "0x0000000000000000000000000000000000000000000000000000000000000abc";
+  const r = receivedFromEvents({ events: [transferEvent(padded, toUnits("1", 18))] }, "0xABC");
+  assert.equal(r.units, toUnits("1", 18));
+});
+
+test("receivedFromEvents refuses to guess at an unreadable amount", () => {
+  // A partial sum silently under-credits, which is worse than no sum at all.
+  const bad = { ...transferEvent("0x0abc", 1n), data: ["not-a-felt"] };
+  assert.equal(receivedFromEvents({ events: [bad] }, "0x0abc"), null);
+});
+
+test("receivedFromEvents survives a malformed key without throwing", () => {
+  const bad = { keys: ["0x01", "0x02", "zzz"], data: ["0x1", "0x0"], transaction_hash: "0x1" };
+  const r = receivedFromEvents({ events: [bad, transferEvent("0x0abc", toUnits("1", 18))] }, "0x0abc");
+  assert.equal(r.units, toUnits("1", 18));
+});
+
+test("an empty event list is zero received, and says so", () => {
+  const r = receivedFromEvents({ events: [] }, "0x0abc");
+  assert.equal(r.units, 0n);
+  assert.equal(r.count, 0, "callers must be able to tell 'none found' from 'zero'");
+});
+
+test("an authoritative received figure overrides the balance delta", () => {
+  // The whole point: after a sweep the balance is back to the baseline while
+  // the payer's money genuinely arrived.
+  const inv = invoice({ baselineUnits: "0" });
+  const swept = evaluateInvoice(inv, 0n, 1_000, toUnits("5", 18));
+  assert.equal(swept.status, "paid");
+  assert.equal(swept.receivedUnits, toUnits("5", 18).toString());
+});
+
+test("a null override falls back to the balance delta", () => {
+  const inv = invoice({ baselineUnits: "0" });
+  assert.equal(evaluateInvoice(inv, toUnits("5", 18), 1_000, null).status, "paid");
+  assert.equal(evaluateInvoice(inv, toUnits("4", 18), 1_000, null).status, "watching");
+});
+
+test("an invoice with no deadline is retired, not watched forever", () => {
+  const inv = invoice({ createdAt: 1_000, expiresAt: undefined });
+  assert.equal(effectiveDeadline(inv), 1_000 + NO_DEADLINE_MAX_WATCH_MS);
+  assert.equal(shouldPoll(inv, 1_000 + 1), true);
+  assert.equal(shouldPoll(inv, 1_000 + NO_DEADLINE_MAX_WATCH_MS + LATE_GRACE_MS + 1), false);
+  // And it does expire rather than sitting watching forever.
+  const retired = evaluateInvoice(inv, 0n, 1_000 + NO_DEADLINE_MAX_WATCH_MS + 1);
+  assert.equal(retired.status, "expired");
+});
+
+test("a row with neither deadline nor creation time is never auto-expired", () => {
+  // Nothing to judge against. Guessing a deadline here would expire an invoice
+  // for reasons the merchant never asked for.
+  const inv = invoice({ createdAt: undefined, expiresAt: undefined });
+  assert.equal(effectiveDeadline(inv), null);
+  assert.equal(shouldPoll(inv, 10 ** 15), true);
+  assert.equal(evaluateInvoice(inv, 0n, 10 ** 15).status, "watching");
+});
+
+test("cancelled is unpayable, and is NOT deletable", () => {
+  // Deleting frees the address for reuse, and a cancelled invoice's address
+  // may still receive a payment that was already in flight.
+  assert.ok(UNPAYABLE_STATES.has("cancelled"));
+  assert.ok(!DELETABLE_STATES.has("cancelled"));
+});
+
+test("csvCell neutralises a lone carriage return", () => {
+  // Not a character the quoting rule looked for, so a value containing one
+  // ended the record early and its remainder became a NEW row whose first cell
+  // was a live formula. It reaches here from a third-party RPC tx hash.
+  // Built with fromCharCode so no layer of escaping can quietly change it.
+  const CR = String.fromCharCode(13);
+  const smuggled = "0xdead" + CR + "=cmd|'/C calc'!A0";
+
+  // A minimal RFC 4180 reader: what a spreadsheet does, which is the only
+  // opinion that matters here.
+  const parse = (text) => {
+    const rows = [[""]];
+    const push = (ch) => {
+      const row = rows[rows.length - 1];
+      row[row.length - 1] += ch;
+    };
+    let quoted = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (quoted) {
+        if (ch === '"' && text[i + 1] === '"') { push('"'); i++; }
+        else if (ch === '"') quoted = false;
+        else push(ch);
+      } else if (ch === '"') quoted = true;
+      else if (ch === ",") rows[rows.length - 1].push("");
+      else if (ch === CR || ch === String.fromCharCode(10)) {
+        if (ch === CR && text[i + 1] === String.fromCharCode(10)) i++;
+        rows.push([""]);
+      } else push(ch);
+    }
+    return rows;
+  };
+
+  const rows = parse("a," + csvCell(smuggled) + ",b" + CR + String.fromCharCode(10));
+  assert.equal(rows.length, 2, "the CR must not start a second record");
+  assert.deepEqual(rows[0], ["a", smuggled, "b"], "and the value survives intact");
+
+  // The leading-character guard still applies to the cases it was written for.
+  assert.equal(csvCell("=1+1"), "'=1+1");
+  assert.equal(csvCell("@SUM(A1)"), "'@SUM(A1)");
+  assert.equal(csvCell("plain"), "plain");
+  assert.equal(csvCell(null), "");
 });

@@ -103,12 +103,12 @@ export function effectiveDeadline(invoice) {
 
 /** Should the poller still spend an RPC call on this row? */
 export function shouldPoll(invoice, now = Date.now()) {
-  if (invoice?.status === "watching") {
-    const deadline = effectiveDeadline(invoice);
-    // A row past even its fallback deadline still gets one more look, so the
-    // poll that notices it is the poll that retires it.
-    return deadline === null || now <= deadline + LATE_GRACE_MS;
-  }
+  // A `watching` row is ALWAYS polled. Retiring it is the poller's job, and
+  // gating that on a window meant a watcher that was down across the window
+  // came back to a row that would never be looked at again: not polled, not
+  // deletable, not cancellable once anything had arrived. Stuck forever.
+  // `evaluateInvoice` decides its fate; this only decides whether to look.
+  if (invoice?.status === "watching") return true;
   if (invoice?.status !== "expired" && invoice?.status !== "underpaid") return false;
   // Keep looking during the grace window, and only there: polling settled or
   // abandoned rows forever turns one busy merchant into an RPC bill.

@@ -1,4 +1,4 @@
-export { PendingPaymentError, StealthCheckout, addAmounts, compareAmounts, depositNeededFor, didNotReachTheChain, isInsufficientFunds, matchesInvoice, sameFelt, shieldedNeededFor, } from "./checkout.js";
+export { PendingPaymentError, StealthCheckout, addAmounts, compareAmounts, depositNeededFor, didNotReachTheChain, isInsufficientFunds, matchesInvoice, sameFelt, shieldedNeededFor, subAmounts, } from "./checkout.js";
 export { mountCheckout } from "./ui.js";
 export { revealReport } from "./honesty.js";
 export { MockWallet } from "./wallet/mock.js";

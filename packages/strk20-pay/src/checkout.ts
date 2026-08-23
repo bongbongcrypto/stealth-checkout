@@ -38,9 +38,16 @@ export class StealthCheckout {
      */
     private readonly allowInlineShield = false,
     /**
-     * Where broadcast payments are remembered. Defaults to sessionStorage in a
-     * browser so a reload cannot re-send; pass your own for other hosts, or
+     * Where broadcast payments are remembered. Defaults to localStorage, so a
+     * second tab cannot re-send either; pass your own for other hosts, or
      * `null` to opt out (a reload then risks paying twice).
+     *
+     * Note what that persists: invoice id, amount, recipient and tx hash, on
+     * the page's origin, until cleared. On a shared origin such as
+     * `<user>.github.io` that is readable by every other page the same account
+     * publishes. A merchant hosting the checkout on their own domain has no
+     * such neighbours; one embedding it on a shared host should pass a store
+     * scoped the way they want it.
      */
     private readonly store: PaymentStore | null = defaultStore(),
   ) {}
@@ -278,10 +285,10 @@ export class StealthCheckout {
    * privacy-preserving answer, so the message has to be genuinely useful.
    */
   private async shieldOrExplain(invoice: Invoice, shielded?: Amount, fee = "0"): Promise<string> {
-    if (this.allowInlineShield) return this.shieldStep(invoice, fee);
+    if (this.allowInlineShield) return this.shieldStep(invoice, fee, shielded);
     const dp = decimalsOf(invoice.token);
     const needed = shieldedNeededFor(invoice.amount, fee, dp);
-    const deposit = depositNeededFor(invoice.amount, fee, dp);
+    const deposit = depositNeededFor(invoice.amount, fee, dp, shielded ?? "0");
     const have = shielded !== undefined ? ` You have ${shielded} ${invoice.token} shielded right now.` : "";
     // Telling a payer the shielded figure alone sent them to deposit exactly
     // that, which credits one fee less and lands them back here with the same
@@ -348,14 +355,18 @@ export class StealthCheckout {
   }
 
   /** Shield, then block until the new notes are actually spendable. */
-  private async shieldStep(invoice: Invoice, fee = "0"): Promise<string> {
+  private async shieldStep(invoice: Invoice, fee = "0", alreadyShielded?: Amount): Promise<string> {
     // Two fees, not one: the pool takes its fee out of the deposit AND charges
     // it again on the payment. Depositing amount + fee credited exactly the
     // amount and then could not afford the payment, at any invoice size.
-    const deposit = depositNeededFor(invoice.amount, fee, decimalsOf(invoice.token));
+    const dp = decimalsOf(invoice.token);
+    const deposit = depositNeededFor(invoice.amount, fee, dp, alreadyShielded ?? "0");
+    const held = alreadyShielded && compareAmounts(alreadyShielded, "0", dp) > 0 ? alreadyShielded : null;
     const feeNote =
       compareAmounts(fee, "0") > 0
-        ? ` That covers the ${invoice.amount} the merchant receives plus the pool's ${fee} fee twice: once on this deposit, once on the payment.`
+        ? held
+          ? ` You already hold ${held} ${invoice.token} shielded, so this only tops up the difference, plus the pool's ${fee} fee on the deposit itself.`
+          : ` That covers the ${invoice.amount} the merchant receives plus the pool's ${fee} fee twice: once on this deposit, once on the payment.`
         : "";
     this.emit(
       "shielding",
@@ -462,8 +473,29 @@ function decimalsOf(token: string): number {
  * project's own seven mainnet transactions is what settles the direction:
  * 20-6, -5-6, +5-6, +5-6, +20-6, -5-6, +5-6 = 3 STRK.
  */
-export function depositNeededFor(amount: Amount, fee: Amount, decimals = 18): Amount {
-  return addAmounts(amount, addAmounts(fee, fee, decimals), decimals);
+export function depositNeededFor(amount: Amount, fee: Amount, decimals = 18, alreadyShielded: Amount = "0"): Amount {
+  const needed = shieldedNeededFor(amount, fee, decimals);
+  const shortfall = subAmounts(needed, alreadyShielded, decimals);
+  if (compareAmounts(shortfall, "0", decimals) <= 0) return "0";
+  // The shortfall, plus one fee for the deposit that delivers it. Ignoring
+  // what the payer already holds quoted the full amount every time, and with
+  // inline shielding on it deposited that much: a payer holding 5 of an 11
+  // needed was asked for 17 instead of 12, and the extra 5 was stranded in the
+  // pool behind another fee to get out.
+  return addAmounts(shortfall, fee, decimals);
+}
+
+/** a - b, floored at zero. Same parser, same rules, no floats. */
+export function subAmounts(a: Amount, b: Amount, decimals = 18): Amount {
+  const units = (x: string): bigint => {
+    const [ip, fp] = parseAmount(x, decimals);
+    return BigInt(ip || "0") * 10n ** BigInt(decimals) + BigInt(fp.padEnd(decimals, "0") || "0");
+  };
+  const diff = units(a) - units(b);
+  if (diff <= 0n) return "0";
+  const one = 10n ** BigInt(decimals);
+  const fp = (diff % one).toString().padStart(decimals, "0").replace(/0+$/, "");
+  return fp ? `${diff / one}.${fp}` : (diff / one).toString();
 }
 
 /** What a payer must already hold shielded to pay this invoice outright. */
@@ -559,9 +591,11 @@ function defaultStore(): PaymentStore | null {
     try {
       const s = get();
       if (!s) return null;
-      // Write-probe only: a custom store owes us getItem and setItem, nothing
-      // more, so the probe key is overwritten rather than removed.
+      // Write-probe, then blank it. A custom store owes us getItem and setItem
+      // and nothing more, so this cannot remove the key, but leaving "1" there
+      // forever on someone's origin is litter.
       s.setItem(probe, "1");
+      s.setItem(probe, "");
       return s;
     } catch {
       return null; // private mode, quota, or storage disabled entirely

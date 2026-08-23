@@ -8,6 +8,7 @@ import {
   depositNeededFor,
   revealReport,
   shieldedNeededFor,
+  subAmounts,
 } from "../dist/index.js";
 
 const invoice = (over = {}) => ({
@@ -368,7 +369,9 @@ test("the pool's flat fee is part of every amount decision", async () => {
 
   await assert.rejects(() => checkout.pay(invoice({ amount: "5" })), (err) => {
     assert.match(err.message, /need 11 STRK shielded/, "5 to the merchant plus 6 to the pool");
-    assert.match(err.message, /send 17 STRK/, "and 17 deposited is what leaves 11 spendable");
+    // They already hold 5, so the top-up is 6 plus one fee on the deposit.
+    // Quoting the from-scratch 17 here would strand 5 STRK in the pool.
+    assert.match(err.message, /send 12 STRK/, "the shortfall, plus the deposit's own fee");
     return true;
   });
 });
@@ -457,4 +460,37 @@ test("addAmounts is exact, and never silently drops precision", () => {
   // A six-decimal token refuses what an eighteen-decimal one accepts.
   assert.equal(addAmounts("1.5", "0.25", 6), "1.75");
   assert.throws(() => addAmounts("1.0000001", "1", 6), /more than 6 decimal places/);
+});
+
+test("a deposit tops up the shortfall, not the whole invoice", async () => {
+  // Ignoring what the payer already holds asked a payer with 5 of the 11 they
+  // needed for 17 instead of 12, and with inline shielding on it deposited
+  // that much: the extra 5 stranded in the pool behind another fee to get out.
+  assert.equal(depositNeededFor("5", "6", 18, "0"), "17");
+  assert.equal(depositNeededFor("5", "6", 18, "5"), "12");
+  assert.equal(depositNeededFor("5", "6", 18, "11"), "0", "nothing to top up");
+  assert.equal(depositNeededFor("5", "6", 18, "20"), "0");
+  // The default argument keeps the from-scratch answer.
+  assert.equal(depositNeededFor("5", "6"), "17");
+
+  const wallet = shieldedWallet("5");
+  const checkout = new StealthCheckout(wallet, async () => true, true, freshStore());
+  const shielding = [];
+  checkout.on((e) => {
+    if (e.type === "progress" && e.progress.phase === "shielding") shielding.push(e.progress.message);
+  });
+  await checkout.pay(invoice({ amount: "5" }));
+
+  assert.match(shielding[0], /shield 12 STRK/);
+  assert.match(shielding[0], /already hold 5 STRK shielded/);
+  assert.equal(await wallet.shieldedBalance("STRK"), "0", "nothing stranded in the pool");
+  assert.equal(await wallet.publicBalance("STRK"), "88", "100 - 12");
+});
+
+test("subAmounts floors at zero and rejects the same junk as its siblings", () => {
+  assert.equal(subAmounts("11", "5"), "6");
+  assert.equal(subAmounts("5", "11"), "0", "a negative shortfall is no shortfall");
+  assert.equal(subAmounts("0.3", "0.1"), "0.2"); // no float drift
+  assert.throws(() => subAmounts(".5", "1"), /Not a valid amount/);
+  assert.throws(() => subAmounts("1.0000000000000000001", "1"), /more than 18 decimal places/);
 });

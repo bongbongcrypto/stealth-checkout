@@ -56,6 +56,14 @@ const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET ?? "";
 const API_TOKEN = process.env.WATCHER_TOKEN ?? "";
 /** Exact origin allowed to call this from a browser. No wildcard. */
 const ALLOWED_ORIGIN = process.env.WATCHER_ORIGIN ?? "";
+/**
+ * Extra Host header values to accept, comma separated. Needed only when the
+ * watcher sits behind a proxy or tunnel that forwards the original hostname.
+ */
+const ALLOWED_HOSTS = (process.env.WATCHER_HOSTS ?? "")
+  .split(",")
+  .map((h) => h.trim().toLowerCase())
+  .filter(Boolean);
 const STORE_PATH = process.env.WATCHER_STORE ?? fileURLToPath(new URL("./invoices.json", import.meta.url));
 /** Give up after this many webhook attempts. The row stays redeliverable. */
 const WEBHOOK_MAX_ATTEMPTS = Number(process.env.WEBHOOK_MAX_ATTEMPTS ?? 8);
@@ -127,6 +135,19 @@ async function pollOnce() {
       // since it was registered. The balance delta is only a fallback: it
       // cannot see money that has already been moved out, so a merchant
       // sweeping the address made a full payment read as nothing.
+      // A create whose blockNumber call failed once left the row on the weaker
+      // accounting forever, with no route to fix it. Repair it on the first
+      // poll that can: the current head is a safe start, because anything
+      // earlier is already inside the baseline.
+      if (typeof inv.createdBlock !== "number") {
+        const head = await currentBlock().catch(() => null);
+        if (typeof head === "number") {
+          invoices.set(id, { ...inv, createdBlock: head });
+          await persist();
+          log(`${id} backfilled createdBlock=${head}; event accounting is on from here`);
+          continue; // judge it on the next cycle, with the scan available
+        }
+      }
       const inflow = await totalReceived(inv).catch((err) => {
         log(`${id} event scan failed (${err.message}); falling back to the balance delta`);
         return null;
@@ -196,6 +217,10 @@ async function findTxHash(inv) {
  * would under-credit the payer, which is exactly the bug this replaces.
  */
 async function totalReceived(inv) {
+  // Without a start block there is nothing to scan from, and scanning from
+  // zero would count money that arrived before the invoice existed. The row
+  // falls back to balance-delta accounting; `backfillCreatedBlock` repairs it
+  // so that is temporary rather than permanent.
   if (typeof inv.createdBlock !== "number") return null;
   let token;
   let total = 0n;
@@ -641,6 +666,15 @@ async function readBody(req, limit = 64 * 1024) {
 export function makeServer() {
   return createServer(async (req, res) => {
     const url = new URL(req.url, "http://localhost");
+    // Bound to loopback, so any other hostname reaching it is DNS rebinding:
+    // a page on the internet resolving its own domain to 127.0.0.1 to talk to
+    // this API from the browser. The bearer token stops it doing damage; this
+    // stops it being reached at all.
+    const host = (req.headers.host ?? "").split(":")[0].toLowerCase();
+    if (host && !["localhost", "127.0.0.1", "[::1]", "::1"].includes(host) && !ALLOWED_HOSTS.includes(host)) {
+      res.writeHead(403, { "Content-Type": "text/plain" });
+      return res.end("host not allowed");
+    }
     if (req.method === "OPTIONS") {
       res.writeHead(204, corsHeaders(req));
       return res.end();

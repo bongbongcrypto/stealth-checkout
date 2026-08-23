@@ -23,9 +23,16 @@ export declare class StealthCheckout {
      */
     private readonly allowInlineShield;
     /**
-     * Where broadcast payments are remembered. Defaults to sessionStorage in a
-     * browser so a reload cannot re-send; pass your own for other hosts, or
+     * Where broadcast payments are remembered. Defaults to localStorage, so a
+     * second tab cannot re-send either; pass your own for other hosts, or
      * `null` to opt out (a reload then risks paying twice).
+     *
+     * Note what that persists: invoice id, amount, recipient and tx hash, on
+     * the page's origin, until cleared. On a shared origin such as
+     * `<user>.github.io` that is readable by every other page the same account
+     * publishes. A merchant hosting the checkout on their own domain has no
+     * such neighbours; one embedding it on a shared host should pass a store
+     * scoped the way they want it.
      */
     private readonly store;
     private listeners;
@@ -48,9 +55,16 @@ export declare class StealthCheckout {
      */
     allowInlineShield?: boolean, 
     /**
-     * Where broadcast payments are remembered. Defaults to sessionStorage in a
-     * browser so a reload cannot re-send; pass your own for other hosts, or
+     * Where broadcast payments are remembered. Defaults to localStorage, so a
+     * second tab cannot re-send either; pass your own for other hosts, or
      * `null` to opt out (a reload then risks paying twice).
+     *
+     * Note what that persists: invoice id, amount, recipient and tx hash, on
+     * the page's origin, until cleared. On a shared origin such as
+     * `<user>.github.io` that is readable by every other page the same account
+     * publishes. A merchant hosting the checkout on their own domain has no
+     * such neighbours; one embedding it on a shared host should pass a store
+     * scoped the way they want it.
      */
     store?: PaymentStore | null);
     on(listener: (e: CheckoutEvent) => void): Unsubscribe;
@@ -111,7 +125,9 @@ export declare class StealthCheckout {
  * project's own seven mainnet transactions is what settles the direction:
  * 20-6, -5-6, +5-6, +5-6, +20-6, -5-6, +5-6 = 3 STRK.
  */
-export declare function depositNeededFor(amount: Amount, fee: Amount, decimals?: number): Amount;
+export declare function depositNeededFor(amount: Amount, fee: Amount, decimals?: number, alreadyShielded?: Amount): Amount;
+/** a - b, floored at zero. Same parser, same rules, no floats. */
+export declare function subAmounts(a: Amount, b: Amount, decimals?: number): Amount;
 /** What a payer must already hold shielded to pay this invoice outright. */
 export declare function shieldedNeededFor(amount: Amount, fee: Amount, decimals?: number): Amount;
 export declare function compareAmounts(a: string, b: string, decimals?: number): -1 | 0 | 1;

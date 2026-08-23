@@ -31823,10 +31823,10 @@ var StealthCheckout = class {
    * privacy-preserving answer, so the message has to be genuinely useful.
    */
   async shieldOrExplain(invoice, shielded, fee = "0") {
-    if (this.allowInlineShield) return this.shieldStep(invoice, fee);
+    if (this.allowInlineShield) return this.shieldStep(invoice, fee, shielded);
     const dp = decimalsOf(invoice.token);
     const needed = shieldedNeededFor(invoice.amount, fee, dp);
-    const deposit = depositNeededFor(invoice.amount, fee, dp);
+    const deposit = depositNeededFor(invoice.amount, fee, dp, shielded ?? "0");
     const have = shielded !== void 0 ? ` You have ${shielded} ${invoice.token} shielded right now.` : "";
     const feeNote = compareAmounts(fee, "0") > 0 ? ` The pool charges a flat ${fee} ${invoice.token} per operation and takes it out of a deposit, so send ${deposit} ${invoice.token} to end up with ${needed} spendable.` : "";
     throw new Error(
@@ -31868,9 +31868,11 @@ var StealthCheckout = class {
     return receipt;
   }
   /** Shield, then block until the new notes are actually spendable. */
-  async shieldStep(invoice, fee = "0") {
-    const deposit = depositNeededFor(invoice.amount, fee, decimalsOf(invoice.token));
-    const feeNote = compareAmounts(fee, "0") > 0 ? ` That covers the ${invoice.amount} the merchant receives plus the pool's ${fee} fee twice: once on this deposit, once on the payment.` : "";
+  async shieldStep(invoice, fee = "0", alreadyShielded) {
+    const dp = decimalsOf(invoice.token);
+    const deposit = depositNeededFor(invoice.amount, fee, dp, alreadyShielded ?? "0");
+    const held = alreadyShielded && compareAmounts(alreadyShielded, "0", dp) > 0 ? alreadyShielded : null;
+    const feeNote = compareAmounts(fee, "0") > 0 ? held ? ` You already hold ${held} ${invoice.token} shielded, so this only tops up the difference, plus the pool's ${fee} fee on the deposit itself.` : ` That covers the ${invoice.amount} the merchant receives plus the pool's ${fee} fee twice: once on this deposit, once on the payment.` : "";
     this.emit(
       "shielding",
       `Your wallet will pop up to shield ${deposit} ${invoice.token}. This deposit is public and screened.${feeNote}`,
@@ -31922,8 +31924,22 @@ function decimalsOf(token) {
     return 18;
   }
 }
-function depositNeededFor(amount, fee, decimals = 18) {
-  return addAmounts(amount, addAmounts(fee, fee, decimals), decimals);
+function depositNeededFor(amount, fee, decimals = 18, alreadyShielded = "0") {
+  const needed = shieldedNeededFor(amount, fee, decimals);
+  const shortfall = subAmounts(needed, alreadyShielded, decimals);
+  if (compareAmounts(shortfall, "0", decimals) <= 0) return "0";
+  return addAmounts(shortfall, fee, decimals);
+}
+function subAmounts(a, b, decimals = 18) {
+  const units2 = (x) => {
+    const [ip, fp2] = parseAmount(x, decimals);
+    return BigInt(ip || "0") * 10n ** BigInt(decimals) + BigInt(fp2.padEnd(decimals, "0") || "0");
+  };
+  const diff = units2(a) - units2(b);
+  if (diff <= 0n) return "0";
+  const one = 10n ** BigInt(decimals);
+  const fp = (diff % one).toString().padStart(decimals, "0").replace(/0+$/, "");
+  return fp ? `${diff / one}.${fp}` : (diff / one).toString();
 }
 function shieldedNeededFor(amount, fee, decimals = 18) {
   return addAmounts(amount, fee, decimals);
@@ -31964,6 +31980,7 @@ function defaultStore() {
       const s = get();
       if (!s) return null;
       s.setItem(probe, "1");
+      s.setItem(probe, "");
       return s;
     } catch {
       return null;
@@ -32068,14 +32085,16 @@ function mountCheckout(container, opts) {
       return;
     }
     let mustDeposit = true;
+    let held = "0";
     try {
       if (wallet.isConnected()) {
         const shielded = await wallet.shieldedBalance(invoice.token);
+        held = shielded ?? "0";
         mustDeposit = shielded === null || compareAmounts(shielded, shieldedNeededFor(invoice.amount, fee, decimals), decimals) < 0;
       }
     } catch {
     }
-    const total = mustDeposit ? depositNeededFor(invoice.amount, fee, decimals) : shieldedNeededFor(invoice.amount, fee, decimals);
+    const total = mustDeposit ? addAmounts(depositNeededFor(invoice.amount, fee, decimals, held), "0", decimals) : shieldedNeededFor(invoice.amount, fee, decimals);
     feeCell.textContent = mustDeposit ? `${fee} ${invoice.token} \xD7 2 (deposit + payment)` : `${fee} ${invoice.token}`;
     totalCell.textContent = `${total} ${invoice.token}`;
     if (compareAmounts(fee, invoice.amount, decimals) > 0) {

@@ -1,4 +1,4 @@
-import { StealthCheckout, compareAmounts, depositNeededFor, shieldedNeededFor } from "./checkout.js";
+import { StealthCheckout, addAmounts, compareAmounts, depositNeededFor, shieldedNeededFor } from "./checkout.js";
 import type { PaymentStore, PayOptions } from "./checkout.js";
 import { TOKENS, resolveToken } from "./tokens.js";
 import type { Invoice, PaymentProgress, Receipt, RevealItem } from "./types.js";
@@ -127,9 +127,11 @@ export function mountCheckout(container: HTMLElement, opts: MountOptions): Mount
     }
 
     let mustDeposit = true; // the safe assumption until a balance says otherwise
+    let held = "0";
     try {
       if (wallet.isConnected()) {
         const shielded = await wallet.shieldedBalance(invoice.token);
+        held = shielded ?? "0";
         mustDeposit =
           shielded === null || compareAmounts(shielded, shieldedNeededFor(invoice.amount, fee, decimals), decimals) < 0;
       }
@@ -137,8 +139,10 @@ export function mountCheckout(container: HTMLElement, opts: MountOptions): Mount
       /* keep the safe assumption */
     }
 
+    // A partly-shielded payer only tops up the difference, so quoting the full
+    // deposit overstates what they will part with.
     const total = mustDeposit
-      ? depositNeededFor(invoice.amount, fee, decimals)
+      ? addAmounts(depositNeededFor(invoice.amount, fee, decimals, held), "0", decimals)
       : shieldedNeededFor(invoice.amount, fee, decimals);
     feeCell.textContent = mustDeposit
       ? `${fee} ${invoice.token} \u00d7 2 (deposit + payment)`

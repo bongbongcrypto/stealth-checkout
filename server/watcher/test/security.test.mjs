@@ -309,11 +309,15 @@ test("a null override falls back to the balance delta", () => {
 test("an invoice with no deadline is retired, not watched forever", () => {
   const inv = invoice({ createdAt: 1_000, expiresAt: undefined });
   assert.equal(effectiveDeadline(inv), 1_000 + NO_DEADLINE_MAX_WATCH_MS);
+  // A watching row is always polled, however late: retiring it is the poller's
+  // job, and gating that on a window left rows stranded when the watcher was
+  // down across it - not polled, not deletable, not cancellable.
   assert.equal(shouldPoll(inv, 1_000 + 1), true);
-  assert.equal(shouldPoll(inv, 1_000 + NO_DEADLINE_MAX_WATCH_MS + LATE_GRACE_MS + 1), false);
-  // And it does expire rather than sitting watching forever.
+  assert.equal(shouldPoll(inv, 1_000 + NO_DEADLINE_MAX_WATCH_MS + LATE_GRACE_MS + 1), true);
+  // And the poll that finally looks is the one that retires it.
   const retired = evaluateInvoice(inv, 0n, 1_000 + NO_DEADLINE_MAX_WATCH_MS + 1);
   assert.equal(retired.status, "expired");
+  assert.equal(shouldPoll(retired, retired.expiredAt + LATE_GRACE_MS + 1), false, "and then it stops");
 });
 
 test("a row with neither deadline nor creation time is never auto-expired", () => {

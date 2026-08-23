@@ -18,7 +18,10 @@ const tokenInput = document.getElementById("f-token");
 // dashboard post `Authorization: Bearer <token>` to it every ten seconds. A
 // merchant API token is not worth that convenience: retype it, or serve the
 // dashboard from your own host.
-const PERSISTENCE_IS_SAFE = !/(^|\.)github\.io$/i.test(location.hostname) && location.protocol !== "file:";
+// A trailing dot is a legal, fully-qualified spelling of the same host, and
+// browsers treat it as a separate origin: "github.io." would have passed.
+const PERSISTENCE_IS_SAFE =
+  !/(^|\.)github\.io\.?$/i.test(location.hostname) && location.protocol !== "file:";
 if (PERSISTENCE_IS_SAFE) {
   watcherInput.value = localStorage.getItem("spay-watcher-url") ?? watcherInput.value;
 }

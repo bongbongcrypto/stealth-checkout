@@ -9,6 +9,7 @@ export {
   matchesInvoice,
   sameFelt,
   shieldedNeededFor,
+  subAmounts,
 } from "./checkout.js";
 export type { SentPayment, PaymentStore, PayOptions } from "./checkout.js";
 export { mountCheckout } from "./ui.js";

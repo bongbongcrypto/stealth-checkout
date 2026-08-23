@@ -10,6 +10,9 @@ JSON-RPC with no proving service in the loop.
 npm install strk20-pay
 ```
 
+If that 404s, the package has not been published yet: clone the repo and
+`npm install ./packages/strk20-pay` instead. It is MIT, so the copy is yours.
+
 Requires a wallet advertising Privacy Wallet API `0.10.3` or newer (Ready X today).
 
 ## Mount a checkout

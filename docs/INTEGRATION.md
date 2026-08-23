@@ -30,6 +30,8 @@ independently, from your own ledger, before you ship anything.
 npm install strk20-pay
 ```
 
+If that 404s the package is not published yet; vendor it instead, as below.
+
 A plain git install of this repo does NOT work: npm would fetch the monorepo
 root, which exports nothing. If you would rather vendor it than depend on the
 registry, copy the package folder and install that (MIT, so the copy is yours):

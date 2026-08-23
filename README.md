@@ -11,7 +11,7 @@ Built for the [STRK20 Private Sprint](https://strk20.starknet.io/hackathon).
 [integration guide](docs/INTEGRATION.md)
 
 ```bash
-npm install strk20-pay
+npm install strk20-pay   # once published: see Status below
 ```
 
 ## Why

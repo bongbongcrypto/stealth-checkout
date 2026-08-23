@@ -216,10 +216,10 @@ function renderCreator(): void {
     <label>Amount (STRK)<input id="f-amount" value="2" /></label>
     <label>Memo (never goes on-chain)<input id="f-memo" placeholder="Order #42" /></label>
     <label>Invoice id, as registered with your watcher (optional)<input id="f-id" placeholder="inv_9f2a" /></label>
-    <label>Watcher URL (optional, strongly recommended)<input id="f-watcher" placeholder="https://pay.example.com" /></label>
-    <p class="muted small">With a watcher, the payer's page reads the amount from your server and settles
-    against it. Without one, the amount lives in the link, and a payer who edits the link pays the edited
-    amount and still sees a receipt: treat that receipt as an observation, never as proof.</p>
+    <p class="muted small">The amount and the destination live in this link. A payer who edits it pays the
+    edited amount and still sees a receipt, so treat that receipt as an observation and never as proof.
+    To have the terms come from your server instead, serve this page from the same origin as your watcher:
+    a link cannot nominate its own auditor, so there is deliberately no field for one here.</p>
     <button id="f-make">Create link</button>
     <div id="f-out" class="out" hidden></div>
   `;
@@ -233,20 +233,13 @@ function renderCreator(): void {
       out.textContent = "Enter a valid Starknet address.";
       return;
     }
-    const watcher = (document.getElementById("f-watcher") as HTMLInputElement).value.trim();
     const invoiceId = (document.getElementById("f-id") as HTMLInputElement).value.trim();
-    if (watcher && !invoiceId) {
-      out.hidden = false;
-      out.textContent = "A watcher URL needs the invoice id it was registered under.";
-      return;
-    }
     const url = new URL(location.href);
     url.search = new URLSearchParams({
       to: toValue,
       amount,
       ...(memo ? { memo } : {}),
       ...(invoiceId ? { id: invoiceId } : {}),
-      ...(watcher ? { watcher } : {}),
     }).toString();
     out.hidden = false;
     out.replaceChildren();

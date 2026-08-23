@@ -31522,7 +31522,7 @@ var init_dist5 = __esm({
 init_dist();
 
 // packages/strk20-pay/src/honesty.ts
-function revealReport(invoice, willShieldFirst) {
+function revealReport(invoice, willShieldFirst, willShieldInline = false) {
   const items = [];
   if (willShieldFirst) {
     items.push({
@@ -31584,7 +31584,11 @@ function revealReport(invoice, willShieldFirst) {
     items.push({
       fact: "Shielding right now, for this payment",
       visibility: "public",
-      detail: "Depositing the exact invoice amount moments before paying it is the strongest link an observer can get. This is why the checkout asks you to shield in your wallet ahead of time instead."
+      detail: "Depositing the exact invoice amount moments before paying it is the strongest link an observer can get. " + // The panel used to assert the checkout refuses to do this, without
+      // knowing whether it does: with inline shielding on - which the arcade
+      // demo turns on, and it is the first thing anyone sees - the widget
+      // deposits without asking, while the panel said it would not.
+      (willShieldInline ? "This checkout is configured to do it for you anyway, in one click. Shielding in your wallet ahead of time, separately, is the private way to pay, and this convenience costs you that." : "This is why the checkout asks you to shield in your wallet ahead of time instead.")
     });
   }
   return items;
@@ -31662,12 +31666,12 @@ var StealthCheckout = class {
    * coming, and then one was.
    */
   async preview(invoice) {
-    if (!this.wallet.isConnected()) return revealReport(invoice, true);
+    if (!this.wallet.isConnected()) return revealReport(invoice, true, this.allowInlineShield);
     const shielded = await this.wallet.shieldedBalance(invoice.token);
     const fee = await this.wallet.poolFee?.(invoice.token) ?? "0";
     const dp = decimalsOf(invoice.token);
     const willShieldFirst = shielded === null || compareAmounts(shielded, shieldedNeededFor(invoice.amount, fee, dp), dp) < 0;
-    return revealReport(invoice, willShieldFirst);
+    return revealReport(invoice, willShieldFirst, this.allowInlineShield);
   }
   async pay(invoice, opts = {}) {
     if (this.phase === "paid") this.phase = "idle";
@@ -31716,7 +31720,7 @@ var StealthCheckout = class {
         try {
           ({ txHash } = await this.payStep(invoice));
         } catch (err) {
-          if (!isInsufficientFunds(err)) throw err;
+          if (!isInsufficientFunds(err) || !didNotReachTheChain(err)) throw err;
           this.clearPending(invoice);
           const fee = await this.wallet.poolFee?.(invoice.token) ?? "0";
           shieldTxHash = await this.shieldOrExplain(invoice, void 0, fee);
@@ -32525,7 +32529,7 @@ var WalletApiAdapter = class {
       const { transaction_hash } = await this.accountV6.strk20InvokeTransaction(actions);
       return { txHash: transaction_hash };
     } catch (err) {
-      throw new WalletActionError(action, explainWalletError(err, action), err);
+      throw new WalletActionError(action, explainWalletError(err, action), err, !userRefused(err));
     }
   }
   requireAddress() {
@@ -32533,6 +32537,12 @@ var WalletApiAdapter = class {
     return this.account.address;
   }
 };
+function userRefused(err) {
+  const raw = err instanceof Error ? err.message : String(err ?? "");
+  return /\bUSER_(REFUSED|REJECTED|DENIED|CANCELLED|CANCELED|ABORTED)\b|user (rejected|refused|denied|declined|cancelled|canceled|aborted)|(rejected|cancelled|canceled|denied|dismissed) by (the )?user|dismissed the wallet prompt/i.test(
+    raw
+  );
+}
 function explainWalletError(err, action) {
   const raw = err instanceof Error ? err.message : String(err ?? "");
   if (/NOT_REGISTERED/i.test(raw)) {
@@ -32678,10 +32688,10 @@ function renderCreator() {
     <label>Amount (STRK)<input id="f-amount" value="2" /></label>
     <label>Memo (never goes on-chain)<input id="f-memo" placeholder="Order #42" /></label>
     <label>Invoice id, as registered with your watcher (optional)<input id="f-id" placeholder="inv_9f2a" /></label>
-    <label>Watcher URL (optional, strongly recommended)<input id="f-watcher" placeholder="https://pay.example.com" /></label>
-    <p class="muted small">With a watcher, the payer's page reads the amount from your server and settles
-    against it. Without one, the amount lives in the link, and a payer who edits the link pays the edited
-    amount and still sees a receipt: treat that receipt as an observation, never as proof.</p>
+    <p class="muted small">The amount and the destination live in this link. A payer who edits it pays the
+    edited amount and still sees a receipt, so treat that receipt as an observation and never as proof.
+    To have the terms come from your server instead, serve this page from the same origin as your watcher:
+    a link cannot nominate its own auditor, so there is deliberately no field for one here.</p>
     <button id="f-make">Create link</button>
     <div id="f-out" class="out" hidden></div>
   `;
@@ -32695,20 +32705,13 @@ function renderCreator() {
       out.textContent = "Enter a valid Starknet address.";
       return;
     }
-    const watcher = document.getElementById("f-watcher").value.trim();
     const invoiceId = document.getElementById("f-id").value.trim();
-    if (watcher && !invoiceId) {
-      out.hidden = false;
-      out.textContent = "A watcher URL needs the invoice id it was registered under.";
-      return;
-    }
     const url2 = new URL(location.href);
     url2.search = new URLSearchParams({
       to: toValue,
       amount,
       ...memo ? { memo } : {},
-      ...invoiceId ? { id: invoiceId } : {},
-      ...watcher ? { watcher } : {}
+      ...invoiceId ? { id: invoiceId } : {}
     }).toString();
     out.hidden = false;
     out.replaceChildren();

@@ -25,7 +25,7 @@ Stealth Checkout is that missing accepting side.
 | Piece | What it does |
 |---|---|
 | [`strk20-pay`](packages/strk20-pay) | Framework-agnostic TS widget, plus a React binding. One call renders the whole flow: connect → check balance → pay → confirmed → receipt. It refuses to shield for the payer by default, and says why. |
-| Hosted invoice page | `apps/pay-live/?to=0x…&amount=25&id=…` — a shareable payment link. Served from the same origin as your watcher, it reads the amount from your server and refuses links the server does not recognise; served from anywhere else it says plainly that the amount came from the link and is unverified. A link cannot nominate its own auditor. |
+| Hosted invoice page | `apps/pay-live/?to=0x…&amount=25&id=…` — a shareable payment link. Served from the same origin as your watcher, it reads the amount from your server and refuses to take a payment for an invoice that server has already settled or never heard of. Served from anywhere else - including the copy on GitHub Pages - it renders a payable checkout behind a plain warning that the amount and destination came from the link and nothing has checked them. A link cannot nominate its own auditor. |
 | Watcher + webhooks | Confirms payments by watching per-invoice receive addresses over public RPC. No proving dependency, fully headless. Signed webhooks with a persisted retry queue. |
 | Merchant dashboard | Create invoices, watch them settle, release stuck rows, export the ledger as CSV. |
 | Honesty panel | Before signing, what this payment reveals on-chain and what it hides. Open by default. |
@@ -55,7 +55,7 @@ Invoice addresses can already hold funds — they need STRK to deploy before a m
 
 ```bash
 npm install
-npm test                 # 141 tests: widget, checkout core, watcher logic, HTTP API
+npm test                 # 149 tests: widget, checkout core, watcher logic, HTTP API
 npm run build:all        # widget dist + hosted-page bundle
 npm run dev              # demos at http://127.0.0.1:4173
 WATCHER_TOKEN=dev node server/watcher/watcher.mjs

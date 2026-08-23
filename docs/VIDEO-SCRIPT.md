@@ -34,10 +34,11 @@ https://bongbongcrypto.github.io/stealth-checkout/apps/pay-live/index.html?to=0x
 
 Cost of the take: 5 STRK paid plus 6 STRK pool fee, out of what you shielded.
 
-If the watcher is reachable from the public page, append
-`&watcher=https://<your tunnel>` so the amount comes from the server on camera. If it
-is not, drop the parameter: the page then says plainly that its receipt is a payer-side
-observation, which is worth showing too.
+There is deliberately no `watcher=` parameter: the payer's page decides its own
+authority from where it was deployed, because a link cannot vouch for itself. The
+hosted copy on GitHub Pages therefore shows its unverified-link warning, and that is
+worth showing on camera rather than hiding. To demo server-verified terms, serve
+`apps/pay-live` from the same origin as the watcher and open the link from there.
 
 ---
 

@@ -65,12 +65,12 @@ export class StealthCheckout {
      */
     async preview(invoice) {
         if (!this.wallet.isConnected())
-            return revealReport(invoice, true);
+            return revealReport(invoice, true, this.allowInlineShield);
         const shielded = await this.wallet.shieldedBalance(invoice.token);
         const fee = (await this.wallet.poolFee?.(invoice.token)) ?? "0";
         const dp = decimalsOf(invoice.token);
         const willShieldFirst = shielded === null || compareAmounts(shielded, shieldedNeededFor(invoice.amount, fee, dp), dp) < 0;
-        return revealReport(invoice, willShieldFirst);
+        return revealReport(invoice, willShieldFirst, this.allowInlineShield);
     }
     async pay(invoice, opts = {}) {
         if (this.phase === "paid")

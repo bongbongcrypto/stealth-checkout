@@ -22,8 +22,15 @@ export interface WalletAdapter {
     shieldedBalance(token: string): Promise<Amount | null>;
     /**
      * The pool's flat fee per operation, in whole token units, or null when it
-     * cannot be read. Charged ON TOP of the amount and once per operation, so a
-     * payer who has to shield first pays it twice. Nothing may assume zero.
+     * cannot be read. Nothing may assume zero.
+     *
+     * The direction is not symmetric, and getting it wrong cost this project a
+     * release: the pool takes the fee OUT of a deposit (send X, get X - fee
+     * credited) and charges it ON TOP of a withdrawal or transfer (move A out,
+     * spend A + fee). So a payer who already holds shielded funds needs
+     * amount + fee, and one who must deposit first needs amount + 2 x fee.
+     * `shieldedNeededFor` and `depositNeededFor` are those two answers; do not
+     * compute either by hand.
      */
     poolFee?(token: string): Promise<Amount | null>;
     /**

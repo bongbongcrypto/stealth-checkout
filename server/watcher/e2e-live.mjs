@@ -20,7 +20,7 @@
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { verifySignature } from "./lib.mjs";
+import { signPayload, verifySignature } from "./lib.mjs";
 
 process.env.WATCHER_TOKEN ??= "e2e-token";
 process.env.WEBHOOK_SECRET = "whsec_e2e";
@@ -84,7 +84,18 @@ if (!hook) {
   check("delivery carries an id merchants can dedupe on", typeof body.deliveryId === "string");
   check("signature verifies with the timestamp", verifySignature("whsec_e2e", hook.raw, hook.signature, hook.timestamp));
   const stale = Number(hook.timestamp) - 3600;
-  check("the same signature is rejected an hour later", !verifySignature("whsec_e2e", hook.raw, hook.signature, stale));
+  check("a captured delivery stops verifying once it ages out", !verifySignature("whsec_e2e", hook.raw, hook.signature, stale));
+  // The check above is the freshness window, which rejects before any HMAC is
+  // computed - so on its own it would pass even if the signature ignored the
+  // timestamp entirely. This is the binding itself: same body, same secret,
+  // both timestamps inside the window, and the signature must still not carry
+  // across.
+  const nearby = Number(hook.timestamp) - 30;
+  check(
+    "the signature is bound to its timestamp, not just to the body",
+    !verifySignature("whsec_e2e", hook.raw, hook.signature, nearby) &&
+      verifySignature("whsec_e2e", hook.raw, signPayload("whsec_e2e", hook.raw, nearby), nearby),
+  );
 
   // The queue is the thing that survives a restart, so check it recorded the
   // delivery rather than trusting that the HTTP call happened to work.

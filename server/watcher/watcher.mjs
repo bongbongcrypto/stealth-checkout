@@ -678,7 +678,11 @@ function corsHeaders(req) {
     "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
     "Vary": "Origin",
     "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    // Idempotency-Key is on this list because the dashboard sends it on every
+    // create. Without it the preflight failed and "Create invoice" could not
+    // work cross-origin at all, while Refresh and Export CSV did - so the
+    // feature looked configured and was not.
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, Idempotency-Key",
   };
 }
 

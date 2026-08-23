@@ -64,13 +64,13 @@ export class StealthCheckout {
    * coming, and then one was.
    */
   async preview(invoice: Invoice): Promise<RevealItem[]> {
-    if (!this.wallet.isConnected()) return revealReport(invoice, true);
+    if (!this.wallet.isConnected()) return revealReport(invoice, true, this.allowInlineShield);
     const shielded = await this.wallet.shieldedBalance(invoice.token);
     const fee = (await this.wallet.poolFee?.(invoice.token)) ?? "0";
     const dp = decimalsOf(invoice.token);
     const willShieldFirst =
       shielded === null || compareAmounts(shielded, shieldedNeededFor(invoice.amount, fee, dp), dp) < 0;
-    return revealReport(invoice, willShieldFirst);
+    return revealReport(invoice, willShieldFirst, this.allowInlineShield);
   }
 
   async pay(invoice: Invoice, opts: PayOptions = {}): Promise<Receipt> {

@@ -386,3 +386,50 @@ test("an address whose numbers do not reconcile is held open, not expired", () =
     assert.equal(del.status, 409, "and not deletable while it is unresolved");
   })();
 });
+
+// ---------------------------------------------------------------------------
+// Guards that protect real money and had no test: a round-6 mutation pass
+// deleted each of these with the suite still green.
+// ---------------------------------------------------------------------------
+
+test("each event gets its own delivery id, so a dedupe cannot swallow one", async () => {
+  // An invoice that went underpaid and was then topped up sent
+  // payment.confirmed under the id its payment.underpaid had already used, and
+  // every merchant deduping as the docs instruct discarded the confirmation:
+  // money in, order never shipped.
+  chain.reset();
+  const inv = await createInvoice("5", freshAddress(), { expiresAt: Date.now() + 200 });
+  const row = watcher.invoices.get(inv.id);
+
+  watcher.queueWebhook(row, "payment.underpaid");
+  const first = watcher.invoices.get(inv.id).webhook.deliveryId;
+  watcher.queueWebhook(watcher.invoices.get(inv.id), "payment.confirmed");
+  const second = watcher.invoices.get(inv.id).webhook.deliveryId;
+
+  assert.ok(first && second);
+  assert.notEqual(first, second, "a different event is a different delivery");
+});
+
+test("an Idempotency-Key cannot be reused for different terms", async () => {
+  // Merchants key on their own order id. Returning the old row for a repriced
+  // order would have them ship the new goods against the old invoice.
+  chain.reset();
+  const body = (amount, address) =>
+    JSON.stringify({ token: "STRK", amount, receiveAddress: address });
+  const key = { ...auth, "Idempotency-Key": "order-xyz" };
+  const addrA = freshAddress();
+
+  const first = await fetch(`${base}/invoices`, { method: "POST", headers: key, body: body("10", addrA) });
+  assert.equal(first.status, 201);
+  const firstId = (await first.json()).id;
+
+  // Same key, same terms: the row it already made.
+  const replay = await fetch(`${base}/invoices`, { method: "POST", headers: key, body: body("10", addrA) });
+  assert.equal(replay.status, 200);
+  assert.equal((await replay.json()).id, firstId);
+
+  // Same key, DIFFERENT terms: refused, loudly.
+  const repriced = await fetch(`${base}/invoices`, { method: "POST", headers: key, body: body("500", freshAddress()) });
+  assert.equal(repriced.status, 409, "a key must name one request, not any request");
+  assert.match((await repriced.json()).error, /already used for a different invoice/);
+});

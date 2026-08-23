@@ -174,11 +174,21 @@ test("an invoice for zero can never be satisfied", () => {
   assert.throws(() => evaluateInvoice(invoice({ amount: "0.0" }), 0n), /non-positive amount/);
 });
 
-test("an empty secret verifies nothing", () => {
-  const body = "{}";
+test("an empty secret verifies nothing, including a signature made with it", () => {
+  // The point is fail-closed: a merchant whose WEBHOOK_SECRET env var is unset
+  // must not accept a delivery an attacker signed with the empty string. This
+  // used to pass a signature made with a DIFFERENT secret, so it still failed
+  // for the ordinary reason and the guard could be deleted with it green.
+  const body = '{"event":"payment.confirmed","invoice":{"id":"order-1"}}';
   const ts = Math.floor(Date.now() / 1000);
-  assert.ok(!verifySignature("", body, signPayload("x", body, ts), ts));
-  assert.ok(!verifySignature(undefined, body, "aa", ts));
+
+  const forged = signPayload("", body, ts); // exactly what an attacker can compute
+  assert.ok(!verifySignature("", body, forged, ts), "an empty secret must never verify");
+  assert.ok(!verifySignature(undefined, body, forged, ts));
+  assert.ok(!verifySignature(null, body, forged, ts));
+
+  // And the guard is not just rejecting everything: a real secret still works.
+  assert.ok(verifySignature("whsec_real", body, signPayload("whsec_real", body, ts), ts));
 });
 
 test("restore and evaluate agree on what a usable baseline is", () => {

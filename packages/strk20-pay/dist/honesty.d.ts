@@ -4,4 +4,4 @@ import type { Invoice, RevealItem } from "./types.js";
  * and what it will hide. Wording follows the protocol's own public/private
  * boundary: overclaiming privacy is the one thing this widget must never do.
  */
-export declare function revealReport(invoice: Invoice, willShieldFirst: boolean): RevealItem[];
+export declare function revealReport(invoice: Invoice, willShieldFirst: boolean, willShieldInline?: boolean): RevealItem[];

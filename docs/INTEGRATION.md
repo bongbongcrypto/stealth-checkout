@@ -252,10 +252,18 @@ click; our arcade demo does, because a mock wallet has no wallet UI to send play
 
 ## Budget for the pool's fee
 
-The pool charges a **flat 6 STRK per operation** on mainnet, on top of the
-amount, read live from `get_fee_amount()`. It is the same whether the operation
-moves 1 STRK or 1,000, and it is charged once per operation: a payer who has to
-shield first pays it twice.
+The pool charges a **flat 6 STRK per operation** on mainnet, read live from
+`get_fee_amount()`. It is the same whether the operation moves 1 STRK or 1,000.
+
+The direction is not symmetric, and it is where this project lost a release:
+
+- **Out of a deposit.** Send 20 to the pool, get 14 credited.
+- **On top of a withdrawal or transfer.** To move 5 out, spend 11.
+
+So a payer who already holds shielded funds needs `amount + fee`, and one who
+must deposit first needs `amount + 2 x fee` - the fee twice, once each way.
+`shieldedNeededFor(amount, fee)` and `depositNeededFor(amount, fee, decimals,
+alreadyShielded)` are those two answers; do not compute either by hand.
 
 The consequences are worth pricing in before you launch:
 

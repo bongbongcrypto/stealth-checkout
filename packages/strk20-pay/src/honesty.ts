@@ -5,7 +5,7 @@ import type { Invoice, RevealItem } from "./types.js";
  * and what it will hide. Wording follows the protocol's own public/private
  * boundary: overclaiming privacy is the one thing this widget must never do.
  */
-export function revealReport(invoice: Invoice, willShieldFirst: boolean): RevealItem[] {
+export function revealReport(invoice: Invoice, willShieldFirst: boolean, willShieldInline = false): RevealItem[] {
   const items: RevealItem[] = [];
 
   if (willShieldFirst) {
@@ -90,7 +90,14 @@ export function revealReport(invoice: Invoice, willShieldFirst: boolean): Reveal
       visibility: "public",
       detail:
         "Depositing the exact invoice amount moments before paying it is the strongest link an observer can get. " +
-        "This is why the checkout asks you to shield in your wallet ahead of time instead.",
+        // The panel used to assert the checkout refuses to do this, without
+        // knowing whether it does: with inline shielding on - which the arcade
+        // demo turns on, and it is the first thing anyone sees - the widget
+        // deposits without asking, while the panel said it would not.
+        (willShieldInline
+          ? "This checkout is configured to do it for you anyway, in one click. Shielding in your wallet ahead of " +
+            "time, separately, is the private way to pay, and this convenience costs you that."
+          : "This is why the checkout asks you to shield in your wallet ahead of time instead."),
     });
   }
 

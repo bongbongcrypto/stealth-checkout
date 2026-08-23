@@ -171,21 +171,31 @@ async function pollOnce() {
       // invoice gets confirmed on money that was already there. Cap the excess
       // at what has demonstrably flowed out.
       let received = null;
+      let unreconciled = false;
       if (inflow !== null) {
         const outflow = await totalSent(inv).catch(() => null);
         const credible = outflow === null ? delta : delta + outflow.units;
         received = inflow.units > delta ? (inflow.units > credible ? credible : inflow.units) : delta;
         if (inflow.units > credible) {
+          // Two measurements of the same address that do not add up. Crediting
+          // the lower figure and letting the deadline expire the row released
+          // an address a payer's money had genuinely reached. Hold it open
+          // instead: a human can reconcile it, and nothing can reuse it.
+          unreconciled = true;
           log(
             `${id} WARNING: transfers in (${inflow.units}) exceed balance growth plus transfers out ` +
-              `(${credible}); crediting the lower figure. Check this address.`,
+              `(${credible}); NOT expiring this row until it reconciles. Check this address.`,
           );
         }
       }
       if (inflow !== null && inflow.count === 0 && delta > 0n) {
         log(`${id} note: no matching transfer events; judging on the balance delta instead`);
       }
-      const next = evaluateInvoice(inv, balance, Date.now(), received);
+      // An unreconciled row keeps its deadline at bay rather than being
+      // retired on numbers we do not trust.
+      const next = unreconciled && inv.status === "watching"
+        ? evaluateInvoice({ ...inv, expiresAt: undefined }, balance, Date.now(), received)
+        : evaluateInvoice(inv, balance, Date.now(), received);
       if (next === inv) continue;
       // Never write back onto a row that changed underneath us: this loop
       // awaits twice, and a DELETE or a cancel landing in between used to be

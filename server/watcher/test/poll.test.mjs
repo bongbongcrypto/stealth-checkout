@@ -24,6 +24,7 @@ const chain = {
   height: 1000,
   balances: new Map(),
   transfers: [], // {from, to, amount, block}
+  layout: "keys", // or "data": the older Cairo-0 event shape
   asked: [], // every JSON-RPC body the watcher sent
   reset() {
     this.height = 1000;
@@ -70,14 +71,31 @@ before(async () => {
         const wantFrom = f.keys[1]?.[0];
         const events = chain.transfers
           .filter((t) => t.block >= from)
-          .filter((t) => (wantTo ? t.to === BigInt(wantTo) : true))
-          .filter((t) => (wantFrom ? t.from === BigInt(wantFrom) : true))
-          .map((t) => ({
-            keys: [TRANSFER, "0x" + t.from.toString(16), "0x" + t.to.toString(16)],
-            data: ["0x" + t.amount.toString(16), "0x0"],
-            transaction_hash: "0x0feed",
-            block_number: t.block,
-          }));
+          // A node cannot filter on keys a data-borne token does not emit, so
+          // in that layout it returns everything and the reader must sort it out.
+          .filter((t) => (chain.layout === "data" || !wantTo ? true : t.to === BigInt(wantTo)))
+          .filter((t) => (chain.layout === "data" || !wantFrom ? true : t.from === BigInt(wantFrom)))
+          .map((t) =>
+            chain.layout === "data"
+              ? {
+                  // Cairo-0 style: from and to travel in data, not keys.
+                  keys: [TRANSFER],
+                  data: [
+                    "0x" + t.from.toString(16),
+                    "0x" + t.to.toString(16),
+                    "0x" + t.amount.toString(16),
+                    "0x0",
+                  ],
+                  transaction_hash: "0x0feed",
+                  block_number: t.block,
+                }
+              : {
+                  keys: [TRANSFER, "0x" + t.from.toString(16), "0x" + t.to.toString(16)],
+                  data: ["0x" + t.amount.toString(16), "0x0"],
+                  transaction_hash: "0x0feed",
+                  block_number: t.block,
+                },
+          );
         result = { events };
       }
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -313,5 +331,58 @@ test("the baseline is pinned to a block, never read at 'latest'", () => {
     assert.ok(calls.length >= 1);
     const pinned = calls.some((c) => c.params[1] && c.params[1].block_number === inv.createdBlock);
     assert.ok(pinned, `the baseline call must name block ${inv.createdBlock}, got ${JSON.stringify(calls.map((c) => c.params[1]))}`);
+  })();
+});
+
+test("a data-borne token's outflow is read, so a swept payment is not lost", () => {
+  // The inbound scan read both event layouts; the outbound one read only the
+  // keyed layout, added a round later. On a data-borne token every outflow
+  // summed to zero, the credit cap collapsed to the bare balance delta, and a
+  // payer's full payment - swept by the merchant - was recorded as never paid.
+  // The invoice then expired and its address was RELEASED for reuse.
+  chain.reset();
+  chain.layout = "data"; // from/to live in data, not keys
+  const addr = freshAddress();
+  return (async () => {
+    try {
+      const inv = await createInvoice("5", addr, { expiresAt: Date.now() + 300 });
+      chain.height = 1001;
+      chain.credit(addr, units(5), 1001); // paid in full
+      chain.sweep(addr, units(5), 1001); // and swept straight away
+
+      await watcher.pollOnce();
+      const row = watcher.invoices.get(inv.id);
+      assert.equal(row.status, "paid", "the money arrived; the balance being zero again is the sweep");
+      assert.equal(row.receivedUnits, units(5).toString());
+
+      // And it must never become deletable.
+      await new Promise((r) => setTimeout(r, 400));
+      await watcher.pollOnce();
+      const del = await fetch(`${base}/invoices/${inv.id}`, { method: "DELETE", headers: auth });
+      assert.equal(del.status, 409, "a paid address must never be released");
+    } finally {
+      chain.layout = "keys";
+    }
+  })();
+});
+
+test("an address whose numbers do not reconcile is held open, not expired", () => {
+  // Crediting the lower figure and letting the deadline expire the row
+  // released an address a payer's money had genuinely reached.
+  chain.reset();
+  const addr = freshAddress();
+  return (async () => {
+    const inv = await createInvoice("5", addr, { expiresAt: Date.now() + 200 });
+    // Inbound events say 5 arrived; the balance and the outbound events say
+    // nothing did. Something is wrong, and it is not the payer's problem.
+    chain.height = 1001;
+    chain.transfers.push({ from: 1n, to: BigInt(addr), amount: units(5), block: 1001 });
+
+    await new Promise((r) => setTimeout(r, 300));
+    await watcher.pollOnce();
+    const row = watcher.invoices.get(inv.id);
+    assert.equal(row.status, "watching", "held, not expired on numbers we do not trust");
+    const del = await fetch(`${base}/invoices/${inv.id}`, { method: "DELETE", headers: auth });
+    assert.equal(del.status, 409, "and not deletable while it is unresolved");
   })();
 });

@@ -340,31 +340,44 @@ export function sentEventsRequest(tokenAddress, fromAddress, fromBlock, id = 1, 
   };
 }
 
-/** Total value transferred OUT of `fromAddress` by these events. */
+/**
+ * Total value transferred OUT of `fromAddress` by these events.
+ *
+ * Reads BOTH layouts, exactly like its inbound twin. Reading only the keyed
+ * one made every outflow sum to zero on a data-borne token, which collapsed
+ * the credit cap to the bare balance delta: a payer's full payment, swept by
+ * the merchant, was recorded as never paid, the invoice expired, and its
+ * address was released for reuse. The two functions are a matched pair and
+ * have to understand the same events.
+ */
 export function sentFromEvents(eventsResult, fromAddress) {
   const target = normFelt(fromAddress);
+  const matches = (value) => {
+    try {
+      return normFelt(value) === target;
+    } catch {
+      return false;
+    }
+  };
   let total = 0n;
+  let count = 0;
   for (const ev of eventsResult?.events ?? []) {
     const keys = ev.keys ?? [];
     const data = ev.data ?? [];
-    const keyed =
-      keys.length >= 2 &&
-      (() => {
-        try {
-          return normFelt(keys[1]) === target;
-        } catch {
-          return false;
-        }
-      })();
-    if (!keyed) continue;
-    if (data.length < 1) return null;
+    const keyed = keys.length >= 2 && matches(keys[1]);
+    // Data-borne layout: [from, to, amount_low, amount_high?].
+    const dataBorne = !keyed && data.length >= 3 && matches(data[0]);
+    if (!keyed && !dataBorne) continue;
+    const lowIdx = keyed ? 0 : 2;
+    if (data.length < lowIdx + 1) return null;
     try {
-      total += BigInt(data[0]) + (data.length > 1 ? BigInt(data[1]) << 128n : 0n);
+      total += BigInt(data[lowIdx]) + (data.length > lowIdx + 1 ? BigInt(data[lowIdx + 1]) << 128n : 0n);
     } catch {
       return null;
     }
+    count++;
   }
-  return { units: total };
+  return { units: total, count };
 }
 
 /**

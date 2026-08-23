@@ -187,3 +187,118 @@ test("a settled invoice is not re-paid, whatever flag is passed", async () => {
   await new StealthCheckout(wallet, async () => true, false, store).pay(invoice(), { paidNothingLastTime: true });
   assert.equal(await wallet.shieldedBalance("STRK"), afterFirst, "the record still wins");
 });
+
+test("a node reporting 'insufficient' AFTER submission never triggers a second payment", async () => {
+  // Round 6's critical. The retry branch decided to re-broadcast by matching
+  // the word "insufficient" in an error, and INSUFFICIENT_MAX_FEE /
+  // INSUFFICIENT_ACCOUNT_BALANCE come from the catch AROUND the submit call.
+  // On the inline-shield path this spent the invoice twice plus a needless
+  // deposit; on the default path it blanked the marker so every retry did it
+  // again. The technique had been removed from the sibling branch one round
+  // earlier and left running here.
+  for (const message of ["Not enough balance to pay, including fees.", "INSUFFICIENT_MAX_FEE", "insufficient funds"]) {
+    const wallet = broadcastThenThrow(message);
+    // The balance is unreadable, which is what routes into this branch at all.
+    wallet.shieldedBalance = async () => null;
+    const store = freshStore();
+
+    await new StealthCheckout(wallet, async () => true, true, store).pay(invoice()).catch(() => {});
+    assert.equal(wallet.broadcasts, 1, `${message}: must not pay twice inside one call`);
+
+    // And a retry must not either.
+    await new StealthCheckout(wallet, async () => true, true, store).pay(invoice()).catch(() => {});
+    assert.equal(wallet.broadcasts, 1, `${message}: must not pay again on retry`);
+  }
+});
+
+test("a genuine pre-submission shortfall still shields and pays, once", async () => {
+  // The legitimate half of the same branch must keep working: MockWallet
+  // labels its insufficient error submitted:false, so this is allowed to
+  // deposit and try again.
+  const wallet = new MockWallet({ latency: 0, funded: { STRK: "500" }, shielded: { STRK: "0" } });
+  wallet.shieldedBalance = async () => null;
+  let unshields = 0;
+  const realUnshield = wallet.unshield.bind(wallet);
+  wallet.unshield = async (...args) => {
+    unshields++;
+    return realUnshield(...args);
+  };
+
+  const receipt = await new StealthCheckout(wallet, async () => true, true, freshStore()).pay(invoice());
+  assert.ok(receipt.shieldTxHash, "it shielded");
+  assert.equal(unshields, 2, "one failed attempt, then one that worked");
+  assert.equal(await wallet.shieldedBalance.call(wallet), null);
+});
+
+test("dismissing the wallet prompt does not brand the invoice as maybe-paid", async () => {
+  // A refusal means the wallet signed nothing. Treating it as "you may have
+  // already paid" froze the widget behind a ten-minute probe after one
+  // mis-click, and taught payers to reach for the double-spend escape hatch.
+  const { userRefused } = await import("../dist/wallet/walletapi.js");
+  for (const raw of [
+    "USER_REFUSED",
+    "User rejected the request",
+    "The user denied the transaction",
+    "Rejected by user",
+    "user cancelled",
+  ]) {
+    assert.equal(userRefused(new Error(raw)), true, `${raw} is a refusal`);
+  }
+  for (const raw of ["INSUFFICIENT_MAX_FEE", "Invalid response from the node", "timeout", ""]) {
+    assert.equal(userRefused(new Error(raw)), false, `${raw} is NOT a refusal`);
+  }
+
+  // End to end: a refusing wallet leaves the invoice payable.
+  const wallet = new MockWallet({ latency: 0, funded: { STRK: "500" }, shielded: { STRK: "500" } });
+  wallet.unshield = async () => {
+    throw new WalletActionError("unshield", "You dismissed the wallet prompt.", undefined, false);
+  };
+  const store = freshStore();
+  await new StealthCheckout(wallet, async () => true, false, store).pay(invoice()).catch(() => {});
+
+  const clean = new MockWallet({ latency: 0, funded: { STRK: "500" }, shielded: { STRK: "500" } });
+  const receipt = await new StealthCheckout(clean, async () => true, false, store).pay(invoice());
+  assert.ok(receipt.txHash, "the payer can simply try again, with no scary detour");
+  assert.equal(await clean.shieldedBalance("STRK"), "489");
+});
+
+test("the adapter itself labels a refusal as not-submitted, and everything else as maybe", async () => {
+  // The wiring, not the two halves. Testing `userRefused` alone and the
+  // checkout alone left the line that joins them - `!userRefused(err)` at the
+  // submit catch - free to be deleted with every test still green.
+  const { WalletApiAdapter } = await import("../dist/wallet/walletapi.js");
+
+  const adapterThatThrows = (raw) => {
+    const a = new WalletApiAdapter({ network: "sepolia", rpcUrl: "http://127.0.0.1:1" });
+    // Stand in for a connected wallet extension. These are the only two things
+    // `invoke` needs before it reaches the submit call.
+    a.account = { address: "0x0abc" };
+    a.accountV6 = {
+      strk20InvokeTransaction: async () => {
+        throw new Error(raw);
+      },
+    };
+    return a;
+  };
+
+  const refusals = ["USER_REFUSED", "User rejected the request", "user cancelled the transaction"];
+  for (const raw of refusals) {
+    const err = await adapterThatThrows(raw)
+      .unshield("STRK", "1", "0x0def")
+      .then(() => null, (e) => e);
+    assert.ok(err, `${raw} should throw`);
+    assert.equal(err.submitted, false, `${raw}: the wallet signed nothing`);
+    assert.equal(didNotReachTheChain(err), true);
+  }
+
+  // Everything else keeps the safe default, including errors that merely
+  // mention money.
+  for (const raw of ["INSUFFICIENT_MAX_FEE", "Invalid response from the node", "timed out", "boom"]) {
+    const err = await adapterThatThrows(raw)
+      .unshield("STRK", "1", "0x0def")
+      .then(() => null, (e) => e);
+    assert.ok(err, `${raw} should throw`);
+    assert.equal(err.submitted, true, `${raw}: this may have reached the network`);
+    assert.equal(didNotReachTheChain(err), false);
+  }
+});

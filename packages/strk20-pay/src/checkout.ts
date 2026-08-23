@@ -148,11 +148,20 @@ export class StealthCheckout {
         try {
           ({ txHash } = await this.payStep(invoice));
         } catch (err) {
-          // Only an error that cannot have followed a broadcast may lead to a
-          // second attempt. "Not enough balance" is raised before anything is
-          // submitted, so it qualifies; anything else does not, and the
-          // pending marker written in payStep stays behind to say so.
-          if (!isInsufficientFunds(err)) throw err;
+          // TWO conditions, and the second is the one that matters.
+          //
+          // "Insufficient funds" only says what went wrong, and a node reports
+          // it AFTER the wallet has already submitted just as readily as
+          // before: INSUFFICIENT_MAX_FEE and INSUFFICIENT_ACCOUNT_BALANCE both
+          // come from the catch around the submit call. Deciding to send a
+          // second payment on the strength of that message alone broadcast the
+          // invoice twice, and on the default path blanked the durable marker
+          // so every later click did it again.
+          //
+          // The adapter is the only thing that knows whether a transaction
+          // left. Round 5 removed this technique from `didNotReachTheChain`
+          // and left it running here, one branch away.
+          if (!isInsufficientFunds(err) || !didNotReachTheChain(err)) throw err;
           this.clearPending(invoice);
           const fee = (await this.wallet.poolFee?.(invoice.token)) ?? "0";
           shieldTxHash = await this.shieldOrExplain(invoice, undefined, fee);

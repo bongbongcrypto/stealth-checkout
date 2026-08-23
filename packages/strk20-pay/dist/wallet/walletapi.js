@@ -260,10 +260,17 @@ export class WalletApiAdapter {
             return { txHash: transaction_hash };
         }
         catch (err) {
-            // Thrown by the submit call itself: the transaction may well have
-            // reached the network before whatever went wrong. `submitted` stays
-            // true, and the checkout will not send a second one.
-            throw new WalletActionError(action, explainWalletError(err, action), err);
+            // Thrown by the submit call itself, so by default the transaction may
+            // well have reached the network and `submitted` stays true: the checkout
+            // will not send a second one.
+            //
+            // The exception is a refusal. A wallet that says the user dismissed the
+            // prompt is telling us it never signed anything, and treating that as
+            // "you may have already paid" left the payer staring at a ten-minute
+            // probe after one mis-click, and taught them to reach for the
+            // pay-anyway button as the normal way out. That button is the
+            // double-spend escape hatch, and it should stay hard to reach.
+            throw new WalletActionError(action, explainWalletError(err, action), err, !userRefused(err));
         }
     }
     requireAddress() {
@@ -281,6 +288,19 @@ export class WalletApiAdapter {
  * deposit. Wallets do it as part of their own first shield, so the fix is a
  * one-time action in the wallet rather than anything this app can sign for.
  */
+/**
+ * Did the wallet tell us the user turned it down?
+ *
+ * Kept next to `explainWalletError`, which recognises the same thing to write
+ * "You dismissed the wallet prompt", so the two cannot drift: if one learns a
+ * new phrasing the other must too. Deliberately narrow: anything it does not
+ * recognise is treated as "this may have been submitted", which costs a payer
+ * one extra confirmation and never costs them a second payment.
+ */
+export function userRefused(err) {
+    const raw = err instanceof Error ? err.message : String(err ?? "");
+    return /\bUSER_(REFUSED|REJECTED|DENIED|CANCELLED|CANCELED|ABORTED)\b|user (rejected|refused|denied|declined|cancelled|canceled|aborted)|(rejected|cancelled|canceled|denied|dismissed) by (the )?user|dismissed the wallet prompt/i.test(raw);
+}
 export function explainWalletError(err, action) {
     const raw = err instanceof Error ? err.message : String(err ?? "");
     if (/NOT_REGISTERED/i.test(raw)) {

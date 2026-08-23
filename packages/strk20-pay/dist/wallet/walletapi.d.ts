@@ -110,5 +110,15 @@ export declare class WalletApiAdapter implements WalletAdapter {
  * deposit. Wallets do it as part of their own first shield, so the fix is a
  * one-time action in the wallet rather than anything this app can sign for.
  */
+/**
+ * Did the wallet tell us the user turned it down?
+ *
+ * Kept next to `explainWalletError`, which recognises the same thing to write
+ * "You dismissed the wallet prompt", so the two cannot drift: if one learns a
+ * new phrasing the other must too. Deliberately narrow: anything it does not
+ * recognise is treated as "this may have been submitted", which costs a payer
+ * one extra confirmation and never costs them a second payment.
+ */
+export declare function userRefused(err: unknown): boolean;
 export declare function explainWalletError(err: unknown, action: "shield" | "privateTransfer" | "unshield"): string;
 export {};

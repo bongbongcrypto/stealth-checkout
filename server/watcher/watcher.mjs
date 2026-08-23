@@ -605,6 +605,14 @@ async function createInvoice(body) {
     status: "watching",
     createdAt: Date.now(),
   };
+  // The row was reserved before two awaits. A DELETE landing in that window
+  // returned 200 and the merchant believed the id and address were released -
+  // and then this write put the row back. Every other multi-await path in this
+  // file has this guard; the one that CREATES rows did not.
+  const reserved = invoices.get(id);
+  if (!reserved || reserved.status !== "reserving") {
+    throw new Error(`invoice ${id} was released while it was being created; create it again`);
+  }
   invoices.set(inv.id, inv);
   return inv;
 }
@@ -689,13 +697,21 @@ async function restore() {
     // A corrupt store must not take the process down with it: refusing to boot
     // removes DELETE, cancel and redeliver, which are the only ways to repair
     // anything. Keep the evidence, start empty, and be impossible to miss.
-    const quarantine = `${STORE_PATH}.corrupt-${Date.now()}`;
+    // RENAME, not copy, and to a fixed name. Copying left the corrupt file in
+    // place, so every restart made another copy and the next create overwrote
+    // the original anyway; a crash loop made one per boot. And if the evidence
+    // cannot be kept - the disk-full case that probably caused this - refuse
+    // to run, because the first persist() would destroy the only copy.
+    const quarantine = `${STORE_PATH}.corrupt`;
     try {
-      await writeFile(quarantine, raw);
-    } catch {
-      /* nothing more we can do about it */
+      await rename(STORE_PATH, quarantine);
+    } catch (moveErr) {
+      throw new Error(
+        `invoice store at ${STORE_PATH} is corrupt (${err.message}) and could not be moved aside ` +
+          `(${moveErr.message}). Refusing to start: continuing would overwrite the only copy of your ledger.`,
+      );
     }
-    log(`STORE IS CORRUPT (${err.message}). Kept a copy at ${quarantine} and started EMPTY.`);
+    log(`STORE WAS CORRUPT (${err.message}). Moved it to ${quarantine} and started EMPTY.`);
     log("Every open invoice is unknown to this process until that file is repaired and restored.");
   }
 }
@@ -946,8 +962,33 @@ export function makeServer() {
       if (req.method === "POST" && writeOff) {
         const inv = invoices.get(writeOff[1]);
         if (!inv) return json(req, res, 404, { error: "not found" });
-        if (SETTLED_STATES.has(inv.status)) {
-          return json(req, res, 409, { error: `invoice ${inv.id} is ${inv.status}; there is nothing to write off` });
+        // Only the state this was written for. It accepted `watching` too,
+        // which let a merchant bury a payment the poller had not seen yet -
+        // written_off is never polled again, so payment.confirmed could never
+        // fire. And it accepted `expired` and `reserving`, which are DELETABLE
+        // precisely because nothing arrived: converting those into a permanent
+        // lock is strictly worse than the delete they already had.
+        if (inv.status !== "underpaid") {
+          return json(req, res, 409, {
+            error: `invoice ${inv.id} is ${inv.status}; only an underpaid invoice can be written off` +
+              (DELETABLE_STATES.has(inv.status) ? " (this one can simply be deleted)" : ""),
+          });
+        }
+        // And ask the chain, exactly as cancel does. A top-up landing between
+        // the last poll and this call would otherwise be buried by it.
+        let live;
+        try {
+          live = u256FromCallResult(await rpc(balanceOfRequest(inv.tokenAddress, inv.receiveAddress, ++rpcId)));
+        } catch (err) {
+          return json(req, res, 503, {
+            error: `cannot reach the chain to check ${inv.id} before writing it off: ${err.message}`,
+          });
+        }
+        const arrived = live - BigInt(inv.baselineUnits);
+        if (arrived >= toUnits(inv.amount, inv.decimals)) {
+          return json(req, res, 409, {
+            error: `invoice ${inv.id} has been paid in full since the last poll; let it settle rather than writing it off`,
+          });
         }
         const next = { ...inv, status: "written_off", writtenOffAt: Date.now() };
         invoices.set(inv.id, next);

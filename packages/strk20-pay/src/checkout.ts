@@ -3,6 +3,7 @@ import { TOKENS, resolveToken } from "./tokens.js";
 import type { Amount, CheckoutEvent, Invoice, PaymentPhase, PaymentProgress, Receipt, RevealItem, Unsubscribe } from "./types.js";
 import type { WalletAdapter } from "./wallet/adapter.js";
 import { WalletActionError } from "./wallet/adapter.js";
+import { walletErrorCode, walletErrorMessage } from "./wallet/walletapi.js";
 
 /**
  * Orchestrates one payment end to end:
@@ -205,7 +206,7 @@ export class StealthCheckout {
         txHash,
         shieldTxHash,
       };
-      this.saveSent(this.sentPayment);
+      this.saveSent(this.sentPayment, invoice);
 
       this.emit("confirming", "Payment sent. Waiting for on-chain confirmation…", false, txHash);
       const confirmed = await this.confirmPayment(invoice, txHash);
@@ -229,8 +230,31 @@ export class StealthCheckout {
     }
   }
 
-  private storeKey(invoiceId: string): string {
-    return `strk20-pay.sent.${this.wallet.network}.${invoiceId}`;
+  /**
+   * A key that names the invoice's TERMS, not just its id.
+   *
+   * The id alone is chosen by whoever writes the link (`?id=` on the hosted
+   * page), so a second invoice reusing one overwrote the first's record. The
+   * first link then had no memory of its own payment and broadcast it again.
+   */
+  private storeKey(invoice: Pick<Invoice, "id" | "token" | "amount"> & { receiveAddress?: string; merchantPoolAddress?: string }): string {
+    const recipient = invoice.receiveAddress ?? invoice.merchantPoolAddress ?? "";
+    let normalised = recipient;
+    try {
+      normalised = recipient ? `0x${BigInt(recipient).toString(16)}` : "";
+    } catch {
+      /* keep the raw text: it still distinguishes two different recipients */
+    }
+    const terms = `${invoice.id}|${invoice.token}|${invoice.amount}|${normalised}`;
+    // A short, stable digest so the key cannot grow without bound or carry
+    // characters a storage backend dislikes.
+    let h1 = 0x811c9dc5;
+    let h2 = 0x01000193;
+    for (let i = 0; i < terms.length; i++) {
+      h1 = Math.imul(h1 ^ terms.charCodeAt(i), 0x01000193) >>> 0;
+      h2 = Math.imul(h2 + terms.charCodeAt(i), 0x85ebca6b) >>> 0;
+    }
+    return `strk20-pay.sent.${this.wallet.network}.${invoice.id}.${h1.toString(36)}${h2.toString(36)}`;
   }
 
   /**
@@ -241,7 +265,7 @@ export class StealthCheckout {
    */
   private loadSent(invoice: Invoice): SentPayment | null {
     try {
-      const raw = this.store?.getItem(this.storeKey(invoice.id));
+      const raw = this.store?.getItem(this.storeKey(invoice));
       if (!raw) return null; // "" is a cleared marker, and falsy on purpose
       const record = JSON.parse(raw) as SentPayment;
       return matchesInvoice(record, invoice) ? record : null;
@@ -260,7 +284,7 @@ export class StealthCheckout {
       txHash: "",
     };
     this.sentPayment = record;
-    this.saveSent(record, { quiet: true });
+    this.saveSent(record, invoice, { quiet: true });
   }
 
   /**
@@ -277,17 +301,17 @@ export class StealthCheckout {
     if (stored?.txHash) return; // a real payment: this is not ours to forget
     if (this.sentPayment && !this.sentPayment.txHash) this.sentPayment = null;
     try {
-      this.store?.setItem(this.storeKey(invoice.id), "");
+      this.store?.setItem(this.storeKey(invoice), "");
     } catch {
       /* nothing to undo */
     }
   }
 
-  private saveSent(record: SentPayment, opts: { quiet?: boolean } = {}): void {
+  private saveSent(record: SentPayment, invoice: Invoice, opts: { quiet?: boolean } = {}): void {
     if (!this.store) return opts.quiet ? undefined : this.warnUnprotected("no storage is available");
     if (isEphemeral(this.store) && !opts.quiet) this.warnUnprotected("this browser is not storing anything");
     try {
-      this.store.setItem(this.storeKey(record.invoiceId), JSON.stringify(record));
+      this.store.setItem(this.storeKey(invoice), JSON.stringify(record));
     } catch (err) {
       // Never fail a payment that already landed. Do say so, though: without a
       // record, a reload can pay again.
@@ -562,8 +586,15 @@ export function didNotReachTheChain(err: unknown): boolean {
 
 /** Does this wallet error mean "you do not have enough shielded funds"? */
 export function isInsufficientFunds(err: unknown): boolean {
-  const raw = err instanceof Error ? err.message : String(err ?? "");
-  return /insufficient|not enough|no (unspent )?notes|balance too low|NOT_ENOUGH/i.test(raw);
+  // Reads the message wherever the wallet put it. Against a spec-shaped
+  // `{ code, message }` object the old version matched "[object Object]", so
+  // the shield-then-retry recovery could never fire for the one error it
+  // exists to recover from.
+  const raw = walletErrorMessage(err);
+  return (
+    walletErrorCode(err) === 119 || // INSUFFICIENT_PRIVATE_BALANCE
+    /insufficient|not enough|no (unspent )?notes|balance too low|NOT_ENOUGH/i.test(raw)
+  );
 }
 
 /**

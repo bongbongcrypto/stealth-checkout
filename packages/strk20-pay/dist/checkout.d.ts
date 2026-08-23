@@ -76,6 +76,13 @@ export declare class StealthCheckout {
      */
     preview(invoice: Invoice): Promise<RevealItem[]>;
     pay(invoice: Invoice, opts?: PayOptions): Promise<Receipt>;
+    /**
+     * A key that names the invoice's TERMS, not just its id.
+     *
+     * The id alone is chosen by whoever writes the link (`?id=` on the hosted
+     * page), so a second invoice reusing one overwrote the first's record. The
+     * first link then had no memory of its own payment and broadcast it again.
+     */
     private storeKey;
     /**
      * A stored record only counts if it settles THIS invoice. The key is scoped

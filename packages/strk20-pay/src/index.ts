@@ -28,6 +28,8 @@ export {
   explainWalletError,
   userRefused,
   walletErrorCode,
+  walletErrorCodes,
+  walletErrorMessage,
 } from "./wallet/walletapi.js";
 export { TOKENS, amountToFelt, amountToUnits, resolveToken, unitsToAmount } from "./tokens.js";
 export { WalletActionError } from "./wallet/adapter.js";

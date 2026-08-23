@@ -31638,6 +31638,347 @@ var WalletActionError = class extends Error {
   }
 };
 
+// packages/strk20-pay/src/wallet/walletapi.ts
+var MIN_STRK20_WALLET_API = "0.10.3";
+var MATURITY_BLOCKS = 10;
+var EXPLORER_BASE = {
+  mainnet: "https://voyager.online",
+  sepolia: "https://sepolia.voyager.online"
+};
+var POOL_ADDRESS = {
+  mainnet: "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a",
+  sepolia: "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a"
+};
+var WalletApiAdapter = class {
+  network;
+  /** Voyager, on the network this adapter is actually connected to. */
+  explorerUrl(kind, value) {
+    if (!/^0x[0-9a-fA-F]{1,64}$/.test(value)) return null;
+    const path2 = kind === "tx" ? "tx" : "contract";
+    return `${EXPLORER_BASE[this.network]}/${path2}/${value}`;
+  }
+  rpcUrl;
+  registry;
+  preferWallet;
+  discoveryTimeoutMs;
+  account = null;
+  shieldedAtBlock = null;
+  feeCache = void 0;
+  accountV6 = null;
+  provider = null;
+  constructor(opts) {
+    this.network = opts.network;
+    const fallback = opts.network === "mainnet" ? "https://rpc.starknet.lava.build" : void 0;
+    const rpcUrl = opts.rpcUrl ?? fallback;
+    if (!rpcUrl) throw new Error("rpcUrl is required on Sepolia.");
+    this.rpcUrl = rpcUrl;
+    this.registry = { ...TOKENS, ...opts.tokens };
+    this.preferWallet = (opts.preferWallet ?? "ready").toLowerCase();
+    this.discoveryTimeoutMs = opts.discoveryTimeoutMs ?? 2500;
+  }
+  isConnected() {
+    return this.account !== null;
+  }
+  /** Discover wallets and report their STRK20 capability (for custom pickers). */
+  async listWallets() {
+    const [{ createStore: createStore2 }, { walletV6 }, { compareVersions: compareVersions2 }] = await Promise.all([
+      Promise.resolve().then(() => (init_dist5(), dist_exports2)),
+      Promise.resolve().then(() => (init_dist(), dist_exports)),
+      Promise.resolve().then(() => (init_dist(), dist_exports))
+    ]).then(([d, s]) => [d, s, s]);
+    const store = createStore2();
+    const found = /* @__PURE__ */ new Map();
+    const started = Date.now();
+    while (Date.now() - started < this.discoveryTimeoutMs) {
+      store._refreshInjectedWallets?.();
+      for (const w of store.getWallets()) found.set(w.name ?? String(found.size), w);
+      if (found.size > 0 && Date.now() - started > 400) break;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    const out = [];
+    for (const [name2, wallet] of found) {
+      let strk20 = false;
+      try {
+        const versions = await walletV6.supportedWalletApi(wallet);
+        strk20 = versions.some((v) => compareVersions2(v, MIN_STRK20_WALLET_API) >= 0);
+      } catch {
+        strk20 = false;
+      }
+      out.push({ name: name2, wallet, strk20 });
+    }
+    return out;
+  }
+  async connect() {
+    try {
+      const { RpcProvider: RpcProvider2, WalletAccountV6: WalletAccountV62 } = await Promise.resolve().then(() => (init_dist(), dist_exports));
+      this.provider ??= new RpcProvider2({ nodeUrl: this.rpcUrl });
+      const wallets = await this.listWallets();
+      const capable = wallets.filter((w) => w.strk20);
+      if (capable.length === 0) {
+        throw new Error(
+          wallets.length === 0 ? "No Starknet wallet was found in this browser. Install Ready X (Chrome Web Store or Edge Add-ons), enable Smart Wallet and Private in its settings, then reload this page." : `None of the wallets here can make private payments (found: ${wallets.map((w) => w.name).join(", ")}). If yours still shows the old name "Ready Wallet (Formerly Argent)", it is the same extension out of date: update it, enable Smart Wallet + Private, then reload.`
+        );
+      }
+      const pick = capable.find((w) => w.name.toLowerCase().includes(this.preferWallet)) ?? capable[0];
+      this.accountV6 = await WalletAccountV62.connect(this.provider, pick.wallet);
+      this.account = { address: this.accountV6.address };
+      return this.account;
+    } catch (err) {
+      throw new WalletActionError(
+        "connect",
+        err instanceof Error ? err.message : "Wallet connection failed.",
+        err,
+        false
+      );
+    }
+  }
+  async publicBalance(token) {
+    const info = resolveToken(token, this.registry);
+    const { RpcProvider: RpcProvider2 } = await Promise.resolve().then(() => (init_dist(), dist_exports));
+    this.provider ??= new RpcProvider2({ nodeUrl: this.rpcUrl });
+    const result = await this.provider.callContract({
+      contractAddress: info.address,
+      entrypoint: "balanceOf",
+      calldata: [this.requireAddress()]
+    });
+    const low = BigInt(result[0] ?? "0x0");
+    const high = BigInt(result[1] ?? "0x0");
+    return unitsToAmount(low + (high << 128n), info.decimals);
+  }
+  async shieldedBalance(token) {
+    const info = resolveToken(token, this.registry);
+    this.requireAddress();
+    try {
+      const entries = await this.accountV6.strk20Balances([info.address]);
+      const entry = entries.find((e) => BigInt(e.token) === BigInt(info.address));
+      return unitsToAmount(BigInt(entry?.balance ?? "0x0"), info.decimals);
+    } catch {
+      return null;
+    }
+  }
+  /**
+   * Read the pool's flat fee. It is a real charge that no STRK20 documentation
+   * mentions: we found it by calling the contract. Cached because it does not
+   * move, and returned as null rather than zero when unreadable, so a caller
+   * can say "unknown" instead of quietly promising the payer too low a total.
+   */
+  /**
+   * The pool's flat fee, denominated in STRK.
+   *
+   * `get_fee_amount()` takes no arguments, so the pool cannot be charging a
+   * different fee per token: there is one figure, and it is STRK. Decoding it
+   * with the INVOICE's decimals and captioning it with the invoice's symbol
+   * printed "6 ETH" on an ETH invoice, which is neither the right unit nor a
+   * number anyone should add to a total. A non-STRK invoice gets null instead:
+   * unknown is the honest answer until the denomination is confirmed.
+   */
+  async poolFee(token) {
+    const strk = resolveToken("STRK", this.registry);
+    const asked = resolveToken(token, this.registry);
+    if (BigInt(asked.address) !== BigInt(strk.address)) return null;
+    const info = strk;
+    if (this.feeCache !== void 0) return this.feeCache;
+    try {
+      const { RpcProvider: RpcProvider2 } = await Promise.resolve().then(() => (init_dist(), dist_exports));
+      this.provider ??= new RpcProvider2({ nodeUrl: this.rpcUrl });
+      const res2 = await this.provider.callContract({
+        contractAddress: POOL_ADDRESS[this.network],
+        entrypoint: "get_fee_amount",
+        calldata: []
+      });
+      const low = BigInt(res2[0] ?? "0x0");
+      const high = BigInt(res2[1] ?? "0x0");
+      this.feeCache = unitsToAmount(low + (high << 128n), info.decimals);
+    } catch {
+      return null;
+    }
+    return this.feeCache;
+  }
+  async shield(token, amount) {
+    const result = await this.invoke("shield", this.actionsShield(token, amount));
+    this.shieldedAtBlock = await this.blockOfTx(result.txHash).catch(() => null);
+    return result;
+  }
+  /**
+   * Wait until the notes created by our last shield are spendable. Without this
+   * a payment fires one block after the deposit and cannot succeed, because a
+   * pool note only matures after MATURITY_BLOCKS.
+   */
+  async awaitMaturity(onProgress) {
+    const start2 = this.shieldedAtBlock;
+    if (start2 === null) return;
+    const target = start2 + MATURITY_BLOCKS;
+    const deadline = Date.now() + 15 * 6e4;
+    while (Date.now() < deadline) {
+      const head = await this.currentBlock().catch(() => null);
+      if (head !== null) {
+        const left = target - head;
+        if (left <= 0) return;
+        onProgress?.(left);
+      }
+      await new Promise((r) => setTimeout(r, 5e3));
+    }
+  }
+  async blockOfTx(txHash) {
+    const { RpcProvider: RpcProvider2 } = await Promise.resolve().then(() => (init_dist(), dist_exports));
+    this.provider ??= new RpcProvider2({ nodeUrl: this.rpcUrl });
+    for (let i = 0; i < 30; i++) {
+      const receipt = await this.provider.getTransactionReceipt(txHash).catch(() => null);
+      const block = receipt?.block_number;
+      if (typeof block === "number") return block;
+      await new Promise((r) => setTimeout(r, 4e3));
+    }
+    return null;
+  }
+  async currentBlock() {
+    const { RpcProvider: RpcProvider2 } = await Promise.resolve().then(() => (init_dist(), dist_exports));
+    this.provider ??= new RpcProvider2({ nodeUrl: this.rpcUrl });
+    return this.provider.getBlockNumber();
+  }
+  async privateTransfer(token, amount, toPoolAddress) {
+    return this.invoke("privateTransfer", this.actionsTransfer(token, amount, toPoolAddress));
+  }
+  async unshield(token, amount, toAddress) {
+    return this.invoke("unshield", this.actionsWithdraw(token, amount, toAddress));
+  }
+  /** Action builders are pure and exported for tests. */
+  actionsShield(token, amount) {
+    const info = resolveToken(token, this.registry);
+    return [{ type: "deposit", token: info.address, amount: amountToFelt(amount, info.decimals) }];
+  }
+  actionsTransfer(token, amount, recipient) {
+    const info = resolveToken(token, this.registry);
+    return [
+      { type: "transfer", token: info.address, amount: amountToFelt(amount, info.decimals), recipient }
+    ];
+  }
+  actionsWithdraw(token, amount, recipient) {
+    const info = resolveToken(token, this.registry);
+    return [
+      { type: "withdraw", token: info.address, amount: amountToFelt(amount, info.decimals), recipient }
+    ];
+  }
+  async invoke(action, actions) {
+    this.requireAddress();
+    if (!Array.isArray(actions) || actions.length === 0) {
+      throw new WalletActionError(action, "Nothing to submit.", void 0, false);
+    }
+    try {
+      const { transaction_hash } = await this.accountV6.strk20InvokeTransaction(actions);
+      return { txHash: transaction_hash };
+    } catch (err) {
+      throw new WalletActionError(action, explainWalletError(err, action), err, !didNotSubmit(err));
+    }
+  }
+  requireAddress() {
+    if (!this.account) throw new WalletActionError("connect", "Wallet is not connected.", void 0, false);
+    return this.account.address;
+  }
+};
+var WALLET_ERROR_CODES = {
+  NOT_ERC20: 111,
+  UNLISTED_NETWORK: 112,
+  USER_REFUSED_OP: 113,
+  INVALID_REQUEST_PAYLOAD: 114,
+  ACCOUNT_ALREADY_DEPLOYED: 115,
+  DEPLOYMENT_DATA_NOT_AVAILABLE: 116,
+  CHAIN_ID_NOT_SUPPORTED: 117,
+  NOT_REGISTERED: 118,
+  INSUFFICIENT_PRIVATE_BALANCE: 119,
+  PRIVACY_LEAK: 120,
+  API_VERSION_NOT_SUPPORTED: 162,
+  UNKNOWN_ERROR: 163
+};
+var EIP1193_USER_REJECTED = 4001;
+var PRE_SUBMISSION_CODES = /* @__PURE__ */ new Set([
+  EIP1193_USER_REJECTED,
+  WALLET_ERROR_CODES.NOT_ERC20,
+  WALLET_ERROR_CODES.UNLISTED_NETWORK,
+  WALLET_ERROR_CODES.USER_REFUSED_OP,
+  WALLET_ERROR_CODES.INVALID_REQUEST_PAYLOAD,
+  WALLET_ERROR_CODES.CHAIN_ID_NOT_SUPPORTED,
+  WALLET_ERROR_CODES.NOT_REGISTERED,
+  WALLET_ERROR_CODES.INSUFFICIENT_PRIVATE_BALANCE,
+  WALLET_ERROR_CODES.PRIVACY_LEAK,
+  WALLET_ERROR_CODES.API_VERSION_NOT_SUPPORTED
+]);
+var KNOWN_CODES = /* @__PURE__ */ new Set([
+  ...Object.values(WALLET_ERROR_CODES),
+  EIP1193_USER_REJECTED
+]);
+function walletErrorMessage(err) {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  if (err && typeof err === "object") {
+    const message = err.message;
+    if (typeof message === "string") return message;
+    for (const key of ["cause", "error", "data"]) {
+      const nested = walletErrorMessage(err[key]);
+      if (nested) return nested;
+    }
+    return "";
+  }
+  return err === void 0 || err === null ? "" : String(err);
+}
+function walletErrorCodes(err) {
+  const found = [];
+  const seen = /* @__PURE__ */ new Set();
+  const queue = [err];
+  while (queue.length > 0 && seen.size < 32) {
+    const node = queue.shift();
+    if (!node || typeof node !== "object" || seen.has(node)) continue;
+    seen.add(node);
+    const code = node.code;
+    if (typeof code === "number" && Number.isInteger(code)) found.push(code);
+    else if (typeof code === "string" && /^-?\d+$/.test(code)) found.push(Number(code));
+    for (const key of ["cause", "error", "data"]) {
+      queue.push(node[key]);
+    }
+  }
+  return found;
+}
+function walletErrorCode(err) {
+  const codes = walletErrorCodes(err);
+  return codes.find((c) => KNOWN_CODES.has(c)) ?? codes[0] ?? null;
+}
+function didNotSubmit(err) {
+  for (const code of walletErrorCodes(err)) {
+    if (KNOWN_CODES.has(code)) return PRE_SUBMISSION_CODES.has(code);
+  }
+  return userRefused(err);
+}
+function userRefused(err) {
+  for (const code of walletErrorCodes(err)) {
+    if (code === WALLET_ERROR_CODES.USER_REFUSED_OP || code === EIP1193_USER_REJECTED) return true;
+  }
+  return /USER_(REFUSED|REJECTED|DENIED|CANCELLED|CANCELED)|user (rejected|refused|denied|declined|cancelled|canceled)|(rejected|cancelled|canceled|denied|dismissed) by (the )?user|dismissed the wallet prompt/i.test(
+    walletErrorMessage(err)
+  );
+}
+function explainWalletError(err, action) {
+  const raw = walletErrorMessage(err);
+  const code = walletErrorCode(err);
+  if (code === WALLET_ERROR_CODES.USER_REFUSED_OP || userRefused(err)) {
+    return "You dismissed the wallet prompt.";
+  }
+  if (code === WALLET_ERROR_CODES.PRIVACY_LEAK) {
+    return "Your wallet refused this payment because making it would have leaked something about you. Nothing was sent. Try a different amount, or ask the merchant for a fresh invoice.";
+  }
+  if (code === WALLET_ERROR_CODES.NOT_REGISTERED || /NOT_REGISTERED/i.test(raw)) {
+    return "Your wallet is not registered with the privacy pool yet. This is a one-time step: open your wallet, shield any amount there once (that publishes your viewing key on-chain), wait about ten blocks, then come back and pay.";
+  }
+  if (/SCREENING|COMPLIANCE|BLOCKED/i.test(raw)) {
+    return "The privacy pool's compliance screening rejected this deposit. Deposits are screened on every route.";
+  }
+  if (/INSUFFICIENT|NOT ENOUGH|BALANCE TOO LOW|\bBALANCE_(TOO_)?LOW\b/i.test(raw)) {
+    return `Not enough balance to ${action === "shield" ? "shield" : "pay"}, including fees.`;
+  }
+  if (/reject|denied|USER_REFUSED|cancel/i.test(raw)) {
+    return "You dismissed the wallet prompt.";
+  }
+  return raw.trim() || `The wallet could not ${action === "shield" ? "shield" : "complete the payment"}.`;
+}
+
 // packages/strk20-pay/src/checkout.ts
 var StealthCheckout = class {
   constructor(wallet, confirmPayment = alwaysConfirm, allowInlineShield = false, store = defaultStore()) {
@@ -31747,7 +32088,7 @@ var StealthCheckout = class {
         txHash,
         shieldTxHash
       };
-      this.saveSent(this.sentPayment);
+      this.saveSent(this.sentPayment, invoice);
       this.emit("confirming", "Payment sent. Waiting for on-chain confirmation\u2026", false, txHash);
       const confirmed = await this.confirmPayment(invoice, txHash);
       if (!confirmed) throw new Error("The payment was not confirmed on-chain. It was sent once and will not be sent again.");
@@ -31760,8 +32101,28 @@ var StealthCheckout = class {
       throw err;
     }
   }
-  storeKey(invoiceId) {
-    return `strk20-pay.sent.${this.wallet.network}.${invoiceId}`;
+  /**
+   * A key that names the invoice's TERMS, not just its id.
+   *
+   * The id alone is chosen by whoever writes the link (`?id=` on the hosted
+   * page), so a second invoice reusing one overwrote the first's record. The
+   * first link then had no memory of its own payment and broadcast it again.
+   */
+  storeKey(invoice) {
+    const recipient = invoice.receiveAddress ?? invoice.merchantPoolAddress ?? "";
+    let normalised = recipient;
+    try {
+      normalised = recipient ? `0x${BigInt(recipient).toString(16)}` : "";
+    } catch {
+    }
+    const terms = `${invoice.id}|${invoice.token}|${invoice.amount}|${normalised}`;
+    let h1 = 2166136261;
+    let h2 = 16777619;
+    for (let i = 0; i < terms.length; i++) {
+      h1 = Math.imul(h1 ^ terms.charCodeAt(i), 16777619) >>> 0;
+      h2 = Math.imul(h2 + terms.charCodeAt(i), 2246822507) >>> 0;
+    }
+    return `strk20-pay.sent.${this.wallet.network}.${invoice.id}.${h1.toString(36)}${h2.toString(36)}`;
   }
   /**
    * A stored record only counts if it settles THIS invoice. The key is scoped
@@ -31771,7 +32132,7 @@ var StealthCheckout = class {
    */
   loadSent(invoice) {
     try {
-      const raw = this.store?.getItem(this.storeKey(invoice.id));
+      const raw = this.store?.getItem(this.storeKey(invoice));
       if (!raw) return null;
       const record = JSON.parse(raw);
       return matchesInvoice(record, invoice) ? record : null;
@@ -31789,7 +32150,7 @@ var StealthCheckout = class {
       txHash: ""
     };
     this.sentPayment = record;
-    this.saveSent(record, { quiet: true });
+    this.saveSent(record, invoice, { quiet: true });
   }
   /**
    * Forget the marker, once the wallet has made clear nothing was submitted.
@@ -31805,15 +32166,15 @@ var StealthCheckout = class {
     if (stored?.txHash) return;
     if (this.sentPayment && !this.sentPayment.txHash) this.sentPayment = null;
     try {
-      this.store?.setItem(this.storeKey(invoice.id), "");
+      this.store?.setItem(this.storeKey(invoice), "");
     } catch {
     }
   }
-  saveSent(record, opts = {}) {
+  saveSent(record, invoice, opts = {}) {
     if (!this.store) return opts.quiet ? void 0 : this.warnUnprotected("no storage is available");
     if (isEphemeral(this.store) && !opts.quiet) this.warnUnprotected("this browser is not storing anything");
     try {
-      this.store.setItem(this.storeKey(record.invoiceId), JSON.stringify(record));
+      this.store.setItem(this.storeKey(invoice), JSON.stringify(record));
     } catch (err) {
       if (!opts.quiet) this.warnUnprotected(err instanceof Error ? err.message : "storage rejected the write");
     }
@@ -31969,8 +32330,9 @@ function didNotReachTheChain(err) {
   return err instanceof WalletActionError && err.submitted === false;
 }
 function isInsufficientFunds(err) {
-  const raw = err instanceof Error ? err.message : String(err ?? "");
-  return /insufficient|not enough|no (unspent )?notes|balance too low|NOT_ENOUGH/i.test(raw);
+  const raw = walletErrorMessage(err);
+  return walletErrorCode(err) === 119 || // INSUFFICIENT_PRIVATE_BALANCE
+  /insufficient|not enough|no (unspent )?notes|balance too low|NOT_ENOUGH/i.test(raw);
 }
 var alwaysConfirm = async () => true;
 var InvoiceSettledError = class extends Error {
@@ -32313,317 +32675,6 @@ function injectStylesOnce() {
   document.head.append(style);
 }
 
-// packages/strk20-pay/src/wallet/walletapi.ts
-var MIN_STRK20_WALLET_API = "0.10.3";
-var MATURITY_BLOCKS = 10;
-var EXPLORER_BASE = {
-  mainnet: "https://voyager.online",
-  sepolia: "https://sepolia.voyager.online"
-};
-var POOL_ADDRESS = {
-  mainnet: "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a",
-  sepolia: "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a"
-};
-var WalletApiAdapter = class {
-  network;
-  /** Voyager, on the network this adapter is actually connected to. */
-  explorerUrl(kind, value) {
-    if (!/^0x[0-9a-fA-F]{1,64}$/.test(value)) return null;
-    const path2 = kind === "tx" ? "tx" : "contract";
-    return `${EXPLORER_BASE[this.network]}/${path2}/${value}`;
-  }
-  rpcUrl;
-  registry;
-  preferWallet;
-  discoveryTimeoutMs;
-  account = null;
-  shieldedAtBlock = null;
-  feeCache = void 0;
-  accountV6 = null;
-  provider = null;
-  constructor(opts) {
-    this.network = opts.network;
-    const fallback = opts.network === "mainnet" ? "https://rpc.starknet.lava.build" : void 0;
-    const rpcUrl = opts.rpcUrl ?? fallback;
-    if (!rpcUrl) throw new Error("rpcUrl is required on Sepolia.");
-    this.rpcUrl = rpcUrl;
-    this.registry = { ...TOKENS, ...opts.tokens };
-    this.preferWallet = (opts.preferWallet ?? "ready").toLowerCase();
-    this.discoveryTimeoutMs = opts.discoveryTimeoutMs ?? 2500;
-  }
-  isConnected() {
-    return this.account !== null;
-  }
-  /** Discover wallets and report their STRK20 capability (for custom pickers). */
-  async listWallets() {
-    const [{ createStore: createStore2 }, { walletV6 }, { compareVersions: compareVersions2 }] = await Promise.all([
-      Promise.resolve().then(() => (init_dist5(), dist_exports2)),
-      Promise.resolve().then(() => (init_dist(), dist_exports)),
-      Promise.resolve().then(() => (init_dist(), dist_exports))
-    ]).then(([d, s]) => [d, s, s]);
-    const store = createStore2();
-    const found = /* @__PURE__ */ new Map();
-    const started = Date.now();
-    while (Date.now() - started < this.discoveryTimeoutMs) {
-      store._refreshInjectedWallets?.();
-      for (const w of store.getWallets()) found.set(w.name ?? String(found.size), w);
-      if (found.size > 0 && Date.now() - started > 400) break;
-      await new Promise((r) => setTimeout(r, 200));
-    }
-    const out = [];
-    for (const [name2, wallet] of found) {
-      let strk20 = false;
-      try {
-        const versions = await walletV6.supportedWalletApi(wallet);
-        strk20 = versions.some((v) => compareVersions2(v, MIN_STRK20_WALLET_API) >= 0);
-      } catch {
-        strk20 = false;
-      }
-      out.push({ name: name2, wallet, strk20 });
-    }
-    return out;
-  }
-  async connect() {
-    try {
-      const { RpcProvider: RpcProvider2, WalletAccountV6: WalletAccountV62 } = await Promise.resolve().then(() => (init_dist(), dist_exports));
-      this.provider ??= new RpcProvider2({ nodeUrl: this.rpcUrl });
-      const wallets = await this.listWallets();
-      const capable = wallets.filter((w) => w.strk20);
-      if (capable.length === 0) {
-        throw new Error(
-          wallets.length === 0 ? "No Starknet wallet was found in this browser. Install Ready X (Chrome Web Store or Edge Add-ons), enable Smart Wallet and Private in its settings, then reload this page." : `None of the wallets here can make private payments (found: ${wallets.map((w) => w.name).join(", ")}). If yours still shows the old name "Ready Wallet (Formerly Argent)", it is the same extension out of date: update it, enable Smart Wallet + Private, then reload.`
-        );
-      }
-      const pick = capable.find((w) => w.name.toLowerCase().includes(this.preferWallet)) ?? capable[0];
-      this.accountV6 = await WalletAccountV62.connect(this.provider, pick.wallet);
-      this.account = { address: this.accountV6.address };
-      return this.account;
-    } catch (err) {
-      throw new WalletActionError(
-        "connect",
-        err instanceof Error ? err.message : "Wallet connection failed.",
-        err,
-        false
-      );
-    }
-  }
-  async publicBalance(token) {
-    const info = resolveToken(token, this.registry);
-    const { RpcProvider: RpcProvider2 } = await Promise.resolve().then(() => (init_dist(), dist_exports));
-    this.provider ??= new RpcProvider2({ nodeUrl: this.rpcUrl });
-    const result = await this.provider.callContract({
-      contractAddress: info.address,
-      entrypoint: "balanceOf",
-      calldata: [this.requireAddress()]
-    });
-    const low = BigInt(result[0] ?? "0x0");
-    const high = BigInt(result[1] ?? "0x0");
-    return unitsToAmount(low + (high << 128n), info.decimals);
-  }
-  async shieldedBalance(token) {
-    const info = resolveToken(token, this.registry);
-    this.requireAddress();
-    try {
-      const entries = await this.accountV6.strk20Balances([info.address]);
-      const entry = entries.find((e) => BigInt(e.token) === BigInt(info.address));
-      return unitsToAmount(BigInt(entry?.balance ?? "0x0"), info.decimals);
-    } catch {
-      return null;
-    }
-  }
-  /**
-   * Read the pool's flat fee. It is a real charge that no STRK20 documentation
-   * mentions: we found it by calling the contract. Cached because it does not
-   * move, and returned as null rather than zero when unreadable, so a caller
-   * can say "unknown" instead of quietly promising the payer too low a total.
-   */
-  /**
-   * The pool's flat fee, denominated in STRK.
-   *
-   * `get_fee_amount()` takes no arguments, so the pool cannot be charging a
-   * different fee per token: there is one figure, and it is STRK. Decoding it
-   * with the INVOICE's decimals and captioning it with the invoice's symbol
-   * printed "6 ETH" on an ETH invoice, which is neither the right unit nor a
-   * number anyone should add to a total. A non-STRK invoice gets null instead:
-   * unknown is the honest answer until the denomination is confirmed.
-   */
-  async poolFee(token) {
-    const strk = resolveToken("STRK", this.registry);
-    const asked = resolveToken(token, this.registry);
-    if (BigInt(asked.address) !== BigInt(strk.address)) return null;
-    const info = strk;
-    if (this.feeCache !== void 0) return this.feeCache;
-    try {
-      const { RpcProvider: RpcProvider2 } = await Promise.resolve().then(() => (init_dist(), dist_exports));
-      this.provider ??= new RpcProvider2({ nodeUrl: this.rpcUrl });
-      const res2 = await this.provider.callContract({
-        contractAddress: POOL_ADDRESS[this.network],
-        entrypoint: "get_fee_amount",
-        calldata: []
-      });
-      const low = BigInt(res2[0] ?? "0x0");
-      const high = BigInt(res2[1] ?? "0x0");
-      this.feeCache = unitsToAmount(low + (high << 128n), info.decimals);
-    } catch {
-      return null;
-    }
-    return this.feeCache;
-  }
-  async shield(token, amount) {
-    const result = await this.invoke("shield", this.actionsShield(token, amount));
-    this.shieldedAtBlock = await this.blockOfTx(result.txHash).catch(() => null);
-    return result;
-  }
-  /**
-   * Wait until the notes created by our last shield are spendable. Without this
-   * a payment fires one block after the deposit and cannot succeed, because a
-   * pool note only matures after MATURITY_BLOCKS.
-   */
-  async awaitMaturity(onProgress) {
-    const start2 = this.shieldedAtBlock;
-    if (start2 === null) return;
-    const target = start2 + MATURITY_BLOCKS;
-    const deadline = Date.now() + 15 * 6e4;
-    while (Date.now() < deadline) {
-      const head = await this.currentBlock().catch(() => null);
-      if (head !== null) {
-        const left = target - head;
-        if (left <= 0) return;
-        onProgress?.(left);
-      }
-      await new Promise((r) => setTimeout(r, 5e3));
-    }
-  }
-  async blockOfTx(txHash) {
-    const { RpcProvider: RpcProvider2 } = await Promise.resolve().then(() => (init_dist(), dist_exports));
-    this.provider ??= new RpcProvider2({ nodeUrl: this.rpcUrl });
-    for (let i = 0; i < 30; i++) {
-      const receipt = await this.provider.getTransactionReceipt(txHash).catch(() => null);
-      const block = receipt?.block_number;
-      if (typeof block === "number") return block;
-      await new Promise((r) => setTimeout(r, 4e3));
-    }
-    return null;
-  }
-  async currentBlock() {
-    const { RpcProvider: RpcProvider2 } = await Promise.resolve().then(() => (init_dist(), dist_exports));
-    this.provider ??= new RpcProvider2({ nodeUrl: this.rpcUrl });
-    return this.provider.getBlockNumber();
-  }
-  async privateTransfer(token, amount, toPoolAddress) {
-    return this.invoke("privateTransfer", this.actionsTransfer(token, amount, toPoolAddress));
-  }
-  async unshield(token, amount, toAddress) {
-    return this.invoke("unshield", this.actionsWithdraw(token, amount, toAddress));
-  }
-  /** Action builders are pure and exported for tests. */
-  actionsShield(token, amount) {
-    const info = resolveToken(token, this.registry);
-    return [{ type: "deposit", token: info.address, amount: amountToFelt(amount, info.decimals) }];
-  }
-  actionsTransfer(token, amount, recipient) {
-    const info = resolveToken(token, this.registry);
-    return [
-      { type: "transfer", token: info.address, amount: amountToFelt(amount, info.decimals), recipient }
-    ];
-  }
-  actionsWithdraw(token, amount, recipient) {
-    const info = resolveToken(token, this.registry);
-    return [
-      { type: "withdraw", token: info.address, amount: amountToFelt(amount, info.decimals), recipient }
-    ];
-  }
-  async invoke(action, actions) {
-    this.requireAddress();
-    if (!Array.isArray(actions) || actions.length === 0) {
-      throw new WalletActionError(action, "Nothing to submit.", void 0, false);
-    }
-    try {
-      const { transaction_hash } = await this.accountV6.strk20InvokeTransaction(actions);
-      return { txHash: transaction_hash };
-    } catch (err) {
-      throw new WalletActionError(action, explainWalletError(err, action), err, !didNotSubmit(err));
-    }
-  }
-  requireAddress() {
-    if (!this.account) throw new WalletActionError("connect", "Wallet is not connected.", void 0, false);
-    return this.account.address;
-  }
-};
-var WALLET_ERROR_CODES = {
-  NOT_ERC20: 111,
-  UNLISTED_NETWORK: 112,
-  USER_REFUSED_OP: 113,
-  INVALID_REQUEST_PAYLOAD: 114,
-  ACCOUNT_ALREADY_DEPLOYED: 115,
-  DEPLOYMENT_DATA_NOT_AVAILABLE: 116,
-  CHAIN_ID_NOT_SUPPORTED: 117,
-  NOT_REGISTERED: 118,
-  INSUFFICIENT_PRIVATE_BALANCE: 119,
-  PRIVACY_LEAK: 120,
-  API_VERSION_NOT_SUPPORTED: 162,
-  UNKNOWN_ERROR: 163
-};
-var PRE_SUBMISSION_CODES = /* @__PURE__ */ new Set([
-  WALLET_ERROR_CODES.NOT_ERC20,
-  WALLET_ERROR_CODES.UNLISTED_NETWORK,
-  WALLET_ERROR_CODES.USER_REFUSED_OP,
-  WALLET_ERROR_CODES.INVALID_REQUEST_PAYLOAD,
-  WALLET_ERROR_CODES.CHAIN_ID_NOT_SUPPORTED,
-  WALLET_ERROR_CODES.NOT_REGISTERED,
-  WALLET_ERROR_CODES.INSUFFICIENT_PRIVATE_BALANCE,
-  WALLET_ERROR_CODES.PRIVACY_LEAK,
-  WALLET_ERROR_CODES.API_VERSION_NOT_SUPPORTED
-]);
-function walletErrorCode(err) {
-  const seen = /* @__PURE__ */ new Set();
-  let node = err;
-  for (let depth = 0; node && typeof node === "object" && depth < 5; depth++) {
-    if (seen.has(node)) break;
-    seen.add(node);
-    const code = node.code;
-    if (typeof code === "number" && Number.isInteger(code)) return code;
-    if (typeof code === "string" && /^\d+$/.test(code)) return Number(code);
-    node = node.cause ?? node.error ?? node.data;
-  }
-  return null;
-}
-function didNotSubmit(err) {
-  const code = walletErrorCode(err);
-  if (code !== null) return PRE_SUBMISSION_CODES.has(code);
-  return userRefused(err);
-}
-function userRefused(err) {
-  const raw = err instanceof Error ? err.message : String(err ?? "");
-  if (walletErrorCode(err) === WALLET_ERROR_CODES.USER_REFUSED_OP) return true;
-  return /USER_(REFUSED|REJECTED|DENIED|CANCELLED|CANCELED|ABORTED)|user (rejected|refused|denied|declined|cancelled|canceled|aborted|abort)|(rejected|cancelled|canceled|denied|dismissed) by (the )?user|dismissed the wallet prompt/i.test(
-    raw
-  );
-}
-function explainWalletError(err, action) {
-  const raw = err instanceof Error ? err.message : String(err ?? "");
-  const code = walletErrorCode(err);
-  if (code === WALLET_ERROR_CODES.USER_REFUSED_OP || userRefused(err)) {
-    return "You dismissed the wallet prompt.";
-  }
-  if (code === WALLET_ERROR_CODES.PRIVACY_LEAK) {
-    return "Your wallet refused this payment because making it would have leaked something about you. Nothing was sent. Try a different amount, or ask the merchant for a fresh invoice.";
-  }
-  if (code === WALLET_ERROR_CODES.NOT_REGISTERED || /NOT_REGISTERED/i.test(raw)) {
-    return "Your wallet is not registered with the privacy pool yet. This is a one-time step: open your wallet, shield any amount there once (that publishes your viewing key on-chain), wait about ten blocks, then come back and pay.";
-  }
-  if (/SCREENING|COMPLIANCE|BLOCKED/i.test(raw)) {
-    return "The privacy pool's compliance screening rejected this deposit. Deposits are screened on every route.";
-  }
-  if (/INSUFFICIENT|NOT ENOUGH|BALANCE TOO LOW|\bBALANCE_(TOO_)?LOW\b/i.test(raw)) {
-    return `Not enough balance to ${action === "shield" ? "shield" : "pay"}, including fees.`;
-  }
-  if (/reject|denied|USER_REFUSED|cancel/i.test(raw)) {
-    return "You dismissed the wallet prompt.";
-  }
-  return raw || `${action} failed in the wallet.`;
-}
-
 // apps/pay-live/main.ts
 var RPC_URL = "https://rpc.starknet.lava.build";
 var app = document.getElementById("app");
@@ -32689,21 +32740,21 @@ function linkId(to2, amount, memo) {
   }
   return `lnk_${h1.toString(36)}${h2.toString(36)}`;
 }
-async function originRunsAWatcher(origin) {
-  try {
-    const res2 = await fetch(`${origin}/healthz`, { signal: AbortSignal.timeout(4e3) });
-    if (!res2.ok) return false;
-    const body = await res2.json();
-    return body?.ok === true;
-  } catch {
-    return false;
-  }
-}
-async function fetchServerInvoice(origin, invoice) {
+async function lookupInvoice(origin, invoice) {
   const url2 = `${origin}/public/invoices/${encodeURIComponent(invoice.id)}?to=${encodeURIComponent(invoice.receiveAddress)}`;
-  const res2 = await fetch(url2, { signal: AbortSignal.timeout(8e3) });
-  if (!res2.ok) return null;
-  const body = await res2.json();
+  let res2;
+  try {
+    res2 = await fetch(url2, { signal: AbortSignal.timeout(8e3) });
+  } catch {
+    return { kind: "unreachable" };
+  }
+  if (res2.status === 404) return { kind: "unknown" };
+  if (!res2.ok) return { kind: "unreachable" };
+  const parsed = await parseServerInvoice(res2, invoice);
+  return parsed ? { kind: "found", invoice: parsed } : { kind: "unknown" };
+}
+async function parseServerInvoice(res2, invoice) {
+  const body = await res2.json().catch(() => null);
   if (!body || typeof body !== "object") return null;
   if (typeof body.amount !== "string" || typeof body.receiveAddress !== "string") return null;
   if (typeof body.status !== "string") return null;
@@ -32722,23 +32773,17 @@ async function start(fromUrl) {
   const foreign = linkNamedAForeignWatcher();
   const origin = watcherOrigin();
   if (!origin) return renderPayer(fromUrl, null, foreign);
-  let server = null;
-  let reachable = true;
-  try {
-    server = await fetchServerInvoice(origin, fromUrl);
-  } catch {
-    reachable = false;
-    server = null;
+  const lookup = await lookupInvoice(origin, fromUrl);
+  const host = new URL(origin).host;
+  if (lookup.kind === "unknown") {
+    return renderError(
+      `The merchant's server at ${host} does not recognise this invoice. Do not pay it: the amount and the destination in this link are not ones that server issued. Ask the merchant for a fresh link.`
+    );
   }
-  if (!server) {
-    const host = new URL(origin).host;
-    if (await originRunsAWatcher(origin)) {
-      return renderError(
-        `The merchant's server at ${host} does not recognise this invoice. Do not pay it: the amount and the destination in this link are not ones that server issued. Ask the merchant for a fresh link.`
-      );
-    }
-    return renderPayer(fromUrl, null, foreign, reachable ? "unknown-invoice" : null);
+  if (lookup.kind === "unreachable") {
+    return renderPayer(fromUrl, null, foreign);
   }
+  const server = lookup.invoice;
   if (server.status !== "watching") {
     return renderError(
       server.status === "paid" || server.status === "paid_late" ? "This invoice has already been paid. Nothing more is owed, so this page will not take another payment." : `The merchant's server is no longer accepting payment for this invoice (${server.status.replace(/_/g, " ")}). Ask for a fresh link.`
@@ -32831,7 +32876,7 @@ async function reportWalletSupport(wallet) {
     box.textContent = `Could not check your wallet: ${err instanceof Error ? err.message : String(err)}`;
   }
 }
-async function renderPayer(invoice, authority, foreignWatcher = null, serverSaid = null) {
+async function renderPayer(invoice, authority, foreignWatcher = null) {
   app.replaceChildren();
   const title = document.createElement("h1");
   title.textContent = `Invoice ${invoice.id}`;
@@ -32854,9 +32899,6 @@ async function renderPayer(invoice, authority, foreignWatcher = null, serverSaid
   } else {
     source.classList.add("bad");
     source.textContent = "The amount and the destination above come from this link, and nothing here has checked them. Confirm both with the merchant through a channel you already trust before paying. This page can show you that the money arrived; its receipt is not proof of payment to anyone else.";
-    if (serverSaid === "unknown-invoice") {
-      source.textContent += " The server that hosts this page does not recognise this invoice id.";
-    }
     if (foreignWatcher) {
       source.textContent += ` This link asked to be verified by ${foreignWatcher}, which is not the server hosting this page. That request was ignored: a link cannot nominate its own auditor.`;
     }
@@ -32920,8 +32962,10 @@ async function renderPayer(invoice, authority, foreignWatcher = null, serverSaid
       while (Date.now() - started < 10 * 6e4) {
         if (authority) {
           try {
-            const fresh = await fetchServerInvoice(authority.origin, invoice);
-            if (fresh && (fresh.status === "paid" || fresh.status === "paid_late")) return true;
+            const fresh = await lookupInvoice(authority.origin, invoice);
+            if (fresh.kind === "found" && (fresh.invoice.status === "paid" || fresh.invoice.status === "paid_late")) {
+              return true;
+            }
           } catch {
           }
         }

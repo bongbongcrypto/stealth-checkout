@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { createServer, request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { evaluateInvoice } from "../lib.mjs";
 
 const TOKEN = "poll-token";
 const STRK = "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
@@ -69,10 +70,14 @@ before(async () => {
         const from = f.from_block.block_number;
         const wantTo = f.keys[2]?.[0];
         const wantFrom = f.keys[1]?.[0];
+        // A real node (pathfinder, juno) drops any event whose key list is
+        // SHORTER than the filter, and filters on the keys it does have. This
+        // fake used to skip its own filter for data-borne events, which made a
+        // test pass that could never have passed against a real node.
+        const wanted = body.params[0].keys ?? [];
         const events = chain.transfers
           .filter((t) => t.block >= from)
-          // A node cannot filter on keys a data-borne token does not emit, so
-          // in that layout it returns everything and the reader must sort it out.
+          .filter((t) => (chain.layout === "data" ? 1 : 3) >= wanted.length)
           .filter((t) => (chain.layout === "data" || !wantTo ? true : t.to === BigInt(wantTo)))
           .filter((t) => (chain.layout === "data" || !wantFrom ? true : t.from === BigInt(wantFrom)))
           .map((t) =>
@@ -334,32 +339,38 @@ test("the baseline is pinned to a block, never read at 'latest'", () => {
   })();
 });
 
-test("a data-borne token's outflow is read, so a swept payment is not lost", () => {
-  // The inbound scan read both event layouts; the outbound one read only the
-  // keyed layout, added a round later. On a data-borne token every outflow
-  // summed to zero, the credit cap collapsed to the bare balance delta, and a
-  // payer's full payment - swept by the merchant - was recorded as never paid.
-  // The invoice then expired and its address was RELEASED for reuse.
+test("a data-borne token falls back to balance accounting, and says so", () => {
+  // Event accounting covers keyed tokens only: a node drops events whose key
+  // list is shorter than the filter, so a single-key Cairo-0 Transfer is never
+  // returned. This test exists to pin the CONSEQUENCE rather than pretend
+  // otherwise - an earlier version asserted the payment survived a sweep,
+  // and passed only because this fake node ignored its own filter.
   chain.reset();
-  chain.layout = "data"; // from/to live in data, not keys
+  chain.layout = "data";
   const addr = freshAddress();
   return (async () => {
     try {
-      const inv = await createInvoice("5", addr, { expiresAt: Date.now() + 300 });
+      const inv = await createInvoice("5", addr, { expiresAt: Date.now() + 250 });
       chain.height = 1001;
       chain.credit(addr, units(5), 1001); // paid in full
-      chain.sweep(addr, units(5), 1001); // and swept straight away
 
+      // Not swept: the balance still shows it, so delta accounting sees it.
       await watcher.pollOnce();
-      const row = watcher.invoices.get(inv.id);
-      assert.equal(row.status, "paid", "the money arrived; the balance being zero again is the sweep");
-      assert.equal(row.receivedUnits, units(5).toString());
+      assert.equal(watcher.invoices.get(inv.id).status, "paid", "the balance carries it");
 
-      // And it must never become deletable.
-      await new Promise((r) => setTimeout(r, 400));
+      // Swept before the poll, it is invisible - and this is the documented
+      // limitation, not a surprise.
+      const addr2 = freshAddress();
+      const inv2 = await createInvoice("5", addr2, { expiresAt: Date.now() + 250 });
+      chain.height = 1002;
+      chain.credit(addr2, units(5), 1002);
+      chain.sweep(addr2, units(5), 1002);
       await watcher.pollOnce();
-      const del = await fetch(`${base}/invoices/${inv.id}`, { method: "DELETE", headers: auth });
-      assert.equal(del.status, 409, "a paid address must never be released");
+      assert.equal(
+        watcher.invoices.get(inv2.id).status,
+        "watching",
+        "delta accounting cannot see money that has already left",
+      );
     } finally {
       chain.layout = "keys";
     }
@@ -574,4 +585,68 @@ test("an idempotent retry survives a recomputed deadline", () => {
     assert.equal(retry.status, 200, "a few milliseconds of deadline drift is the same request");
     assert.equal((await retry.json()).id, (await first.json()).id);
   })();
+});
+
+test("write-off cannot bury a payment the poller has not seen yet", () => {
+  // Its twin, cancel, was hardened to ask the chain first. This route was
+  // added later and was not - and written_off is never polled again, so
+  // payment.confirmed could never fire afterwards.
+  chain.reset();
+  const addr = freshAddress();
+  return (async () => {
+    const inv = await createInvoice("5", addr, { expiresAt: Date.now() + 150 });
+    chain.height = 1001;
+    chain.credit(addr, 1n, 1001); // dust, so it becomes underpaid
+    await new Promise((r) => setTimeout(r, 250));
+    await watcher.pollOnce();
+    assert.equal(watcher.invoices.get(inv.id).status, "underpaid");
+
+    // The payer now tops up in full, and no poll has run since.
+    chain.credit(addr, units(5), 1002);
+    chain.height = 1002;
+    const res = await fetch(`${base}/invoices/${inv.id}/write-off`, { method: "POST", headers: auth });
+    assert.equal(res.status, 409, "the chain says this is paid");
+    assert.match((await res.json()).error, /paid in full since the last poll/);
+
+    await watcher.pollOnce();
+    assert.ok(["paid", "paid_late"].includes(watcher.invoices.get(inv.id).status), "and it settles normally");
+  })();
+});
+
+test("write-off applies only to underpaid, not to rows that can simply be deleted", () => {
+  chain.reset();
+  const addr = freshAddress();
+  return (async () => {
+    const inv = await createInvoice("5", addr, { expiresAt: Date.now() + 150 });
+    // Nothing arrives, so it expires - and an expired row is deletable.
+    await new Promise((r) => setTimeout(r, 250));
+    await watcher.pollOnce();
+    assert.equal(watcher.invoices.get(inv.id).status, "expired");
+
+    const res = await fetch(`${base}/invoices/${inv.id}/write-off`, { method: "POST", headers: auth });
+    assert.equal(res.status, 409, "converting a deletable row into a permanent lock is worse than deleting it");
+    assert.match((await res.json()).error, /can simply be deleted/);
+    assert.equal((await fetch(`${base}/invoices/${inv.id}`, { method: "DELETE", headers: auth })).status, 200);
+  })();
+});
+
+test("a late payment on a held row is still recorded as late", () => {
+  // `holdOpen` says "do not RETIRE this row on numbers we do not trust". It was
+  // also suppressing the paid_late label, so a merchant's late-payment policy
+  // silently did not apply - the same symptom the hold was introduced to fix.
+  const inv = {
+    id: "held",
+    decimals: 18,
+    amount: "5",
+    status: "watching",
+    baselineUnits: "0",
+    expiresAt: 2_000,
+    createdAt: 1_000,
+  };
+  const paid = evaluateInvoice(inv, units(5), 9_999, units(5), true);
+  assert.equal(paid.status, "paid_late", "held, but the clock still says late");
+  // And the hold still does its actual job: an unpaid held row is not retired.
+  const unpaid = evaluateInvoice(inv, 0n, 9_999, 0n, true);
+  assert.equal(unpaid.status, "watching", "not expired while the numbers are in doubt");
+  assert.equal(evaluateInvoice(inv, 0n, 9_999, 0n, false).status, "expired", "and retired once they are not");
 });

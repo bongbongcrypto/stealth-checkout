@@ -358,11 +358,30 @@ test("the wallet's own error codes decide whether anything was submitted", async
   assert.equal(didNotSubmit({ error: { code: 163 } }), false);
 
   // With no code at all, the message is the only evidence, and it stays narrow.
-  assert.equal(didNotSubmit(new Error("User abort")), true, "Argent/Ready's classic rejection");
   assert.equal(didNotSubmit(new Error("USER_REFUSED_OP")), true, "no word boundary after the phrase");
+  assert.equal(didNotSubmit({ message: "Rejected by user" }), true, "a plain object, which is the spec's shape");
   assert.equal(didNotSubmit(new Error("Transaction rejected by the sequencer")), false);
   assert.equal(didNotSubmit(new Error("INSUFFICIENT_MAX_FEE")), false, "a node error, raised after submission");
   assert.equal(didNotSubmit(new Error("timed out")), false);
+
+  // "abort" is deliberately NOT a refusal, and an earlier version of this test
+  // asserted the opposite. It is what a TRANSPORT says when a request is cut
+  // off - Chrome's own AbortError reads "The user aborted a request." - so
+  // treating it as a decision cleared the marker that stops a double payment
+  // and a lost response after a successful broadcast paid the invoice twice.
+  // The cost of excluding it is one extra confirmation for a wallet that sends
+  // a bare "User abort" and no code; the cost of including it is money.
+  assert.equal(didNotSubmit(new Error("The user aborted a request.")), false);
+  assert.equal(didNotSubmit(new Error("User abort")), false);
+  // A wallet that sends the code is unaffected either way.
+  assert.equal(didNotSubmit({ code: 113, message: "User abort" }), true);
+
+  // An unrecognised code must not silence the message. Returning the set
+  // membership for ANY code meant EIP-1193's 4001 read as "may have been
+  // submitted" while the payer was told they had dismissed the prompt.
+  assert.equal(didNotSubmit({ code: 4001, message: "User rejected the request." }), true);
+  assert.equal(didNotSubmit({ code: 9999, message: "Rejected by user" }), true, "unknown code, clear message");
+  assert.equal(didNotSubmit({ code: 9999, message: "something went wrong" }), false);
 });
 
 test("the real adapter labels every documented wallet code correctly", async () => {
@@ -417,4 +436,54 @@ test("the pool's own shortfall code still shields and pays, once", async () => {
   const receipt = await new StealthCheckout(wallet, async () => true, true, freshStore()).pay(invoice());
   assert.ok(receipt.shieldTxHash, "it shielded rather than giving up");
   assert.equal(attempts, 2, "one refusal, then one that worked");
+});
+
+test("the payment record is keyed by the invoice's terms, not just its id", async () => {
+  // `?id=` is chosen by whoever writes the link, so a second invoice reusing
+  // one overwrote the first's record. The first link then had no memory of its
+  // own payment and broadcast it again.
+  const store = freshStore();
+  const wallet = new MockWallet({ latency: 0, funded: { STRK: "900" }, shielded: { STRK: "900" } });
+  let sends = 0;
+  const realUnshield = wallet.unshield.bind(wallet);
+  wallet.unshield = async (...args) => {
+    sends++;
+    return realUnshield(...args);
+  };
+
+  const A = invoice({ id: "order-1", amount: "5", receiveAddress: "0x0aaa" });
+  const B = invoice({ id: "order-1", amount: "1", receiveAddress: "0x0bbb" }); // same id, other terms
+
+  await new StealthCheckout(wallet, async () => true, false, store).pay(A);
+  assert.equal(sends, 1);
+  await new StealthCheckout(wallet, async () => true, false, store).pay(B);
+  assert.equal(sends, 2, "a genuinely different invoice is paid");
+
+  // Back on A: its record must still be there.
+  await new StealthCheckout(wallet, async () => true, false, store).pay(A);
+  assert.equal(sends, 2, "A was already paid and must not be paid a third time");
+});
+
+test("a payer sees a usable message for every documented error shape", async () => {
+  // The Wallet API declares its errors as plain { code, message } objects, not
+  // Error instances, so reading them with String(err) produced the literal
+  // text "[object Object]" - shown to the payer, and killing every prose
+  // branch at once.
+  const { explainWalletError, walletErrorMessage } = await import("../dist/index.js");
+  const shapes = [
+    { code: 113, message: "An error occurred (USER_REFUSED_OP)" },
+    { code: 118, message: "An error occurred (NOT_REGISTERED)" },
+    { code: 119, message: "An error occurred (INSUFFICIENT_PRIVATE_BALANCE)" },
+    { code: 120, message: "An error occurred (PRIVACY_LEAK)" },
+    { code: 163, message: "An error occurred (UNKNOWN_ERROR)" },
+    { code: -32603, message: "Internal error", data: { code: 113, message: "refused" } },
+  ];
+  for (const shape of shapes) {
+    const text = explainWalletError(shape, "unshield");
+    assert.doesNotMatch(text, /\[object Object\]/, `code ${shape.code} must not stringify to junk`);
+    assert.ok(text.trim().length > 10, `code ${shape.code} must say something useful: ${text}`);
+    assert.ok(walletErrorMessage(shape).length > 0);
+  }
+  // And an error with no message at all still yields a sentence.
+  assert.doesNotMatch(explainWalletError({}, "shield"), /\[object Object\]|^$/);
 });

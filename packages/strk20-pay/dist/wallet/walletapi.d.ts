@@ -136,7 +136,28 @@ export declare const WALLET_ERROR_CODES: {
     readonly API_VERSION_NOT_SUPPORTED: 162;
     readonly UNKNOWN_ERROR: 163;
 };
-/** The numeric code a wallet attached, wherever it put it. */
+/**
+ * The message a wallet wrote, whatever shape it wrapped it in.
+ *
+ * The Wallet API declares every error as a plain `{ code, message }` object,
+ * not an `Error`. Reading it with `err instanceof Error ? err.message :
+ * String(err)` therefore produced the literal text "[object Object]", which
+ * showed that to the payer and killed every prose branch below it at once.
+ */
+export declare function walletErrorMessage(err: unknown): string;
+/**
+ * Every numeric code anywhere in the error, outermost first.
+ *
+ * Breadth-first over all three links, not a chain of `??` down one of them: a
+ * JSON-RPC envelope puts its transport code outside and the wallet's real code
+ * in `data`, and a single-path walk either stopped at the envelope or, when a
+ * string sat in `cause`, gave up before reaching the object beside it.
+ */
+export declare function walletErrorCodes(err: unknown): number[];
+/**
+ * The code that describes what the WALLET did, preferring one this protocol
+ * defines over a transport code that merely wrapped it.
+ */
 export declare function walletErrorCode(err: unknown): number | null;
 /**
  * Could this error have followed a transaction reaching the network?

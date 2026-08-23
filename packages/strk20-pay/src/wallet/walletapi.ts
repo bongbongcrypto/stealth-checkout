@@ -373,7 +373,15 @@ export const WALLET_ERROR_CODES = {
  * can reach the network. UNKNOWN_ERROR (163) is deliberately absent: unknown
  * means unknown, and the safe reading of that is "the money may be gone".
  */
+/**
+ * EIP-1193's user-rejection code. Not part of the Wallet API, but wallets that
+ * bridge to an EVM-style provider send it, and `get-starknet`'s virtual-wallet
+ * layer can surface it here.
+ */
+const EIP1193_USER_REJECTED = 4001;
+
 const PRE_SUBMISSION_CODES: ReadonlySet<number> = new Set([
+  EIP1193_USER_REJECTED,
   WALLET_ERROR_CODES.NOT_ERC20,
   WALLET_ERROR_CODES.UNLISTED_NETWORK,
   WALLET_ERROR_CODES.USER_REFUSED_OP,
@@ -385,21 +393,68 @@ const PRE_SUBMISSION_CODES: ReadonlySet<number> = new Set([
   WALLET_ERROR_CODES.API_VERSION_NOT_SUPPORTED,
 ]);
 
-/** The numeric code a wallet attached, wherever it put it. */
-export function walletErrorCode(err: unknown): number | null {
+/** Codes this file has an opinion about. Anything else falls back to prose. */
+const KNOWN_CODES: ReadonlySet<number> = new Set([
+  ...Object.values(WALLET_ERROR_CODES),
+  EIP1193_USER_REJECTED,
+]);
+
+/**
+ * The message a wallet wrote, whatever shape it wrapped it in.
+ *
+ * The Wallet API declares every error as a plain `{ code, message }` object,
+ * not an `Error`. Reading it with `err instanceof Error ? err.message :
+ * String(err)` therefore produced the literal text "[object Object]", which
+ * showed that to the payer and killed every prose branch below it at once.
+ */
+export function walletErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  if (err && typeof err === "object") {
+    const message = (err as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+    for (const key of ["cause", "error", "data"] as const) {
+      const nested = walletErrorMessage((err as Record<string, unknown>)[key]);
+      if (nested) return nested;
+    }
+    return "";
+  }
+  return err === undefined || err === null ? "" : String(err);
+}
+
+/**
+ * Every numeric code anywhere in the error, outermost first.
+ *
+ * Breadth-first over all three links, not a chain of `??` down one of them: a
+ * JSON-RPC envelope puts its transport code outside and the wallet's real code
+ * in `data`, and a single-path walk either stopped at the envelope or, when a
+ * string sat in `cause`, gave up before reaching the object beside it.
+ */
+export function walletErrorCodes(err: unknown): number[] {
+  const found: number[] = [];
   const seen = new Set<unknown>();
-  let node: unknown = err;
-  for (let depth = 0; node && typeof node === "object" && depth < 5; depth++) {
-    if (seen.has(node)) break;
+  const queue: unknown[] = [err];
+  while (queue.length > 0 && seen.size < 32) {
+    const node = queue.shift();
+    if (!node || typeof node !== "object" || seen.has(node)) continue;
     seen.add(node);
     const code = (node as { code?: unknown }).code;
-    if (typeof code === "number" && Number.isInteger(code)) return code;
-    if (typeof code === "string" && /^\d+$/.test(code)) return Number(code);
-    node = (node as { cause?: unknown; error?: unknown; data?: unknown }).cause
-      ?? (node as { error?: unknown }).error
-      ?? (node as { data?: unknown }).data;
+    if (typeof code === "number" && Number.isInteger(code)) found.push(code);
+    else if (typeof code === "string" && /^-?\d+$/.test(code)) found.push(Number(code));
+    for (const key of ["cause", "error", "data"] as const) {
+      queue.push((node as Record<string, unknown>)[key]);
+    }
   }
-  return null;
+  return found;
+}
+
+/**
+ * The code that describes what the WALLET did, preferring one this protocol
+ * defines over a transport code that merely wrapped it.
+ */
+export function walletErrorCode(err: unknown): number | null {
+  const codes = walletErrorCodes(err);
+  return codes.find((c) => KNOWN_CODES.has(c)) ?? codes[0] ?? null;
 }
 
 /**
@@ -412,8 +467,16 @@ export function walletErrorCode(err: unknown): number | null {
  * extra confirmation and never costs them a second payment.
  */
 export function didNotSubmit(err: unknown): boolean {
-  const code = walletErrorCode(err);
-  if (code !== null) return PRE_SUBMISSION_CODES.has(code);
+  // A code we recognise is the best evidence there is, in both directions.
+  for (const code of walletErrorCodes(err)) {
+    if (KNOWN_CODES.has(code)) return PRE_SUBMISSION_CODES.has(code);
+  }
+  // An UNRECOGNISED code must not silence the message. Returning
+  // `PRE_SUBMISSION_CODES.has(code)` for any code at all meant a wallet
+  // sending EIP-1193's 4001 ("user rejected") was read as "may have been
+  // submitted" while the payer was simultaneously told they had dismissed the
+  // prompt - the exact lock-out this function exists to prevent, reintroduced
+  // by the fix for it.
   return userRefused(err);
 }
 
@@ -426,15 +489,21 @@ export function didNotSubmit(err: unknown): boolean {
  * silently failed on the one string the spec actually defines.
  */
 export function userRefused(err: unknown): boolean {
-  const raw = err instanceof Error ? err.message : String(err ?? "");
-  if (walletErrorCode(err) === WALLET_ERROR_CODES.USER_REFUSED_OP) return true;
-  return /USER_(REFUSED|REJECTED|DENIED|CANCELLED|CANCELED|ABORTED)|user (rejected|refused|denied|declined|cancelled|canceled|aborted|abort)|(rejected|cancelled|canceled|denied|dismissed) by (the )?user|dismissed the wallet prompt/i.test(
-    raw,
+  for (const code of walletErrorCodes(err)) {
+    if (code === WALLET_ERROR_CODES.USER_REFUSED_OP || code === EIP1193_USER_REJECTED) return true;
+  }
+  // Decision words only. "abort" was in this list and does not belong: it is
+  // what a TRANSPORT says when a request is cut off, and Chrome's own
+  // AbortError reads "The user aborted a request." Treating that as a decision
+  // cleared the marker that stops a double payment, so a lost response after a
+  // successful broadcast paid the invoice twice.
+  return /USER_(REFUSED|REJECTED|DENIED|CANCELLED|CANCELED)|user (rejected|refused|denied|declined|cancelled|canceled)|(rejected|cancelled|canceled|denied|dismissed) by (the )?user|dismissed the wallet prompt/i.test(
+    walletErrorMessage(err),
   );
 }
 
 export function explainWalletError(err: unknown, action: "shield" | "privateTransfer" | "unshield"): string {
-  const raw = err instanceof Error ? err.message : String(err ?? "");
+  const raw = walletErrorMessage(err);
   const code = walletErrorCode(err);
   if (code === WALLET_ERROR_CODES.USER_REFUSED_OP || userRefused(err)) {
     return "You dismissed the wallet prompt.";
@@ -465,5 +534,7 @@ export function explainWalletError(err: unknown, action: "shield" | "privateTran
   if (/reject|denied|USER_REFUSED|cancel/i.test(raw)) {
     return "You dismissed the wallet prompt.";
   }
-  return raw || `${action} failed in the wallet.`;
+  // Never hand back an empty string or a stringified object: the payer sees
+  // this, and "[object Object]" is worse than saying nothing useful.
+  return raw.trim() || `The wallet could not ${action === "shield" ? "shield" : "complete the payment"}.`;
 }

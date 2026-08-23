@@ -182,7 +182,12 @@ export function evaluateInvoice(invoice, balanceUnits, now = Date.now(), receive
   // written back and persisted: the merchant's deadline was destroyed for
   // good, and every later payment reported `paid` where it should have said
   // `paid_late`.
-  const overdue = !holdOpen && deadline !== null && now > deadline;
+  // Past its deadline is a fact about the clock. `holdOpen` says only that we
+  // must not RETIRE this row on numbers we do not trust - it was suppressing
+  // the `paid_late` label too, so a late payment on a held row reported `paid`
+  // and a merchant's late-payment policy silently did not apply. That is the
+  // same symptom the hold was introduced to remove.
+  const overdue = deadline !== null && now > deadline;
 
   // A payment that landed before the deadline wins, even if this poll runs
   // after it. Expiring an invoice the payer already settled strands their
@@ -216,7 +221,8 @@ export function evaluateInvoice(invoice, balanceUnits, now = Date.now(), receive
   const seenBefore = BigInt(invoice.receivedUnits ?? "0");
   const highWater = received > seenBefore ? received : seenBefore;
 
-  if (overdue) {
+  // Retiring is what the hold suppresses.
+  if (overdue && !holdOpen) {
     if (highWater > 0n) {
       // Already recorded at this level: nothing changed, so do not rewrite it.
       if (invoice.status === "underpaid" && highWater === seenBefore) return invoice;
@@ -332,6 +338,23 @@ export function transferEventsRequest(tokenAddress, toAddress, fromBlock, id = 1
   };
 }
 
+/**
+ * A note on token event layouts, since this cost a round to establish.
+ *
+ * Standard Cairo-1 ERC-20s emit Transfer with `[selector, from, to]` as keys.
+ * Older Cairo-0 tokens carry from and to in `data` with a single key. The
+ * filters below name 2 and 3 key positions, and a node (pathfinder, juno)
+ * rejects any event whose key list is shorter than the filter - so a
+ * single-key event is never returned, whatever the reader would do with it.
+ *
+ * This project briefly carried readers for both layouts. They could not run,
+ * and a fake node that skipped its own filter made a test claim they did. So:
+ * **event accounting covers keyed tokens only.** A data-borne token falls back
+ * to balance-delta accounting, which cannot see money that has already been
+ * swept out. STRK and ETH, the two in the registry, are keyed on mainnet.
+ * Supporting the older layout means widening the REQUESTS, not the readers.
+ */
+
 /** Transfer events whose `from` is this address: money leaving it. */
 export function sentEventsRequest(tokenAddress, fromAddress, fromBlock, id = 1, continuationToken = undefined) {
   return {
@@ -354,12 +377,10 @@ export function sentEventsRequest(tokenAddress, fromAddress, fromBlock, id = 1, 
 /**
  * Total value transferred OUT of `fromAddress` by these events.
  *
- * Reads BOTH layouts, exactly like its inbound twin. Reading only the keyed
- * one made every outflow sum to zero on a data-borne token, which collapsed
- * the credit cap to the bare balance delta: a payer's full payment, swept by
- * the merchant, was recorded as never paid, the invoice expired, and its
- * address was released for reuse. The two functions are a matched pair and
- * have to understand the same events.
+ * A matched pair with its inbound twin: both read the keyed layout and only
+ * that. When they disagreed about which layouts to read, the outflow summed to
+ * zero on a token the inflow could see, the credit cap collapsed to the bare
+ * balance delta, and a payer's swept payment was recorded as never paid.
  */
 export function sentFromEvents(eventsResult, fromAddress) {
   const target = normFelt(fromAddress);
@@ -376,10 +397,8 @@ export function sentFromEvents(eventsResult, fromAddress) {
     const keys = ev.keys ?? [];
     const data = ev.data ?? [];
     const keyed = keys.length >= 2 && matches(keys[1]);
-    // Data-borne layout: [from, to, amount_low, amount_high?].
-    const dataBorne = !keyed && data.length >= 3 && matches(data[0]);
-    if (!keyed && !dataBorne) continue;
-    const lowIdx = keyed ? 0 : 2;
+    if (!keyed) continue; // keyed layout only, as above
+    const lowIdx = 0;
     if (data.length < lowIdx + 1) return null;
     try {
       total += BigInt(data[lowIdx]) + (data.length > lowIdx + 1 ? BigInt(data[lowIdx + 1]) << 128n : 0n);
@@ -408,9 +427,11 @@ export function receivedFromEvents(eventsResult, toAddress) {
   for (const ev of eventsResult?.events ?? []) {
     const keys = ev.keys ?? [];
     const data = ev.data ?? [];
-    // Both branches have to tolerate junk. The keyed one called normFelt
-    // unguarded while its sibling was wrapped, so one malformed key from an
-    // RPC threw out of the whole scan.
+    // Keyed layout only. See the note on DATA_BORNE_TOKENS below: a request
+    // whose key filter is longer than an event's key list matches nothing on
+    // any real node, so the data-borne branch that used to live here could
+    // never run. It looked alive only because a test's fake node ignored its
+    // own filter, which is a worse state than not having it.
     const keyed =
       keys.length >= 3 &&
       (() => {
@@ -420,16 +441,8 @@ export function receivedFromEvents(eventsResult, toAddress) {
           return false;
         }
       })();
-    const dataBorne = !keyed && data.length >= 2 && (() => {
-      try {
-        return normFelt(data[1]) === target;
-      } catch {
-        return false;
-      }
-    })();
-    if (!keyed && !dataBorne) continue;
-    // Keyed layout: amount is data[0..1]. Data-borne layout: from, to, amount.
-    const lowIdx = keyed ? 0 : 2;
+    if (!keyed) continue;
+    const lowIdx = 0;
     if (data.length < lowIdx + 1) return null;
     let amount;
     try {

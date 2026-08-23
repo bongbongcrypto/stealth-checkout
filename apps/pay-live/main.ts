@@ -113,25 +113,6 @@ function linkId(to: string, amount: string, memo: string): string {
   return `lnk_${h1.toString(36)}${h2.toString(36)}`;
 }
 
-/**
- * Is there a watcher at this origin at all?
- *
- * The difference between "your server does not know this invoice" and "this
- * page is not served by a server that knows about invoices" decides whether an
- * unrecognised link is refused or merely flagged, and only one of those two
- * answers is safe in each case.
- */
-async function originRunsAWatcher(origin: string): Promise<boolean> {
-  try {
-    const res = await fetch(`${origin}/healthz`, { signal: AbortSignal.timeout(4000) });
-    if (!res.ok) return false;
-    const body = (await res.json()) as { ok?: unknown };
-    return body?.ok === true;
-  } catch {
-    return false;
-  }
-}
-
 /** Terms as the merchant's server states them. */
 interface ServerInvoice {
   id: string;
@@ -143,11 +124,39 @@ interface ServerInvoice {
   txHash: string | null;
 }
 
-async function fetchServerInvoice(origin: string, invoice: Invoice): Promise<ServerInvoice | null> {
+/**
+ * What the merchant's server said about this invoice.
+ *
+ * `unknown` means it answered and does not have it: the link was not issued by
+ * that server, and paying it is unsafe. `unreachable` means we learned
+ * nothing - a 500, a timeout, a blocked request - and the only honest response
+ * to that is "try again", never an accusation.
+ */
+type Lookup =
+  | { kind: "found"; invoice: ServerInvoice }
+  | { kind: "unknown" }
+  | { kind: "unreachable" };
+
+async function lookupInvoice(origin: string, invoice: Invoice): Promise<Lookup> {
   const url = `${origin}/public/invoices/${encodeURIComponent(invoice.id)}?to=${encodeURIComponent(invoice.receiveAddress!)}`;
-  const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-  if (!res.ok) return null;
-  const body = (await res.json()) as ServerInvoice;
+  let res: Response;
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  } catch {
+    // A network failure, a CORS refusal, a timeout. This is also what a page
+    // served from somewhere with no watcher at all sees.
+    return { kind: "unreachable" };
+  }
+  // 404 is the server saying so. Everything else that is not OK is the server
+  // failing, which says nothing about the invoice.
+  if (res.status === 404) return { kind: "unknown" };
+  if (!res.ok) return { kind: "unreachable" };
+  const parsed = await parseServerInvoice(res, invoice);
+  return parsed ? { kind: "found", invoice: parsed } : { kind: "unknown" };
+}
+
+async function parseServerInvoice(res: Response, invoice: Invoice): Promise<ServerInvoice | null> {
+  const body = (await res.json().catch(() => null)) as ServerInvoice | null;
   // Every field is checked before use. A response is data from a server, and
   // an unexpected type here reaches string methods and BigInt() further down:
   // `expiresAt: {"nope":1}` used to throw out of an un-awaited call and leave
@@ -178,33 +187,27 @@ async function start(fromUrl: Invoice): Promise<void> {
   const foreign = linkNamedAForeignWatcher();
   const origin = watcherOrigin();
   if (!origin) return renderPayer(fromUrl, null, foreign);
-  let server: ServerInvoice | null = null;
-  let reachable = true;
-  try {
-    server = await fetchServerInvoice(origin, fromUrl);
-  } catch {
-    // A network failure and a rejection mean different things to the payer:
-    // one is "wait and reload", the other is "this link is not real".
-    reachable = false;
-    server = null;
+
+  const lookup = await lookupInvoice(origin, fromUrl);
+  const host = new URL(origin).host;
+
+  // The lookup's own status code decides this, not a second probe. Asking
+  // /healthz instead meant the refusal was silently OFF in every split-host
+  // deployment - /healthz sends no CORS headers while /public sends `*`, so
+  // the probe was blocked exactly where it mattered - and wrongly ON when the
+  // server erred, telling a legitimate payer their link was forged.
+  if (lookup.kind === "unknown") {
+    return renderError(
+      `The merchant's server at ${host} does not recognise this invoice. Do not pay it: the amount and the ` +
+        "destination in this link are not ones that server issued. Ask the merchant for a fresh link.",
+    );
   }
-  if (!server) {
-    // Two very different situations, and they need opposite answers.
-    //
-    // If this origin runs a watcher and that watcher has never heard of this
-    // invoice, the link is not one the merchant issued: refuse it. If this
-    // origin runs no watcher at all - the normal case for the hosted copy on
-    // GitHub Pages - there is nothing to have recognised it, so fall through
-    // to link-only mode and say exactly what that means.
-    const host = new URL(origin).host;
-    if (await originRunsAWatcher(origin)) {
-      return renderError(
-        `The merchant's server at ${host} does not recognise this invoice. Do not pay it: the amount and the ` +
-          "destination in this link are not ones that server issued. Ask the merchant for a fresh link.",
-      );
-    }
-    return renderPayer(fromUrl, null, foreign, reachable ? "unknown-invoice" : null);
+  if (lookup.kind === "unreachable") {
+    // Either there is no watcher here at all (the hosted copy) or it is having
+    // a bad minute. Neither is the payer's fault and neither is evidence.
+    return renderPayer(fromUrl, null, foreign);
   }
+  const server = lookup.invoice;
   if (server.status !== "watching") {
     return renderError(
       server.status === "paid" || server.status === "paid_late"
@@ -324,7 +327,6 @@ async function renderPayer(
   invoice: Invoice,
   authority: Authority | null,
   foreignWatcher: string | null = null,
-  serverSaid: "unknown-invoice" | null = null,
 ): Promise<void> {
   // Built node by node with textContent. These values come from the URL, and
   // interpolating them into innerHTML would let any link run script on this
@@ -356,9 +358,6 @@ async function renderPayer(
       "The amount and the destination above come from this link, and nothing here has checked them. " +
       "Confirm both with the merchant through a channel you already trust before paying. " +
       "This page can show you that the money arrived; its receipt is not proof of payment to anyone else.";
-    if (serverSaid === "unknown-invoice") {
-      source.textContent += " The server that hosts this page does not recognise this invoice id.";
-    }
     if (foreignWatcher) {
       // Named and neutralised, rather than silently dropped: a payer who was
       // told to expect a watcher deserves to know it was ignored.
@@ -452,8 +451,10 @@ async function renderPayer(
         // whenever the payer happened to open the link.
         if (authority) {
           try {
-            const fresh = await fetchServerInvoice(authority.origin, invoice);
-            if (fresh && (fresh.status === "paid" || fresh.status === "paid_late")) return true;
+            const fresh = await lookupInvoice(authority.origin, invoice);
+            if (fresh.kind === "found" && (fresh.invoice.status === "paid" || fresh.invoice.status === "paid_late")) {
+              return true;
+            }
           } catch {
             /* fall through to the chain */
           }

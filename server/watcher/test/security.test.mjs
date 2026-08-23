@@ -197,3 +197,39 @@ test("addresses compare by value, not by spelling", () => {
   assert.ok(!sameAddress("not-hex", "0xabc"));
   assert.ok(!sameAddress(undefined, "0xabc"));
 });
+
+test("sweeping an underpaid address does not turn it back into expired", () => {
+  // "expired" is deletable, and deleting releases the address for reuse. A
+  // merchant moving the partial payment out of the address must not be able to
+  // erase the record that a payer sent it.
+  const inv = invoice({ expiresAt: 1_000 });
+  const under = evaluateInvoice(inv, toUnits("1", 18), 9_999);
+  assert.equal(under.status, "underpaid");
+
+  const swept = evaluateInvoice(under, 0n, 10_000);
+  assert.equal(swept.status, "underpaid", "a swept address must stay underpaid");
+  assert.equal(swept.receivedUnits, toUnits("1", 18).toString(), "the high-water mark survives the sweep");
+  assert.ok(!DELETABLE_STATES.has(swept.status));
+});
+
+test("a balance that falls before the deadline never erases recorded progress", () => {
+  const inv = invoice({ expiresAt: 9_999_999 });
+  const partial = evaluateInvoice(inv, toUnits("3", 18), 1_000);
+  assert.equal(partial.receivedUnits, toUnits("3", 18).toString());
+
+  const dropped = evaluateInvoice(partial, toUnits("1", 18), 1_001);
+  assert.equal(dropped.status, "watching");
+  assert.equal(dropped.receivedUnits, toUnits("3", 18).toString(), "the high-water mark holds");
+  // And an unchanged high-water mark must not rewrite the row every poll.
+  assert.equal(evaluateInvoice(dropped, toUnits("1", 18), 1_002), dropped);
+});
+
+test("an underpaid row at an unchanged level is not rewritten every poll", () => {
+  const inv = invoice({ expiresAt: 1_000 });
+  const under = evaluateInvoice(inv, toUnits("2", 18), 9_999);
+  const again = evaluateInvoice(under, toUnits("2", 18), 10_000);
+  assert.equal(again, under, "same object: nothing changed, so nothing is persisted");
+  // expiredAt must be the moment it expired, not the moment of the last poll.
+  assert.equal(under.expiredAt, 9_999);
+  assert.equal(evaluateInvoice(under, toUnits("4", 18), 20_000).expiredAt, 9_999);
+});

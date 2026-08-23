@@ -171,6 +171,12 @@ An `overpaidUnits` field appears on any settled invoice that received more than
 it asked for. Nothing is done with it automatically: silently keeping an
 overpayment is how disputes start.
 
+**Do not sweep an address while its invoice is still being watched.**
+Confirmation reads a balance and compares it to a baseline, so it cannot see
+money that has already been moved out. Sweeping early under-credits the payer,
+and the watcher logs a warning when it notices. Sweep after the invoice reaches
+`paid`, `paid_late`, or a resolved `underpaid`.
+
 ### Webhook delivery
 
 Deliveries are queued on the invoice row itself and persisted, so a restart

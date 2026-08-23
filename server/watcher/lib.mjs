@@ -164,29 +164,32 @@ export function evaluateInvoice(invoice, balanceUnits, now = Date.now()) {
 
   // Partial money must be visible while the invoice is still open: the payer
   // may be topping up, and the merchant should see it coming rather than
-  // discover it at expiry.
-  const seen = invoice.receivedUnits ?? "0";
-  const progressed = received > 0n && received.toString() !== seen;
+  // discover it at expiry. Track the HIGH-WATER MARK, not the current delta.
+  // The balance falls again when the merchant sweeps the address, and reading
+  // the current delta then said "nothing was ever received": the row flipped
+  // from underpaid to expired, which is deletable, which releases the address
+  // for reuse. A payer's money having arrived is not undone by moving it.
+  const seenBefore = BigInt(invoice.receivedUnits ?? "0");
+  const highWater = received > seenBefore ? received : seenBefore;
 
   if (overdue) {
-    return received > 0n
-      ? {
-          ...invoice,
-          // Money is at this address. "expired" would invite deleting the row,
-          // and the address with it.
-          status: "underpaid",
-          expiredAt: invoice.expiredAt ?? now,
-          balanceUnits: balanceUnits.toString(),
-          receivedUnits: received.toString(),
-          shortfallUnits: (target - received).toString(),
-        }
-      : invoice.status === "expired"
-        ? invoice
-        : { ...invoice, status: "expired", expiredAt: now };
+    if (highWater > 0n) {
+      // Already recorded at this level: nothing changed, so do not rewrite it.
+      if (invoice.status === "underpaid" && highWater === seenBefore) return invoice;
+      return {
+        ...invoice,
+        status: "underpaid",
+        expiredAt: invoice.expiredAt ?? now,
+        balanceUnits: balanceUnits.toString(),
+        receivedUnits: highWater.toString(),
+        shortfallUnits: (target - highWater).toString(),
+      };
+    }
+    return invoice.status === "expired" ? invoice : { ...invoice, status: "expired", expiredAt: now };
   }
 
-  if (progressed) {
-    return { ...invoice, balanceUnits: balanceUnits.toString(), receivedUnits: received.toString() };
+  if (highWater !== seenBefore) {
+    return { ...invoice, balanceUnits: balanceUnits.toString(), receivedUnits: highWater.toString() };
   }
   return invoice;
 }

@@ -125,6 +125,13 @@ async function pollOnce() {
       } else if (next.receivedUnits !== inv.receivedUnits) {
         log(`${id} partial: ${next.receivedUnits} / ${toUnits(inv.amount, inv.decimals)} units`);
       }
+      // Delta accounting reads a balance, so it cannot see money that has
+      // already been moved out. A merchant sweeping an address before its
+      // invoice settles will under-credit the payer, and silence about it is
+      // how that becomes an argument.
+      if (balance < BigInt(inv.baselineUnits) + BigInt(next.receivedUnits ?? "0")) {
+        log(`${id} WARNING: balance is below what this invoice recorded; do not sweep an address still being watched`);
+      }
     } catch (err) {
       // RPC refusal is not a chain answer: keep watching, never mark unpaid.
       log(`${id} poll error: ${err.message}`);

@@ -138,8 +138,12 @@
       url: `${BASE}/dashboard/index.html`,
       async ready(doc) {
         const make = await until(doc, "#f-create");
-        make?.setAttribute("data-audit-primary", "");
-        await settle(600);
+        if (!make) throw new Error("the dashboard never rendered its create button");
+        make.setAttribute("data-audit-primary", "");
+        // Wait for a ROW, not a fixed delay. A flat 600ms was enough on a remote
+        // host and not on a fast local one, so the table was empty exactly where
+        // the check ran quickest, and a 13px link in it went unseen.
+        if (!(await until(doc, "#rows tr a"))) throw new Error("the invoice table never filled");
       },
       opts: { primary: "[data-audit-primary]" },
     },

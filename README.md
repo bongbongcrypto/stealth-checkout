@@ -70,6 +70,18 @@ npm run dev              # demos at http://127.0.0.1:4173
 WATCHER_TOKEN=dev node server/watcher/watcher.mjs
 ```
 
+Two checks run in a browser rather than in Node, because what they measure only
+exists once something has been drawn:
+
+- `packages/strk20-pay/test/layout-check.html` loads all seven screens at a
+  laptop size and a phone size and measures each one. It exists because the pay
+  button on the arcade demo sat 699px below the fold on a laptop and 1298 on a
+  phone, and three rounds of clicking through the flow never noticed: whoever
+  clicks already knows where the button is.
+- `packages/strk20-pay/test/qr-scan.html` renders every QR through the browser
+  and reads the pixels back, which is the only way to catch a wrong viewBox, a
+  missing quiet zone, or an inverted palette.
+
 `npm run e2e:watcher` runs against mainnet without spending anything. It proves the watcher reads a real balance over public RPC, captures a baseline, and **refuses to confirm an address that merely holds funds**, then sends one signed webhook and checks the signature verifies, that a replayed timestamp does not, and that the delivery was recorded on the invoice row.
 
 It deliberately does not prove a real payment was detected: that needs someone to actually pay, and this script will not do that with your money. It also does not restart the process, so it does not prove the delivery queue survives one; the unit suite covers that.

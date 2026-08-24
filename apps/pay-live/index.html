@@ -8,20 +8,28 @@
     :root { --bg:#07080c; --panel:#111318; --line:#2a2e37; --fg:#e8eaf0; --muted:#9aa1ad; --green:#7ee787; }
     * { box-sizing: border-box; }
     body { margin:0; min-height:100vh; background:var(--bg); color:var(--fg);
-      font:14px/1.5 system-ui,sans-serif; display:flex; justify-content:center; padding:32px 16px; }
+      font:14px/1.5 system-ui,sans-serif; display:flex; justify-content:center; padding:24px 16px; }
     #app { width:100%; max-width:420px; }
-    h1 { font-size:20px; margin:0 0 4px; }
+    h1 { font-size:26px; margin:0 0 6px; line-height:1.2; }
     .muted { color:var(--muted); font-size:13px; }
     .small { font-size:11.5px; margin-top:14px; }
     a { color:var(--green); }
     label { display:block; margin-top:12px; font-size:12.5px; color:var(--muted); }
-    input { width:100%; margin-top:4px; padding:9px 10px; border:1px solid var(--line);
-      border-radius:8px; background:var(--panel); color:var(--fg); font-size:14px; }
-    button { margin-top:14px; padding:10px 16px; border:0; border-radius:8px; cursor:pointer;
-      background:var(--green); color:#08110a; font-weight:700; }
+    /* 44px on anything a finger aims at. The select was arriving unstyled at
+       19px tall, which is half the minimum. */
+    input, select { width:100%; margin-top:4px; padding:11px 10px; min-height:44px;
+      border:1px solid var(--line); border-radius:8px; background:var(--panel);
+      color:var(--fg); font-size:14px; font-family:inherit; }
+    select { appearance:none; cursor:pointer;
+      background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),
+        linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+      background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;
+      background-size:5px 5px,5px 5px; background-repeat:no-repeat; padding-right:34px; }
+    button { margin-top:14px; padding:12px 18px; min-height:44px; border:0; border-radius:8px;
+      cursor:pointer; background:var(--green); color:#08110a; font-weight:700; font-size:14px; }
     .out { margin-top:14px; padding:12px; border:1px solid var(--line); border-radius:8px;
       word-break:break-all; font-size:12.5px; display:flex; flex-direction:column; gap:8px; }
-    .out button { margin:0; align-self:flex-start; padding:6px 12px; }
+    .out button { margin:0; align-self:flex-start; padding:10px 14px; min-height:44px; }
     #checkout { margin-top:16px; }
     .check { margin-top:14px; padding:10px 12px; border:1px solid var(--line); border-radius:8px;
       font-size:12.5px; color:var(--muted); }
@@ -35,6 +43,14 @@
     .qr img { display:block; width:220px; max-width:100%; height:auto; image-rendering:pixelated; }
     .qr .cap { color:#333; font-size:11px; text-align:center; max-width:220px; overflow-wrap:anywhere; }
     .row { display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; }
+    /* A disclosure control is something a finger aims at. */
+    .hop-summary { min-height:44px; display:flex; align-items:center; cursor:pointer; }
+    /* A phone has less height to spend, and 32px of it at the top was the
+       last thing keeping the pay button off the first screen. */
+    @media (max-width: 480px) {
+      body { padding:16px 12px; }
+      h1 { font-size:23px; }
+    }
     #print-area { display:none; }
     @media print {
       body > * { display:none !important; }

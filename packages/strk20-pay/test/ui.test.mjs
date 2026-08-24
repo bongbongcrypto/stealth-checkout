@@ -67,15 +67,24 @@ test("the payer is shown the total, the fee, and the destination before signing"
 
   const rows = confirmRows(host);
   assert.equal(rows["Merchant receives"], "10 STRK");
-  // Before connecting the widget does not KNOW which case applies, so it must
-  // quote both rather than pick one. Picking the worst case and stating it as
-  // the total overstated a 1 STRK arcade coin by 86% on the first screen
-  // anyone sees; picking the best case understated it by the same trick in the
-  // other direction.
   assert.equal(rows["Pool fee"], "6 STRK per operation");
-  assert.equal(rows["You pay"], "16 STRK, or 22 with nothing shielded yet");
   assert.equal(rows["Network"], "Starknet sepolia");
   assert.match(rows["To"], /^0x0abc00/);
+
+  // The total has its own block, set large. As a 12px row in this table it was
+  // the same size as its own label, which is no way to show the number someone
+  // is agreeing to, and unreadable once a screen recording has been compressed.
+  const total = host.find("spay-total");
+  assert.equal(total.find("spay-total-value").textContent, "16 STRK");
+
+  // Before connecting, the widget does not KNOW which case applies. Stating the
+  // worst case as the total overstated a 1 STRK arcade coin by 86% on the first
+  // screen anyone sees, and the best case understates it the same way. So the
+  // figure is the funded one and the other is named underneath, rather than one
+  // sentence carrying two prices.
+  const note = total.find("spay-total-note");
+  assert.equal(note.hidden, false);
+  assert.match(note.textContent, /22 STRK if nothing is shielded yet/);
 });
 
 test("a fee larger than the invoice is called out, not buried", async () => {
@@ -97,7 +106,14 @@ test("a payer who already holds shielded funds is quoted one fee, not two", asyn
 
   const rows = confirmRows(host);
   assert.equal(rows["Pool fee"], "6 STRK");
-  assert.equal(rows["You pay"], "16 STRK", "10 to the merchant, 6 to the pool, no deposit leg");
+  const total = host.find("spay-total");
+  assert.equal(
+    total.find("spay-total-value").textContent,
+    "16 STRK",
+    "10 to the merchant, 6 to the pool, no deposit leg",
+  );
+  // Nothing to warn about: they hold the funds, so there is no second fee.
+  assert.equal(total.find("spay-total-note").hidden, true);
 });
 
 test("a fee smaller than the invoice does not nag", async () => {
@@ -107,7 +123,7 @@ test("a fee smaller than the invoice does not nag", async () => {
   assert.equal(host.find("spay-fee-warn").hidden, true);
 });
 
-test("the honesty panel sits above the button and starts open", async () => {
+test("what the payment reveals is stated before the button, and in full after it", async () => {
   const wallet = new MockWallet({ funded: { STRK: "100" }, latency: 0 });
   mountCheckout(host, { invoice: invoice(), wallet, store: freshStore() });
   await settle();
@@ -117,15 +133,33 @@ test("the honesty panel sits above the button and starts open", async () => {
   assert.deepEqual(order, [
     "spay-amount",
     "spay-confirm",
+    "spay-total",
     "spay-fee-warn",
-    "spay-honesty",
+    "spay-honesty-summary",
     "spay-btn",
     "spay-btn spay-btn-danger",
     "spay-status",
+    "spay-honesty",
     "spay-receipt",
   ]);
-  // A disclosure collapsed under the call to action is not a disclosure.
+
+  // A disclosure collapsed under the call to action is not a disclosure, so the
+  // short version is above the button. The full list used to be there too, all
+  // 985px of it, and a layout audit then found the button 699px below the fold
+  // on a laptop and 1298 on a phone. Both halves of that matter, so both are
+  // asserted here rather than left to whichever one someone edits next.
+  const at = (name) => order.indexOf(name);
+  assert.ok(at("spay-honesty-summary") < at("spay-btn"), "the summary must precede the button");
+  assert.ok(at("spay-total") < at("spay-btn"), "and so must the price");
+  assert.ok(at("spay-honesty") > at("spay-btn"), "the full list belongs after it");
+
+  const summary = root.find("spay-honesty-summary");
+  assert.match(summary.textContent, /PUBLIC/, "the summary must name what is exposed");
+  assert.match(summary.textContent, /HIDDEN/, "and what is not");
+
+  // Still open. Nothing here is behind a click.
   assert.equal(root.find("spay-honesty").open, true);
+
   // And the pay-anyway escape must stay hidden until a payment is actually
   // pending: offered up front it is just a way to pay twice.
   assert.equal(root.findAll("spay-btn-danger")[0].hidden, true);

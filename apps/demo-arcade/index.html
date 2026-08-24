@@ -15,14 +15,17 @@
       font: 14px/1.5 system-ui, sans-serif;
       display: flex; align-items: center; justify-content: center; padding: 24px;
     }
-    .wrap { display: flex; gap: 28px; flex-wrap: wrap; justify-content: center; max-width: 980px; }
+    /* 600 canvas + 28 gap + 360 checkout is 988, so this has to clear it or the
+       two columns wrap and the checkout drops below the game. */
+    .wrap { display: flex; gap: 28px; flex-wrap: wrap; justify-content: center; max-width: 1040px; }
     .cabinet {
       background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
       padding: 18px; box-shadow: 0 0 60px rgba(178, 141, 255, 0.08);
       max-width: 100%; min-width: 0;
     }
     h1.marquee {
-      text-align: center; font-family: monospace; font-weight: 700; font-size: 20px;
+      text-align: center; font-family: monospace; font-weight: 700; font-size: 30px;
+      letter-spacing: 3px;
       color: var(--purple); text-shadow: 0 0 18px rgba(178, 141, 255, 0.7);
       letter-spacing: 3px; margin: 0 0 12px;
     }
@@ -53,6 +56,7 @@
     .deck button {
       flex: 1; padding: 10px 8px; border: 1px solid var(--line); border-radius: 8px;
       background: #191c23; color: var(--fg); font-weight: 700; cursor: pointer; font-size: 13px;
+      min-height: 44px;
     }
     .deck button:hover:not(:disabled) { border-color: var(--green); }
     .deck button:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -80,7 +84,7 @@
   <div class="wrap">
     <div class="cabinet">
       <h1 class="marquee">STEALTH ARCADE</h1>
-      <canvas id="screen" width="440" height="330" tabindex="0"
+      <canvas id="screen" width="600" height="450" tabindex="0"
         aria-label="Shadow Run: a canvas game. Use the arrow keys or W A S D to move."></canvas>
       <p class="controls">
         <kbd>&larr;</kbd><kbd>&rarr;</kbd> or <kbd>A</kbd><kbd>D</kbd> to move &middot;

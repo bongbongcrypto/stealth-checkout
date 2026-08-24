@@ -571,8 +571,11 @@ async function renderPayer(
   app.replaceChildren();
   const title = document.createElement("h1");
   title.textContent = `Invoice ${invoice.id}`;
+  // No memo line here: the widget prints it directly under the amount, and the
+  // two sat one above the other saying the same thing.
   const memo = document.createElement("p");
   memo.className = "muted";
+  memo.hidden = Boolean(invoice.memo);
   memo.textContent = invoice.memo ?? "Private payment on Starknet mainnet";
   const check = document.createElement("div");
   check.id = "wallet-check";
@@ -593,8 +596,7 @@ async function renderPayer(
     source.classList.add("bad");
     source.textContent =
       "The amount and the destination above come from this link, and nothing here has checked them. " +
-      "Confirm both with the merchant through a channel you already trust before paying. " +
-      "This page can show you that the money arrived; its receipt is not proof of payment to anyone else.";
+      "Confirm both with the merchant through a channel you already trust before paying.";
     if (foreignWatcher) {
       // Named and neutralised, rather than silently dropped: a payer who was
       // told to expect a watcher deserves to know it was ignored.
@@ -608,7 +610,8 @@ async function renderPayer(
   foot.className = "muted small";
   foot.textContent = authority
     ? "Settlement is confirmed by the merchant's watcher, cross-checked here against public RPC. Payer identity is severed by the STRK20 pool. "
-    : "Confirmation runs in this page over public RPC (balance delta on the invoice address). Payer identity is severed by the STRK20 pool. ";
+    : "Confirmation runs in this page over public RPC (balance delta on the invoice address). Payer identity is severed by the STRK20 pool. " +
+      "This page can show you that the money arrived; its receipt is not proof of payment to anyone else. ";
   // Built from the network this page is actually on, not hardcoded to mainnet
   // Voyager. Note that a counterfactual (undeployed) receive address, which is
   // the recommended setup, has no contract page: the link is to look up
@@ -626,7 +629,7 @@ async function renderPayer(
   const hop = document.createElement("details");
   const hopTitle = document.createElement("summary");
   hopTitle.textContent = "Pay from your phone instead";
-  hopTitle.className = "muted";
+  hopTitle.className = "muted hop-summary";
   const hopBody = document.createElement("div");
   hopBody.style.marginTop = "10px";
   hopBody.append(qrCard(location.href, "This same invoice, on your phone"));

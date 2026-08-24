@@ -62,6 +62,13 @@ class El {
 
   append(...nodes) {
     for (const n of nodes) {
+      // A DocumentFragment empties into its new parent rather than nesting, and
+      // a double that nested it instead would let a widget pass here and render
+      // one level too deep in a browser.
+      if (n instanceof Fragment) {
+        this.append(...n.children.splice(0));
+        continue;
+      }
       if (n && typeof n === "object") n.parentNode = this;
       this.children.push(n);
     }
@@ -148,11 +155,29 @@ class El {
   }
 }
 
+/** What `document.createDocumentFragment()` returns: a bag that unpacks on append. */
+class Fragment {
+  constructor() {
+    this.children = [];
+    this.tag = "#fragment";
+  }
+  append(...nodes) {
+    for (const n of nodes) {
+      if (n instanceof Fragment) this.append(...n.children.splice(0));
+      else this.children.push(n);
+    }
+  }
+  get textContent() {
+    return this.children.map((c) => (typeof c === "string" ? c : c.textContent)).join("");
+  }
+}
+
 /** Install a fake `document` globally and return the host to mount into. */
 export function installDom() {
   const head = new El("head");
   globalThis.document = {
     createElement: (tag) => new El(tag),
+    createDocumentFragment: () => new Fragment(),
     getElementById: () => null,
     head,
   };

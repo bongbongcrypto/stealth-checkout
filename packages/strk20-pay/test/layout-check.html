@@ -1,0 +1,220 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Layout check</title>
+<!--
+  Every screen this project ships, at a laptop size and a phone size, measured
+  by test/layout-audit.mjs.
+
+  It exists because the pay button on the arcade demo sat 699px below the fold
+  on a laptop and 1298 on a phone, and clicking through the flow by hand never
+  caught it three audits running. Whoever clicks already knows where the button
+  is; a measurement does not.
+
+      npm run dev
+      http://127.0.0.1:4173/packages/strk20-pay/test/layout-check.html
+
+  Each screen loads in an iframe sized to the viewport under test, so the media
+  queries and the wrapping are the real ones.
+-->
+<style>
+  body { font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 1.5rem; background: #fff; color: #111; }
+  h1 { font-size: 18px; margin: 0 0 .3rem; }
+  #verdict { font-size: 1rem; font-weight: 700; padding: .7rem 1rem; border-radius: .5rem; margin: .8rem 0; }
+  .pass { background: #dcfce7; color: #14532d; }
+  .fail { background: #fee2e2; color: #7f1d1d; }
+  .run { background: #fef9c3; color: #713f12; }
+  table { border-collapse: collapse; width: 100%; margin-top: .6rem; }
+  th, td { text-align: left; padding: .35rem .5rem; border-bottom: 1px solid #e5e5e5; vertical-align: top; }
+  th { background: #f6f6f6; font-weight: 700; }
+  td.ok { color: #14532d; font-weight: 700; }
+  td.bad { color: #7f1d1d; font-weight: 700; }
+  ul { margin: .2rem 0 0; padding-left: 1.1rem; }
+  #stage { position: fixed; left: -4000px; top: 0; }
+  iframe { border: 0; }
+</style>
+
+<h1>Layout check</h1>
+<div id="verdict" class="run">measuring…</div>
+<table id="results">
+  <thead><tr><th>Screen</th><th>Viewport</th><th>Result</th><th>What is wrong</th></tr></thead>
+  <tbody></tbody>
+</table>
+<div id="stage"></div>
+
+<script type="module">
+  const BASE = "/apps";
+
+  /** Wait until a selector appears, or give up. */
+  const until = async (doc, selector, ms = 6000) => {
+    const stop = Date.now() + ms;
+    while (Date.now() < stop) {
+      const el = doc.querySelector(selector);
+      if (el) return el;
+      await new Promise((r) => setTimeout(r, 60));
+    }
+    return null;
+  };
+  const settle = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  /**
+   * Every screen, with whatever has to happen before the thing being measured
+   * is on the page. `primary` names the action that screen exists for.
+   */
+  const SCREENS = [
+    {
+      name: "landing",
+      url: "/index.html",
+      async ready(doc) {
+        const card = await until(doc, "a.card");
+        card?.setAttribute("data-audit-primary", "");
+      },
+      opts: { primary: "[data-audit-primary]" },
+    },
+    {
+      name: "arcade, coin inserted",
+      url: `${BASE}/demo-arcade/index.html`,
+      async ready(doc) {
+        await until(doc, "#coin");
+        await settle(700);
+        doc.getElementById("coin").click();
+        await settle(1400);
+        const btn = [...doc.querySelectorAll("#checkout button")].find((b) => !b.hidden);
+        btn?.setAttribute("data-audit-primary", "");
+      },
+      opts: { primary: "[data-audit-primary]", price: "[data-total]", checkout: "#checkout" },
+    },
+    {
+      name: "link creator",
+      url: `${BASE}/pay-live/index.html`,
+      async ready(doc) {
+        const make = await until(doc, "#f-make");
+        make?.setAttribute("data-audit-primary", "");
+      },
+      opts: { primary: "[data-audit-primary]" },
+    },
+    {
+      name: "link creator, counter code made",
+      url: `${BASE}/pay-live/index.html`,
+      async ready(doc) {
+        await until(doc, "#f-make");
+        doc.getElementById("f-to").value = "0x04ea15bf342c3f4b8b9c2d1e0f5a6b7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6";
+        const kind = doc.getElementById("f-kind");
+        kind.value = "static";
+        kind.dispatchEvent(new doc.defaultView.Event("change"));
+        doc.getElementById("f-make").click();
+        await settle(400);
+        doc.getElementById("f-make").setAttribute("data-audit-primary", "");
+      },
+      opts: { primary: "[data-audit-primary]" },
+    },
+    {
+      name: "counter code, payer names the amount",
+      url: `${BASE}/pay-live/index.html?to=0x04ea15bf342c3f4b8b9c2d1e0f5a6b7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6&memo=Corner+cafe`,
+      async ready(doc) {
+        const btn = await until(doc, "#c-amount");
+        btn?.parentElement?.parentElement?.querySelector("button")?.setAttribute("data-audit-primary", "");
+      },
+      opts: { primary: "[data-audit-primary]" },
+    },
+    {
+      name: "payer view",
+      url: `${BASE}/pay-live/index.html?to=0x04ea15bf342c3f4b8b9c2d1e0f5a6b7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6&amount=3.25&memo=Corner+cafe`,
+      async ready(doc) {
+        await until(doc, "#checkout button", 8000);
+        await settle(1200);
+        const btn = [...doc.querySelectorAll("#checkout button")].find((b) => !b.hidden);
+        btn?.setAttribute("data-audit-primary", "");
+      },
+      opts: { primary: "[data-audit-primary]", price: "[data-total]", checkout: "#checkout" },
+    },
+    {
+      name: "merchant dashboard",
+      url: `${BASE}/dashboard/index.html`,
+      async ready(doc) {
+        const make = await until(doc, "#f-create");
+        make?.setAttribute("data-audit-primary", "");
+        await settle(600);
+      },
+      opts: { primary: "[data-audit-primary]" },
+    },
+  ];
+
+  const VIEWPORTS = [
+    { label: "1280x800 laptop", w: 1280, h: 800 },
+    { label: "375x812 phone", w: 375, h: 812 },
+  ];
+
+  const stage = document.getElementById("stage");
+  const tbody = document.querySelector("#results tbody");
+  let failures = 0;
+  let checks = 0;
+
+  for (const screen of SCREENS) {
+    for (const vp of VIEWPORTS) {
+      const frame = document.createElement("iframe");
+      frame.width = vp.w;
+      frame.height = vp.h;
+      frame.src = screen.url;
+      stage.append(frame);
+      await new Promise((ok) => {
+        frame.onload = ok;
+        frame.onerror = ok;
+      });
+
+      const row = document.createElement("tr");
+      let result;
+      try {
+        const doc = frame.contentDocument;
+        await screen.ready(doc);
+        // The audit runs INSIDE the frame, so innerWidth and innerHeight are the
+        // viewport under test rather than this page's.
+        const mod = await frame.contentWindow.eval(
+          `import("/packages/strk20-pay/test/layout-audit.mjs")`,
+        );
+        result = mod.auditPage(screen.opts);
+      } catch (err) {
+        result = { passed: false, fails: [{ rule: "threw", detail: err.message }], measured: {} };
+      }
+      frame.remove();
+
+      checks++;
+      if (!result.passed) failures++;
+      row.innerHTML = "";
+      const cells = [screen.name, vp.label];
+      for (const text of cells) {
+        const td = document.createElement("td");
+        td.textContent = text;
+        row.append(td);
+      }
+      const verdict = document.createElement("td");
+      verdict.className = result.passed ? "ok" : "bad";
+      verdict.textContent = result.passed ? "PASS" : "FAIL";
+      row.append(verdict);
+
+      const detail = document.createElement("td");
+      if (result.passed) {
+        const p = result.measured.primary;
+        detail.textContent = p ? `"${p.label}" ends ${p.bottom}px down` : "";
+      } else {
+        const ul = document.createElement("ul");
+        for (const f of result.fails) {
+          const li = document.createElement("li");
+          li.textContent = `${f.rule}: ${f.detail}`;
+          ul.append(li);
+        }
+        detail.append(ul);
+      }
+      row.append(detail);
+      tbody.append(row);
+    }
+  }
+
+  const v = document.getElementById("verdict");
+  v.className = failures === 0 ? "pass" : "fail";
+  v.textContent =
+    failures === 0
+      ? `PASS: all ${checks} screen and viewport combinations are clean.`
+      : `FAIL: ${failures} of ${checks} combinations have something wrong.`;
+  document.documentElement.dataset.result = failures === 0 ? "pass" : "fail";
+  document.documentElement.dataset.summary = v.textContent;
+</script>

@@ -32474,11 +32474,17 @@ function mountCheckout(container, opts) {
   const feeCell = document.createElement("span");
   feeCell.textContent = "checking\u2026";
   confirmRow("Pool fee", feeCell);
-  const totalCell = document.createElement("strong");
-  totalCell.textContent = "\u2014";
-  confirmRow("You pay", totalCell);
   if (recipient) confirmRow("To", explorerNode(wallet, "address", recipient));
   confirmRow("Network", invoice.network === "mainnet" ? "Starknet mainnet" : "Starknet sepolia");
+  const totalBox = el("div", "spay-total");
+  const totalLabel = el("span", "spay-total-label");
+  totalLabel.textContent = "You pay";
+  const totalCell = el("strong", "spay-total-value");
+  totalCell.setAttribute("data-total", "");
+  totalCell.textContent = "\u2014";
+  const totalNote = el("div", "spay-total-note");
+  totalNote.hidden = true;
+  totalBox.append(totalLabel, totalCell, totalNote);
   const feeWarning = el("div", "spay-fee-warn");
   feeWarning.hidden = true;
   const decimals = (() => {
@@ -32514,10 +32520,17 @@ function mountCheckout(container, opts) {
     const ifDepositing = depositNeededFor(invoice.amount, fee, decimals, held);
     const ifFunded = shieldedNeededFor(invoice.amount, fee, decimals);
     feeCell.textContent = !known ? `${fee} ${invoice.token} per operation` : mustDeposit ? `${fee} ${invoice.token} \xD7 2 (deposit + payment)` : `${fee} ${invoice.token}`;
-    totalCell.textContent = known ? `${mustDeposit ? ifDepositing : ifFunded} ${invoice.token}` : `${ifFunded} ${invoice.token}, or ${ifDepositing} with nothing shielded yet`;
+    totalCell.textContent = `${known && mustDeposit ? ifDepositing : ifFunded} ${invoice.token}`;
+    if (known) {
+      totalNote.hidden = !mustDeposit;
+      totalNote.textContent = mustDeposit ? `Includes the deposit you still need to make, at ${fee} ${invoice.token} of fee each way.` : "";
+    } else {
+      totalNote.hidden = false;
+      totalNote.textContent = `${ifDepositing} ${invoice.token} if nothing is shielded yet.`;
+    }
     if (compareAmounts(fee, invoice.amount, decimals) > 0) {
       feeWarning.hidden = false;
-      feeWarning.textContent = `Heads up: the pool's flat fee of ${fee} ${invoice.token} is larger than this invoice. The pool charges it per operation whatever the amount, and takes it out of a deposit as well as off a payment, so shielding once for several purchases costs far less than shielding per purchase.`;
+      feeWarning.textContent = `A flat ${fee} ${invoice.token} fee, larger than this invoice, is charged on every operation. Shield once, not per purchase.`;
     } else {
       feeWarning.hidden = true;
     }
@@ -32536,7 +32549,18 @@ function mountCheckout(container, opts) {
   const honesty = buildHonestyPanel();
   const receiptBox = el("div", "spay-receipt");
   receiptBox.hidden = true;
-  root.append(amountLine, confirmBox, feeWarning, honesty.root, button, payAnywayButton, status, receiptBox);
+  root.append(
+    amountLine,
+    confirmBox,
+    totalBox,
+    feeWarning,
+    honesty.summaryBox,
+    button,
+    payAnywayButton,
+    status,
+    honesty.root,
+    receiptBox
+  );
   container.append(root);
   void checkout.preview(invoice).then((rows) => honesty.render(rows));
   const off = checkout.on((event) => {
@@ -32612,12 +32636,24 @@ function buildHonestyPanel() {
   root.className = "spay-honesty";
   root.open = true;
   const summary = document.createElement("summary");
-  summary.textContent = "What will this payment reveal?";
+  summary.textContent = "Every row, in full";
   const list = el("div", "spay-honesty-list");
   root.append(summary, list);
+  const summaryBox = el("div", "spay-honesty-summary");
+  const heading = el("div", "spay-honesty-summary-head");
+  heading.textContent = "What this payment reveals";
+  const shown = el("div", "spay-honesty-summary-row");
+  const hidden = el("div", "spay-honesty-summary-row");
+  summaryBox.append(heading, shown, hidden);
   return {
     root,
+    summaryBox,
     render(rows) {
+      const publics = rows.filter((r) => r.visibility === "public").map((r) => r.fact);
+      const hiddens = rows.filter((r) => r.visibility !== "public").map((r) => r.fact);
+      shown.replaceChildren(badgeLine("public", publics));
+      hidden.replaceChildren(badgeLine("hidden", hiddens));
+      heading.textContent = `What this payment reveals (all ${rows.length} below)`;
       list.replaceChildren(
         ...rows.map((row) => {
           const item = el("div", "spay-honesty-row");
@@ -32635,6 +32671,18 @@ function buildHonestyPanel() {
       );
     }
   };
+}
+var SUMMARY_FACTS = 2;
+function badgeLine(kind, facts) {
+  const frag = document.createDocumentFragment();
+  const badge = el("span", `spay-badge spay-badge-${kind}`);
+  badge.textContent = kind.toUpperCase();
+  const text = el("span", "spay-honesty-summary-text");
+  const named = facts.slice(0, SUMMARY_FACTS);
+  const rest = facts.length - named.length;
+  text.textContent = facts.length === 0 ? "nothing on this side" : rest > 0 ? `${named.join(", ")}, and ${rest} more` : named.join(", ");
+  frag.append(badge, text);
+  return frag;
 }
 function el(tag, className) {
   const node = document.createElement(tag);
@@ -32692,7 +32740,7 @@ function injectStylesOnce() {
 .spay-status-popup::before{content:"\u2197 ";font-weight:700}
 .spay-status-error{color:var(--spay-danger)}
 .spay-honesty{margin-top:10px;border-top:1px solid #2a2e37;padding-top:8px;font-size:12.5px}
-.spay-honesty summary{cursor:pointer;color:var(--spay-fg);font-weight:600;font-size:13px;padding:8px 0}
+.spay-honesty summary{cursor:pointer;color:var(--spay-fg);font-weight:600;font-size:13px;padding:12px 0;min-height:44px;display:flex;align-items:center}
 .spay-honesty-row{display:flex;gap:8px;margin-top:8px}
 .spay-badge{flex:0 0 auto;height:fit-content;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700}
 .spay-badge-public{background:#332f1c;color:#f0c674}
@@ -32707,6 +32755,19 @@ function injectStylesOnce() {
   font-size:12px;display:grid;grid-template-columns:auto 1fr;gap:4px 12px}
 .spay-confirm dt{color:var(--spay-muted)}
 .spay-confirm dd{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}
+.spay-total{margin-top:10px;padding:12px 14px;background:#0d0f14;border:1px solid var(--spay-accent);
+  border-radius:8px;display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
+.spay-total-label{font-size:12px;color:var(--spay-muted);text-transform:uppercase;letter-spacing:.08em}
+.spay-total-value{font-size:26px;font-weight:800;line-height:1.15;color:var(--spay-fg);
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}
+.spay-total-note{flex-basis:100%;font-size:12px;line-height:1.5;color:var(--spay-muted)}
+.spay-honesty-summary{margin-top:10px;padding:10px 12px;border:1px solid #2a2e37;border-radius:8px;
+  background:#0d0f14;display:flex;flex-direction:column;gap:6px}
+.spay-honesty-summary-head{font-size:12px;font-weight:700;color:var(--spay-fg)}
+.spay-honesty-summary-row{display:flex;gap:8px;align-items:flex-start}
+.spay-honesty-summary-text{font-size:12px;line-height:1.5;color:var(--spay-muted)}
+/* An explorer link is a target, and 12px of line box is not one. */
+.spay-confirm dd a,.spay-receipt-row a{display:inline-block;min-height:24px;line-height:24px}
 .spay-fee-warn{margin-top:8px;padding:8px 10px;border-radius:8px;font-size:12px;line-height:1.5;
   background:#332f1c;color:#f0c674;border:1px solid #5a5230}
 .spay-btn:focus-visible{outline:3px solid #e8eaf0;outline-offset:2px}
@@ -33450,6 +33511,7 @@ async function renderPayer(invoice, authority, foreignWatcher = null) {
   title.textContent = `Invoice ${invoice.id}`;
   const memo = document.createElement("p");
   memo.className = "muted";
+  memo.hidden = Boolean(invoice.memo);
   memo.textContent = invoice.memo ?? "Private payment on Starknet mainnet";
   const check = document.createElement("div");
   check.id = "wallet-check";
@@ -33466,14 +33528,14 @@ async function renderPayer(invoice, authority, foreignWatcher = null) {
     }
   } else {
     source.classList.add("bad");
-    source.textContent = "The amount and the destination above come from this link, and nothing here has checked them. Confirm both with the merchant through a channel you already trust before paying. This page can show you that the money arrived; its receipt is not proof of payment to anyone else.";
+    source.textContent = "The amount and the destination above come from this link, and nothing here has checked them. Confirm both with the merchant through a channel you already trust before paying.";
     if (foreignWatcher) {
       source.textContent += ` This link asked to be verified by ${foreignWatcher}, which is not the server hosting this page. That request was ignored: a link cannot nominate its own auditor.`;
     }
   }
   const foot = document.createElement("p");
   foot.className = "muted small";
-  foot.textContent = authority ? "Settlement is confirmed by the merchant's watcher, cross-checked here against public RPC. Payer identity is severed by the STRK20 pool. " : "Confirmation runs in this page over public RPC (balance delta on the invoice address). Payer identity is severed by the STRK20 pool. ";
+  foot.textContent = authority ? "Settlement is confirmed by the merchant's watcher, cross-checked here against public RPC. Payer identity is severed by the STRK20 pool. " : "Confirmation runs in this page over public RPC (balance delta on the invoice address). Payer identity is severed by the STRK20 pool. This page can show you that the money arrived; its receipt is not proof of payment to anyone else. ";
   const explorer = EXPLORER_BASE[invoice.network];
   const link = document.createElement("a");
   link.href = `${explorer}/contract/${encodeURIComponent(invoice.receiveAddress)}`;
@@ -33484,7 +33546,7 @@ async function renderPayer(invoice, authority, foreignWatcher = null) {
   const hop = document.createElement("details");
   const hopTitle = document.createElement("summary");
   hopTitle.textContent = "Pay from your phone instead";
-  hopTitle.className = "muted";
+  hopTitle.className = "muted hop-summary";
   const hopBody = document.createElement("div");
   hopBody.style.marginTop = "10px";
   hopBody.append(qrCard(location.href, "This same invoice, on your phone"));

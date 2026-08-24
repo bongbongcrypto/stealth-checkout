@@ -139,7 +139,55 @@ practiceBtn.addEventListener("click", () => {
   updateButtons();
 });
 
-coinBtn.addEventListener("click", insertCoin);
+/**
+ * Put the pay button where it can be seen, once the widget has settled.
+ *
+ * Pressing INSERT COIN used to change nothing a visitor could see: the checkout
+ * mounts in the right-hand column, and its button sat below the fold. An audit
+ * measured 699px on a laptop and 1298 on a phone, and clicking through the flow
+ * never caught it, because whoever clicks already knows where the button is.
+ *
+ * The wait matters. The panel fills in asynchronously, so a check on the next
+ * frame measures a box that has not grown yet, decides everything is visible,
+ * and does nothing. This waits for the height to stop moving first.
+ */
+async function revealPayButton() {
+  let previous = -1;
+  for (let i = 0; i < 20; i++) {
+    const height = checkoutHost.getBoundingClientRect().height;
+    if (height === previous && height > 0) break;
+    previous = height;
+    // A timer rather than requestAnimationFrame: rAF does not tick in a view
+    // that is not compositing, and this loop then never finishes, which is how
+    // the scroll came to silently do nothing.
+    await new Promise((r) => setTimeout(r, 32));
+  }
+
+  const pay = checkoutHost.querySelector("button");
+  if (!pay) return;
+  const r = pay.getBoundingClientRect();
+  // Only when it is needed. A page that jumps when nothing moved out of view is
+  // its own annoyance, and on a wide screen the button is already there.
+  const margin = 24;
+  if (r.bottom > window.innerHeight - margin || r.top < margin) {
+    // Instant rather than smooth: smooth silently does nothing in some embedded
+    // views, and a scroll that quietly fails is the defect this is here to fix.
+    pay.scrollIntoView({ block: "center" });
+  }
+}
+
+coinBtn.addEventListener("click", () => {
+  insertCoin();
+  // Pressing INSERT COIN used to change nothing a visitor could see: the
+  // checkout mounts in the right-hand column, and on a laptop its pay button
+  // sat below the fold. A layout audit measured 699px on a desktop and 1298 on
+  // a phone. The panel is shorter now, and the page also goes to it, because a
+  // primary action that requires a scroll to discover is not one.
+  //
+  // Only on the click. `insertCoin()` also runs once at load, and a page that
+  // scrolls itself the moment it opens is its own defect.
+  void revealPayButton();
+});
 
 const BOARD_KEY = "shadow-run-board";
 

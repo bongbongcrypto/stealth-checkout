@@ -42,7 +42,11 @@
 <div id="stage"></div>
 
 <script type="module">
-  const BASE = "/apps";
+  // Where this site is rooted, worked out from where this file is. Absolute
+  // paths only work on a dev server: GitHub Pages puts a project site under
+  // /stealth-checkout/, so "/apps/..." there is somebody else's repo entirely.
+  const ROOT = location.pathname.replace(/packages\/strk20-pay\/test\/[^/]*$/, "");
+  const BASE = `${ROOT}apps`;
 
   /** Wait until a selector appears, or give up. */
   const until = async (doc, selector, ms = 6000) => {
@@ -63,7 +67,7 @@
   const SCREENS = [
     {
       name: "landing",
-      url: "/index.html",
+      url: `${ROOT}index.html`,
       async ready(doc) {
         const card = await until(doc, "a.card");
         card?.setAttribute("data-audit-primary", "");
@@ -169,7 +173,7 @@
         // The audit runs INSIDE the frame, so innerWidth and innerHeight are the
         // viewport under test rather than this page's.
         const mod = await frame.contentWindow.eval(
-          `import("/packages/strk20-pay/test/layout-audit.mjs")`,
+          `import("${ROOT}packages/strk20-pay/test/layout-audit.mjs")`,
         );
         result = mod.auditPage(screen.opts);
       } catch (err) {

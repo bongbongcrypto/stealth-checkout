@@ -15,7 +15,17 @@ import { fileURLToPath } from "node:url";
 import { extname, join, normalize, resolve, sep } from "node:path";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const PORT = Number(process.env.DEV_PORT ?? 4173);
+
+// `--port N` as well as DEV_PORT, so two sessions can each run their own copy
+// instead of silently sharing one and reading each other's files.
+const flag = process.argv.indexOf("--port");
+const PORT = Number(
+  (flag !== -1 ? process.argv[flag + 1] : undefined) ?? process.env.DEV_PORT ?? 4173,
+);
+if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
+  console.error(`not a port: ${PORT}`);
+  process.exit(1);
+}
 
 const TYPES = {
   ".html": "text/html; charset=utf-8",

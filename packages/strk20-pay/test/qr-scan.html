@@ -1,0 +1,152 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>QR render check</title>
+<!--
+  The unit tests decode a MATRIX. This page decodes PIXELS, which is a longer
+  and more honest path: matrix, to SVG, through the browser's rasteriser, back
+  out of a canvas, and into the reader. A wrong viewBox, a missing quiet zone, a
+  swapped palette or a fractional scale all survive the matrix tests and die
+  here.
+      npm run dev
+      http://127.0.0.1:4173/packages/strk20-pay/test/qr-scan.html
+  If the browser happens to have BarcodeDetector (Chrome on Android and macOS
+  does; Chrome on Windows does not), the same images also go to that entirely
+  foreign decoder, and the result is reported separately.
+-->
+<style>
+  body { font: 14px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 2rem; max-width: 62rem; }
+  .verdict { font-size: 1.05rem; font-weight: 700; padding: .7rem 1rem; border-radius: .5rem; margin-bottom: .6rem; }
+  .pass { background: #dcfce7; color: #14532d; }
+  .fail { background: #fee2e2; color: #7f1d1d; }
+  .skip { background: #fef9c3; color: #713f12; }
+  pre { white-space: pre-wrap; background: #f6f6f6; padding: 1rem; border-radius: .5rem; }
+  #gallery { display: flex; flex-wrap: wrap; gap: 1.25rem; margin-top: 1.5rem; align-items: flex-start; }
+  #gallery figure { margin: 0; max-width: 13rem; }
+  #gallery figcaption { font-size: 11px; overflow-wrap: anywhere; color: #555; }
+</style>
+
+<h1>QR render check</h1>
+<div id="pixels" class="verdict skip">running…</div>
+<div id="external" class="verdict skip">checking for a third-party decoder…</div>
+<pre id="out"></pre>
+<div id="gallery"></div>
+
+<script type="module">
+  import { encodeQr, qrSvg } from "../dist/qr.js";
+  import { decodeImage } from "./qr-reader.mjs";
+
+  const SAMPLES = [
+    "A",
+    "https://bongbongcrypto.github.io/stealth-checkout/apps/pay-live/index.html?to=0x1&amount=1",
+    "https://bongbongcrypto.github.io/stealth-checkout/apps/pay-live/index.html" +
+      "?to=0x04ea15bf342c3f4b8b9c2d1e0f5a6b7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6" +
+      "&amount=25.5&id=inv_2026_08_24_0007&memo=Order%20%23412%20two%20coffees",
+    "x".repeat(200),
+    "결제 링크: 25 STRK",
+  ];
+  const SCALES = [4, 6, 10];
+
+  const out = document.getElementById("out");
+  const log = (line) => (out.textContent += line + "\n");
+  const say = (id, state, text) => {
+    const el = document.getElementById(id);
+    el.className = `verdict ${state}`;
+    el.textContent = text;
+    document.documentElement.dataset[id] = state;
+    document.documentElement.dataset[id + "Text"] = text;
+  };
+
+  /** The SVG this library emits, drawn by the browser, read back as pixels. */
+  async function rasterise(text, scale) {
+    const svg = qrSvg(encodeQr(text), { scale });
+    const img = new Image();
+    await new Promise((ok, bad) => {
+      img.onload = ok;
+      img.onerror = () => bad(new Error("the SVG did not load as an image"));
+      img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0);
+    const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const isDark = (x, y) => {
+      const i = (y * width + x) * 4;
+      // Luminance, so a light-on-dark mistake reads as a failure rather than
+      // being quietly normalised away.
+      return 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2] < 128;
+    };
+    return { canvas, img, isDark, width, height };
+  }
+
+  let pixelFailures = 0;
+  const drawn = [];
+  for (const text of SAMPLES) {
+    for (const scale of SCALES) {
+      let line;
+      try {
+        const shot = await rasterise(text, scale);
+        drawn.push({ text, scale, shot });
+        const got = decodeImage(shot.isDark, shot.width, shot.height);
+        const ok = got.text === text && got.moduleSize === scale && got.quiet === 4;
+        if (!ok) pixelFailures++;
+        line =
+          `${ok ? "PASS" : "FAIL"}  scale=${String(scale).padStart(2)}  ` +
+          `${String(shot.width).padStart(4)}px  v${String(got.version).padStart(2)}  ` +
+          `module=${got.moduleSize}  quiet=${got.quiet}  ` +
+          `${JSON.stringify(text.slice(0, 40))}${text.length > 40 ? "…" : ""}` +
+          (got.text === text ? "" : `\n      decoded as ${JSON.stringify(got.text.slice(0, 60))}`);
+      } catch (err) {
+        pixelFailures++;
+        line = `FAIL  scale=${scale}  ${JSON.stringify(text.slice(0, 40))}\n      ${err.message}`;
+      }
+      log(line);
+    }
+  }
+  const total = SAMPLES.length * SCALES.length;
+  say(
+    "pixels",
+    pixelFailures === 0 ? "pass" : "fail",
+    pixelFailures === 0
+      ? `PASS: all ${total} rendered images decoded back to their exact input, ` +
+        `with the module size and the 4-module quiet zone intact.`
+      : `FAIL: ${pixelFailures} of ${total} rendered images did not read back.`,
+  );
+
+  // An entirely foreign decoder, where the platform has one.
+  try {
+    if (!("BarcodeDetector" in window)) {
+      say("external", "skip", "NO THIRD-PARTY DECODER: this browser has no BarcodeDetector, so only our own reader ran.");
+    } else {
+      const formats = await BarcodeDetector.getSupportedFormats();
+      if (!formats.includes("qr_code")) {
+        say("external", "skip", `NO THIRD-PARTY DECODER: BarcodeDetector here does ${formats.join(", ") || "nothing"}.`);
+      } else {
+        const detector = new BarcodeDetector({ formats: ["qr_code"] });
+        let bad = 0;
+        for (const { text, shot } of drawn) {
+          const found = await detector.detect(shot.canvas);
+          if (found.length !== 1 || found[0].rawValue !== text) bad++;
+        }
+        say(
+          "external",
+          bad === 0 ? "pass" : "fail",
+          bad === 0
+            ? `PASS: the browser's own BarcodeDetector read all ${drawn.length} images correctly.`
+            : `FAIL: BarcodeDetector missed ${bad} of ${drawn.length}.`,
+        );
+      }
+    }
+  } catch (err) {
+    say("external", "fail", "FAIL: " + (err?.message ?? String(err)));
+  }
+
+  const gallery = document.getElementById("gallery");
+  for (const { text, scale, shot } of drawn) {
+    if (scale !== 10) continue;
+    const fig = document.createElement("figure");
+    fig.append(shot.img, Object.assign(document.createElement("figcaption"), { textContent: text.slice(0, 70) }));
+    gallery.append(fig);
+  }
+</script>

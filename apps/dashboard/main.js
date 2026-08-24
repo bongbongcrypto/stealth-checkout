@@ -2,6 +2,10 @@
 // If the watcher is unreachable (e.g. viewing the static demo on Pages),
 // it falls back to read-only demo data so the flow is still visible.
 
+// The built widget, not the source: this page is a plain module served straight
+// to the browser, with no bundler in front of it.
+import { encodeQr, qrDataUri } from "../../packages/strk20-pay/dist/qr.js";
+
 const rowsEl = document.getElementById("rows");
 const statusEl = document.getElementById("status");
 const demoNote = document.getElementById("demo-note");
@@ -170,6 +174,34 @@ function payLink(inv) {
   return base.toString();
 }
 
+/**
+ * Show one invoice's pay link as a QR, big enough to scan off the screen.
+ *
+ * The point of this on a merchant's screen is the counter case: the customer
+ * is standing there with a phone, and reading a 120-character link aloud is
+ * not a payment flow.
+ */
+function showQr(link, inv) {
+  const dialog = document.getElementById("qr-dialog");
+  const body = document.getElementById("qr-body");
+  body.replaceChildren();
+
+  const card = document.createElement("div");
+  card.className = "qr";
+  const img = document.createElement("img");
+  const label = `Pay invoice ${inv.id}`;
+  img.src = qrDataUri(encodeQr(link), { scale: 8, label });
+  img.alt = label;
+  card.append(img);
+
+  const meta = document.createElement("div");
+  meta.className = "meta";
+  meta.textContent = `${inv.id} · ${inv.amount} ${inv.token ?? "STRK"} · to ${short(inv.receiveAddress)}`;
+
+  body.append(card, meta);
+  dialog.showModal();
+}
+
 function render(invoices, demo) {
   demoNote.hidden = !demo;
   rowsEl.replaceChildren(
@@ -253,7 +285,14 @@ function render(invoices, demo) {
           copy.textContent = "✓";
           setTimeout(() => (copy.textContent = "copy"), 1200);
         });
-        linkTd.append(a, copy);
+        const qr = document.createElement("button");
+        qr.className = "ghost";
+        qr.style.marginLeft = "8px";
+        qr.style.padding = "2px 8px";
+        qr.textContent = "qr";
+        qr.title = "Show this invoice as a QR code for the customer to scan";
+        qr.addEventListener("click", () => showQr(link, inv));
+        linkTd.append(a, copy, qr);
       } else {
         linkTd.textContent = "-";
       }

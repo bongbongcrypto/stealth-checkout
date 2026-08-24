@@ -42,6 +42,14 @@
     .note { margin-top:14px; padding:10px 12px; border:1px dashed var(--line); border-radius:8px;
       color:var(--muted); font-size:12px; }
     a { color:var(--green); }
+    /* A payment QR is always dark-on-light, whatever the surrounding theme. */
+    #qr-dialog { border:1px solid #2a2e37; border-radius:12px; background:#111318; color:#e8eaf0;
+      padding:18px; max-width:340px; }
+    #qr-dialog::backdrop { background:rgba(0,0,0,.6); }
+    #qr-body { display:flex; flex-direction:column; gap:10px; align-items:center; }
+    #qr-body .qr { background:#fff; padding:12px; border-radius:10px; }
+    #qr-body img { display:block; width:240px; max-width:100%; height:auto; image-rendering:pixelated; }
+    #qr-body .meta { font-size:12px; color:#9aa1ad; text-align:center; word-break:break-all; }
   </style>
 </head>
 <body>
@@ -74,6 +82,12 @@
       <code>node server/watcher/watcher.mjs</code> and refresh.
     </div>
   </div>
+  <!-- Shown by the QR button on a row. A dialog rather than a table cell,
+       because a code small enough to sit in a row is a code that will not scan. -->
+  <dialog id="qr-dialog">
+    <div id="qr-body"></div>
+    <form method="dialog"><button class="ghost">Close</button></form>
+  </dialog>
   <script type="module" src="./main.js"></script>
 </body>
 </html>

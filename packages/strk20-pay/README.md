@@ -105,6 +105,7 @@ const receipt = await checkout.pay(invoice);
 | `TOKENS`, `resolveToken`, `amountToUnits`, `unitsToAmount` | Token registry and amount maths |
 | `MATURITY_BLOCKS`, `POOL_ADDRESS`, `EXPLORER_BASE` | Protocol constants |
 | `explainWalletError` | Wallet errors turned into something a payer can act on |
+| `qrCodeSvg`, `qrDataUri`, `encodeQr` | QR codes for payment links, with no dependency |
 
 Full guide: [docs/INTEGRATION.md](https://github.com/bongbongcrypto/stealth-checkout/blob/main/docs/INTEGRATION.md)
 

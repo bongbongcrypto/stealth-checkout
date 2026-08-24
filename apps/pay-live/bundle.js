@@ -32717,6 +32717,382 @@ function injectStylesOnce() {
   document.head.append(style);
 }
 
+// packages/strk20-pay/src/qr.ts
+var MAX_VERSION = 20;
+var TOTAL_CODEWORDS = [
+  26,
+  44,
+  70,
+  100,
+  134,
+  172,
+  196,
+  242,
+  292,
+  346,
+  404,
+  466,
+  532,
+  581,
+  655,
+  733,
+  815,
+  901,
+  991,
+  1085
+];
+var BLOCKS_M = [
+  [10, 1, 16, 0, 0],
+  [16, 1, 28, 0, 0],
+  [26, 1, 44, 0, 0],
+  [18, 2, 32, 0, 0],
+  [24, 2, 43, 0, 0],
+  [16, 4, 27, 0, 0],
+  [18, 4, 31, 0, 0],
+  [22, 2, 38, 2, 39],
+  [22, 3, 36, 2, 37],
+  [26, 4, 43, 1, 44],
+  [30, 1, 50, 4, 51],
+  [22, 6, 36, 2, 37],
+  [22, 8, 37, 1, 38],
+  [24, 4, 40, 5, 41],
+  [24, 5, 41, 5, 42],
+  [28, 7, 45, 3, 46],
+  [28, 10, 46, 1, 47],
+  [26, 9, 43, 4, 44],
+  [26, 3, 44, 11, 45],
+  [26, 3, 41, 13, 42]
+];
+var ALIGNMENT = [
+  [],
+  [6, 18],
+  [6, 22],
+  [6, 26],
+  [6, 30],
+  [6, 34],
+  [6, 22, 38],
+  [6, 24, 42],
+  [6, 26, 46],
+  [6, 28, 50],
+  [6, 30, 54],
+  [6, 32, 58],
+  [6, 34, 62],
+  [6, 26, 46, 66],
+  [6, 26, 48, 70],
+  [6, 26, 50, 74],
+  [6, 30, 54, 78],
+  [6, 30, 56, 82],
+  [6, 30, 58, 86],
+  [6, 34, 62, 90]
+];
+var EXP = new Uint8Array(512);
+var LOG = new Uint8Array(256);
+{
+  let x = 1;
+  for (let i = 0; i < 255; i++) {
+    EXP[i] = x;
+    LOG[x] = i;
+    x <<= 1;
+    if (x & 256) x ^= 285;
+  }
+  for (let i = 255; i < 512; i++) EXP[i] = EXP[i - 255];
+}
+var gfMul = (a, b) => a === 0 || b === 0 ? 0 : EXP[LOG[a] + LOG[b]];
+function rsGenerator(degree) {
+  let poly = new Uint8Array([1]);
+  for (let i = 0; i < degree; i++) {
+    const next = new Uint8Array(poly.length + 1);
+    for (let j = 0; j < poly.length; j++) {
+      const coeff = poly[j];
+      next[j] = next[j] ^ coeff;
+      next[j + 1] = next[j + 1] ^ gfMul(coeff, EXP[i]);
+    }
+    poly = next;
+  }
+  return poly;
+}
+function rsRemainder(data2, degree) {
+  const gen4 = rsGenerator(degree);
+  const out = new Uint8Array(degree);
+  for (const byte of data2) {
+    const factor = byte ^ out[0];
+    out.copyWithin(0, 1);
+    out[degree - 1] = 0;
+    for (let i = 0; i < degree; i++) out[i] = out[i] ^ gfMul(gen4[i + 1], factor);
+  }
+  return out;
+}
+function dataBits(version3) {
+  const [, g1, d1, g2, d2] = BLOCKS_M[version3 - 1];
+  return 8 * (g1 * d1 + g2 * d2);
+}
+var countBits = (version3) => version3 < 10 ? 8 : 16;
+function pickVersion(len) {
+  for (let v = 1; v <= MAX_VERSION; v++) {
+    if (4 + countBits(v) + 8 * len <= dataBits(v)) return v;
+  }
+  return 0;
+}
+function buildDataCodewords(bytes, version3) {
+  const capacity = dataBits(version3);
+  const bits = [];
+  const push = (value, width) => {
+    for (let i = width - 1; i >= 0; i--) bits.push(value >>> i & 1);
+  };
+  push(4, 4);
+  push(bytes.length, countBits(version3));
+  for (const b of bytes) push(b, 8);
+  for (let i = 0; i < 4 && bits.length < capacity; i++) bits.push(0);
+  while (bits.length % 8 !== 0) bits.push(0);
+  const out = new Uint8Array(capacity / 8);
+  for (let i = 0; i < bits.length; i++) out[i >>> 3] = out[i >>> 3] | bits[i] << 7 - (i & 7);
+  for (let i = bits.length / 8; i < out.length; i++) out[i] = i % 2 === 0 ? 236 : 17;
+  return out;
+}
+function interleave(data2, version3) {
+  const [ecLen, g1, d1, g2, d2] = BLOCKS_M[version3 - 1];
+  const blocks = [];
+  let at = 0;
+  for (let i = 0; i < g1 + g2; i++) {
+    const size5 = i < g1 ? d1 : d2;
+    const chunk = data2.subarray(at, at + size5);
+    at += size5;
+    blocks.push({ data: chunk, ec: rsRemainder(chunk, ecLen) });
+  }
+  const out = new Uint8Array(TOTAL_CODEWORDS[version3 - 1]);
+  let n = 0;
+  const longest = Math.max(d1, d2);
+  for (let i = 0; i < longest; i++) {
+    for (const block of blocks) if (i < block.data.length) out[n++] = block.data[i];
+  }
+  for (let i = 0; i < ecLen; i++) {
+    for (const block of blocks) out[n++] = block.ec[i];
+  }
+  return out;
+}
+var MASKS = [
+  (r, c) => (r + c) % 2 === 0,
+  (r) => r % 2 === 0,
+  (_r, c) => c % 3 === 0,
+  (r, c) => (r + c) % 3 === 0,
+  (r, c) => (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0,
+  (r, c) => r * c % 2 + r * c % 3 === 0,
+  (r, c) => (r * c % 2 + r * c % 3) % 2 === 0,
+  (r, c) => ((r + c) % 2 + r * c % 3) % 2 === 0
+];
+var Builder = class {
+  constructor(version3) {
+    this.version = version3;
+    this.size = version3 * 4 + 17;
+    this.modules = Array.from({ length: this.size }, () => new Array(this.size).fill(false));
+    this.fixed = Array.from({ length: this.size }, () => new Array(this.size).fill(false));
+  }
+  size;
+  modules;
+  fixed;
+  /** `noUncheckedIndexedAccess` is on; every read of the grid goes through here. */
+  at(row, col) {
+    return this.modules[row][col];
+  }
+  set(row, col, dark) {
+    this.modules[row][col] = dark;
+    this.fixed[row][col] = true;
+  }
+  drawFunctionPatterns() {
+    const n = this.size;
+    for (let i = 0; i < n; i++) {
+      this.set(6, i, i % 2 === 0);
+      this.set(i, 6, i % 2 === 0);
+    }
+    const finders = [
+      [3, 3],
+      [3, n - 4],
+      [n - 4, 3]
+    ];
+    for (const [r, c] of finders) {
+      for (let dr = -4; dr <= 4; dr++) {
+        for (let dc = -4; dc <= 4; dc++) {
+          const y = r + dr;
+          const x = c + dc;
+          if (y < 0 || y >= n || x < 0 || x >= n) continue;
+          const dist = Math.max(Math.abs(dr), Math.abs(dc));
+          this.set(y, x, dist !== 2 && dist !== 4);
+        }
+      }
+    }
+    const centres = ALIGNMENT[this.version - 1];
+    for (const r of centres) {
+      for (const c of centres) {
+        if (r === 6 && c === 6 || r === 6 && c === n - 7 || r === n - 7 && c === 6) continue;
+        for (let dr = -2; dr <= 2; dr++) {
+          for (let dc = -2; dc <= 2; dc++) {
+            this.set(r + dr, c + dc, Math.max(Math.abs(dr), Math.abs(dc)) !== 1);
+          }
+        }
+      }
+    }
+    this.set(n - 8, 8, true);
+    this.drawFormat(0);
+    if (this.version >= 7) this.drawVersion();
+  }
+  drawFormat(mask) {
+    const data2 = 0 << 3 | mask;
+    let rem = data2;
+    for (let i = 0; i < 10; i++) rem = rem << 1 ^ (rem >>> 9) * 1335;
+    const bits = (data2 << 10 | rem) ^ 21522;
+    const bit = (i) => (bits >>> i & 1) !== 0;
+    const n = this.size;
+    for (let i = 0; i <= 5; i++) this.set(i, 8, bit(i));
+    this.set(7, 8, bit(6));
+    this.set(8, 8, bit(7));
+    this.set(8, 7, bit(8));
+    for (let i = 9; i <= 14; i++) this.set(8, 14 - i, bit(i));
+    for (let i = 0; i <= 7; i++) this.set(8, n - 1 - i, bit(i));
+    for (let i = 8; i <= 14; i++) this.set(n - 15 + i, 8, bit(i));
+  }
+  drawVersion() {
+    let rem = this.version;
+    for (let i = 0; i < 12; i++) rem = rem << 1 ^ (rem >>> 11) * 7973;
+    const bits = this.version << 12 | rem;
+    for (let i = 0; i < 18; i++) {
+      const dark = (bits >>> i & 1) !== 0;
+      const a = this.size - 11 + i % 3;
+      const b = Math.floor(i / 3);
+      this.set(b, a, dark);
+      this.set(a, b, dark);
+    }
+  }
+  /** The two-column zigzag, bottom-right upward, skipping the timing column. */
+  drawCodewords(codewords) {
+    let i = 0;
+    for (let right = this.size - 1; right >= 1; right -= 2) {
+      if (right === 6) right = 5;
+      for (let vert = 0; vert < this.size; vert++) {
+        for (let j = 0; j < 2; j++) {
+          const col = right - j;
+          const upward = (right + 1 & 2) === 0;
+          const row = upward ? this.size - 1 - vert : vert;
+          if (!this.fixed[row][col] && i < codewords.length * 8) {
+            this.modules[row][col] = (codewords[i >>> 3] >>> 7 - (i & 7) & 1) !== 0;
+            i++;
+          }
+        }
+      }
+    }
+  }
+  applyMask(mask) {
+    const fn = MASKS[mask];
+    for (let r = 0; r < this.size; r++) {
+      for (let c = 0; c < this.size; c++) {
+        if (!this.fixed[r][c] && fn(r, c)) this.modules[r][c] = !this.at(r, c);
+      }
+    }
+  }
+  /** The four penalty rules. Lower is better. */
+  penalty() {
+    const n = this.size;
+    let score = 0;
+    for (const byRow of [true, false]) {
+      for (let a = 0; a < n; a++) {
+        let run = 1;
+        for (let b = 1; b < n; b++) {
+          const cur = byRow ? this.at(a, b) : this.at(b, a);
+          const prev = byRow ? this.at(a, b - 1) : this.at(b - 1, a);
+          if (cur === prev) {
+            run++;
+            if (run === 5) score += 3;
+            else if (run > 5) score += 1;
+          } else run = 1;
+        }
+      }
+    }
+    for (let r = 0; r < n - 1; r++) {
+      for (let c = 0; c < n - 1; c++) {
+        const v = this.at(r, c);
+        if (v === this.at(r, c + 1) && v === this.at(r + 1, c) && v === this.at(r + 1, c + 1)) {
+          score += 3;
+        }
+      }
+    }
+    const FINDER = [true, false, true, true, true, false, true];
+    const runsFinder = (line2, at) => {
+      for (let i = 0; i < 7; i++) if (line2[at + i] !== FINDER[i]) return false;
+      return true;
+    };
+    const quiet = (line2, from5, to2) => {
+      for (let i = from5; i < to2; i++) if (i >= 0 && i < line2.length && line2[i]) return false;
+      return true;
+    };
+    for (const byRow of [true, false]) {
+      for (let a = 0; a < n; a++) {
+        const line2 = [];
+        for (let b = 0; b < n; b++) line2.push(byRow ? this.at(a, b) : this.at(b, a));
+        for (let at = 0; at + 7 <= n; at++) {
+          if (!runsFinder(line2, at)) continue;
+          if (quiet(line2, at - 4, at) || quiet(line2, at + 7, at + 11)) score += 40;
+        }
+      }
+    }
+    let dark = 0;
+    for (const row of this.modules) for (const m of row) if (m) dark++;
+    const percent = dark * 100 / (n * n);
+    score += Math.floor(Math.abs(percent - 50) / 5) * 10;
+    return score;
+  }
+};
+function encodeQr(text) {
+  const bytes = new TextEncoder().encode(text);
+  const version3 = pickVersion(bytes.length);
+  if (version3 === 0) {
+    throw new RangeError(`${bytes.length} bytes is more than a version-${MAX_VERSION} QR holds`);
+  }
+  const codewords = interleave(buildDataCodewords(bytes, version3), version3);
+  let best = null;
+  let bestScore = Infinity;
+  let bestMask = 0;
+  for (let mask = 0; mask < 8; mask++) {
+    const b = new Builder(version3);
+    b.drawFunctionPatterns();
+    b.drawCodewords(codewords);
+    b.applyMask(mask);
+    b.drawFormat(mask);
+    const score = b.penalty();
+    if (score < bestScore) {
+      bestScore = score;
+      best = b;
+      bestMask = mask;
+    }
+  }
+  const chosen = best;
+  return { size: chosen.size, modules: chosen.modules, version: version3, mask: bestMask };
+}
+function qrSvg(matrix, options = {}) {
+  const scale = Math.max(1, Math.round(options.scale ?? 6));
+  const margin = Math.max(4, Math.round(options.margin ?? 4));
+  const dark = options.dark ?? "#000";
+  const light = options.light ?? "#fff";
+  const span = matrix.size + margin * 2;
+  const px = span * scale;
+  let path2 = "";
+  for (let r = 0; r < matrix.size; r++) {
+    const row = matrix.modules[r];
+    for (let c = 0; c < matrix.size; c++) {
+      if (row[c]) path2 += `M${c + margin} ${r + margin}h1v1h-1z`;
+    }
+  }
+  const label = escapeXml(options.label ?? "QR code");
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="0 0 ${span} ${span}" role="img" aria-label="${label}" shape-rendering="crispEdges"><rect width="${span}" height="${span}" fill="${escapeXml(light)}"/><path d="${path2}" fill="${escapeXml(dark)}"/></svg>`;
+}
+function qrDataUri(matrix, options = {}) {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(qrSvg(matrix, options))}`;
+}
+function escapeXml(value) {
+  return value.replace(
+    /[&<>"']/g,
+    (ch) => ch === "&" ? "&amp;" : ch === "<" ? "&lt;" : ch === ">" ? "&gt;" : ch === '"' ? "&quot;" : "&apos;"
+  );
+}
+
 // apps/pay-live/main.ts
 var RPC_URL = "https://rpc.starknet.lava.build";
 var app = document.getElementById("app");
@@ -32747,8 +33123,10 @@ if (!to) {
   renderCreator();
 } else if (!/^0x[0-9a-fA-F]{10,64}$/.test(to)) {
   renderError("This invoice link has an invalid receive address, so it cannot be paid safely.");
+} else if ((params.get("amount") ?? "").trim() === "") {
+  renderCounter(to);
 } else {
-  const amount = params.get("amount") ?? "2";
+  const amount = params.get("amount").trim();
   if (!/^\d+(\.\d{1,18})?$/.test(amount) || Number(amount) <= 0) {
     renderError("This invoice link has an invalid amount.");
   } else {
@@ -32850,6 +33228,75 @@ async function start(fromUrl) {
     foreign
   );
 }
+function qrCard(text, caption, scale = 6) {
+  const card = document.createElement("div");
+  card.className = "qr";
+  const img = document.createElement("img");
+  img.src = qrDataUri(encodeQr(text), { scale, label: caption });
+  img.alt = caption;
+  const cap = document.createElement("div");
+  cap.className = "cap";
+  cap.textContent = caption;
+  card.append(img, cap);
+  return card;
+}
+function printCard(title, text, lines) {
+  const area = document.getElementById("print-area");
+  area.replaceChildren();
+  const h = document.createElement("h2");
+  h.textContent = title;
+  area.append(h, qrCard(text, "", 10));
+  for (const line2 of lines) {
+    const p = document.createElement("p");
+    p.textContent = line2;
+    area.append(p);
+  }
+  window.print();
+}
+function renderCounter(destination) {
+  app.replaceChildren();
+  const title = document.createElement("h1");
+  title.textContent = "How much are you paying?";
+  const memo = document.createElement("p");
+  memo.className = "muted";
+  memo.textContent = params.get("memo")?.slice(0, 140) || "This counter code does not carry a price, so enter one.";
+  const label = document.createElement("label");
+  label.textContent = "Amount (STRK)";
+  const input = document.createElement("input");
+  input.id = "c-amount";
+  input.inputMode = "decimal";
+  input.placeholder = "2";
+  input.autofocus = true;
+  label.append(input);
+  const problem = document.createElement("p");
+  problem.className = "check bad";
+  problem.hidden = true;
+  const go = document.createElement("button");
+  go.textContent = "Continue";
+  const where = document.createElement("p");
+  where.className = "muted small";
+  where.textContent = `Paying to ${destination.slice(0, 10)}\u2026${destination.slice(-6)}.`;
+  const note = document.createElement("p");
+  note.className = "check";
+  note.textContent = "This is a reusable counter code, so every payment made with it arrives at that one address. Anyone reading the chain can therefore add up what this address has taken. Who paid stays private: the pool severs that. For an invoice that should not be countable alongside the others, ask the merchant for a one-time link instead.";
+  const submit = () => {
+    const value = input.value.trim();
+    if (!/^\d+(\.\d{1,18})?$/.test(value) || Number(value) <= 0) {
+      problem.hidden = false;
+      problem.textContent = "Enter an amount greater than zero, with at most 18 decimal places.";
+      input.focus();
+      return;
+    }
+    const url2 = new URL(location.href);
+    url2.searchParams.set("amount", value);
+    location.href = url2.toString();
+  };
+  go.addEventListener("click", submit);
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") submit();
+  });
+  app.append(title, memo, label, problem, go, where, note);
+}
 function renderError(message) {
   app.replaceChildren();
   const h = document.createElement("h1");
@@ -32861,50 +33308,100 @@ function renderError(message) {
 }
 function renderCreator() {
   app.innerHTML = `
-    <h1>Create an invoice link</h1>
-    <p class="muted">Fill this in and share the link. The payer pays privately; you watch the
-    address (or run <code>server/watcher</code> for webhooks). Use a FRESH address per invoice.</p>
-    <label>Receive address (fresh, one per invoice)<input id="f-to" placeholder="0x\u2026" /></label>
-    <label>Amount (STRK)<input id="f-amount" value="2" /></label>
+    <h1>Create a payment link</h1>
+    <p class="muted">Share the link, or show the QR. The payer pays privately; you watch the
+    address (or run <code>server/watcher</code> for webhooks).</p>
+    <label>What kind of code?
+      <select id="f-kind">
+        <option value="dynamic">One-time invoice: fixed price, fresh address</option>
+        <option value="static">Counter code: printed once, price entered by the payer</option>
+      </select>
+    </label>
+    <label>Receive address<input id="f-to" placeholder="0x\u2026" /></label>
+    <label id="f-amount-row">Amount (STRK)<input id="f-amount" value="2" /></label>
     <label>Memo (never goes on-chain)<input id="f-memo" placeholder="Order #42" /></label>
-    <label>Invoice id, as registered with your watcher (optional)<input id="f-id" placeholder="inv_9f2a" /></label>
-    <p class="muted small">The amount and the destination live in this link. A payer who edits it pays the
-    edited amount and still sees a receipt, so treat that receipt as an observation and never as proof.
-    To have the terms come from your server instead, serve this page from the same origin as your watcher:
-    a link cannot nominate its own auditor, so there is deliberately no field for one here.</p>
+    <label id="f-id-row">Invoice id, as registered with your watcher (optional)<input id="f-id" placeholder="inv_9f2a" /></label>
+    <p class="muted small" id="f-advice"></p>
     <button id="f-make">Create link</button>
     <div id="f-out" class="out" hidden></div>
   `;
+  const kind = document.getElementById("f-kind");
+  const amountRow = document.getElementById("f-amount-row");
+  const idRow = document.getElementById("f-id-row");
+  const advice = document.getElementById("f-advice");
+  const out = document.getElementById("f-out");
+  const DYNAMIC_ADVICE = "The amount and the destination live in this link. A payer who edits it pays the edited amount and still sees a receipt, so treat that receipt as an observation and never as proof. To have the terms come from your server instead, serve this page from the same origin as your watcher: a link cannot nominate its own auditor, so there is deliberately no field for one here. Use a FRESH address per invoice.";
+  const STATIC_ADVICE = "A counter code names no price, so the payer enters one. It is the same address every time, which is what makes it printable and also what it costs you: anyone reading the chain can add up what this address has taken and count how many payments made it up. Your payers stay private either way, since the pool severs who sent each one. Use a counter code for tips and small trade, and a one-time link for anything whose size you would rather not publish.";
+  const sync = () => {
+    const isStatic = kind.value === "static";
+    amountRow.hidden = isStatic;
+    idRow.hidden = isStatic;
+    advice.textContent = isStatic ? STATIC_ADVICE : DYNAMIC_ADVICE;
+    out.hidden = true;
+  };
+  kind.addEventListener("change", sync);
+  sync();
   document.getElementById("f-make").addEventListener("click", () => {
+    const isStatic = kind.value === "static";
     const toValue = document.getElementById("f-to").value.trim();
     const amount = document.getElementById("f-amount").value.trim();
     const memo = document.getElementById("f-memo").value.trim();
-    const out = document.getElementById("f-out");
-    if (!/^0x[0-9a-fA-F]{10,}$/.test(toValue)) {
-      out.hidden = false;
+    const invoiceId = document.getElementById("f-id").value.trim();
+    out.hidden = false;
+    out.replaceChildren();
+    if (!/^0x[0-9a-fA-F]{10,64}$/.test(toValue)) {
       out.textContent = "Enter a valid Starknet address.";
       return;
     }
-    const invoiceId = document.getElementById("f-id").value.trim();
+    if (!isStatic && (!/^\d+(\.\d{1,18})?$/.test(amount) || Number(amount) <= 0)) {
+      out.textContent = "Enter an amount greater than zero, with at most 18 decimal places.";
+      return;
+    }
     const url2 = new URL(location.href);
     url2.search = new URLSearchParams({
       to: toValue,
-      amount,
+      // A static code carries no amount at all. Sending an empty one would make
+      // the link look priced and read as unpriced.
+      ...isStatic ? {} : { amount },
       ...memo ? { memo } : {},
-      ...invoiceId ? { id: invoiceId } : {}
+      ...!isStatic && invoiceId ? { id: invoiceId } : {}
     }).toString();
-    out.hidden = false;
-    out.replaceChildren();
+    const href = url2.toString();
     const link = document.createElement("a");
-    link.href = url2.toString();
-    link.textContent = url2.toString();
+    link.href = href;
+    link.textContent = href;
+    const row = document.createElement("div");
+    row.className = "row";
+    row.append(
+      qrCard(
+        href,
+        isStatic ? "Scan to pay at this counter" : `Scan to pay ${amount} STRK`,
+        isStatic ? 7 : 6
+      )
+    );
+    const buttons = document.createElement("div");
     const copy = document.createElement("button");
-    copy.textContent = "Copy";
+    copy.textContent = "Copy link";
     copy.addEventListener("click", () => {
-      void navigator.clipboard.writeText(url2.toString());
+      void navigator.clipboard.writeText(href);
       copy.textContent = "Copied \u2713";
     });
-    out.append(link, copy);
+    buttons.append(copy);
+    if (isStatic) {
+      const print = document.createElement("button");
+      print.textContent = "Print card";
+      print.addEventListener(
+        "click",
+        () => printCard(memo || "Pay privately", href, [
+          "Scan with a Starknet wallet that supports STRK20 private payments.",
+          `To: ${toValue}`,
+          "You choose the amount. The pool charges a flat 6 STRK per payment."
+        ])
+      );
+      buttons.append(print);
+    }
+    row.append(buttons);
+    out.append(link, row);
   });
 }
 async function reportWalletSupport(wallet) {
@@ -32968,7 +33465,15 @@ async function renderPayer(invoice, authority, foreignWatcher = null) {
   link.rel = "noreferrer";
   link.textContent = "look up this address";
   foot.append(link);
-  app.append(title, memo, source, check, host, foot);
+  const hop = document.createElement("details");
+  const hopTitle = document.createElement("summary");
+  hopTitle.textContent = "Pay from your phone instead";
+  hopTitle.className = "muted";
+  const hopBody = document.createElement("div");
+  hopBody.style.marginTop = "10px";
+  hopBody.append(qrCard(location.href, "This same invoice, on your phone"));
+  hop.append(hopTitle, hopBody);
+  app.append(title, memo, source, check, host, hop, foot);
   const provider = new RpcProvider({ nodeUrl: RPC_URL });
   const token = resolveToken(invoice.token, TOKENS);
   const readBalance = async () => {

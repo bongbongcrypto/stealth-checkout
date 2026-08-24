@@ -25,19 +25,28 @@ Stealth Checkout is that missing accepting side.
 | Piece | What it does |
 |---|---|
 | [`strk20-pay`](packages/strk20-pay) | Framework-agnostic TS widget, plus a React binding. One call renders the whole flow: connect → check balance → pay → confirmed → receipt. It refuses to shield for the payer by default, and says why. |
-| Hosted invoice page | `apps/pay-live/?to=0x…&amount=25&id=…` — a shareable payment link. Served from the same origin as your watcher, it reads the amount from your server and refuses to take a payment for an invoice that server has already settled or never heard of. Served from anywhere else - including the copy on GitHub Pages - it renders a payable checkout behind a plain warning that the amount and destination came from the link and nothing has checked them. A link cannot nominate its own auditor. |
+| Hosted invoice page | `apps/pay-live/?to=0x…&amount=25&id=…` — a shareable payment link, with a QR beside it. Served from the same origin as your watcher, it reads the amount from your server and refuses to take a payment for an invoice that server has already settled or never heard of. Served from anywhere else - including the copy on GitHub Pages - it renders a payable checkout behind a plain warning that the amount and destination came from the link and nothing has checked them. A link cannot nominate its own auditor. |
 | Watcher + webhooks | Confirms payments by watching per-invoice receive addresses over public RPC. No proving dependency, fully headless. Signed webhooks with a persisted retry queue. |
 | Merchant dashboard | Create invoices, watch them settle, release stuck rows, export the ledger as CSV. |
+| QR codes | **Dynamic**: one code per invoice, price baked in, shown next to the link and on every dashboard row. **Static**: a counter code printed once, where the payer enters the amount. Encoder written in-repo, no dependency. |
 | Honesty panel | Before signing, what this payment reveals on-chain and what it hides. Open by default. |
 | Demo arcade | A coin-op arcade that sells credits through the widget. The full loop in about two minutes, with nothing installed. |
 
-## Two findings worth more than the code
+## Three findings worth more than the code
 
 **1. The pool charges a flat 6 STRK per operation, and documents it nowhere.**
 Not a percentage: the same 6 STRK whether you move 1 STRK or 1,000. It is read live from the pool's `get_fee_amount()`. A checkout that shows a price and hides that is lying by omission, so the widget adds it to the total before the payer signs, and warns when it is larger than the invoice. It also means private payments have an economic floor: below roughly 60 STRK, the fee is more than 10% of the purchase.
 
 **2. Confirmation must be a delta, never a balance.**
 Invoice addresses can already hold funds — they need STRK to deploy before a merchant can sweep them, merchants reuse addresses by mistake, and airdrops happen. Confirming on the absolute balance marks such an invoice paid the moment it is created. The watcher captures a baseline at registration and confirms only on growth, and refuses to judge any row whose baseline is missing.
+
+**3. A static QR publishes the shop's takings, and only the shop's.**
+A counter code is one printed square that every customer scans, which means one
+receiving address forever. The payer stays private either way: the pool severs
+who sent each payment. The merchant does not, because anyone can add up what
+that address has taken and count the payments that made it up. The choice is
+real and it is theirs, so the link creator states the cost in the sentence
+where the choice is made, rather than in a footnote nobody opens.
 
 ## Design constraints honoured
 
@@ -55,7 +64,7 @@ Invoice addresses can already hold funds — they need STRK to deploy before a m
 
 ```bash
 npm install
-npm test                 # 180 tests: widget, checkout core, watcher logic, HTTP API
+npm test                 # 196 tests: widget, checkout core, QR encoder, watcher logic, HTTP API
 npm run build:all        # widget dist + hosted-page bundle
 npm run dev              # demos at http://127.0.0.1:4173
 WATCHER_TOKEN=dev node server/watcher/watcher.mjs
@@ -69,7 +78,7 @@ It deliberately does not prove a real payment was detected: that needs someone t
 
 ```
 index.html             # landing page, linking the three apps
-packages/strk20-pay/   # the embeddable checkout (core, adapters, React binding, honesty report)
+packages/strk20-pay/   # the embeddable checkout (core, adapters, React binding, honesty report, QR encoder)
 apps/demo-arcade/      # coin-op arcade demo store
 apps/pay-live/         # hosted invoice page (link creator + payer view)
 apps/dashboard/        # merchant dashboard

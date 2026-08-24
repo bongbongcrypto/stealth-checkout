@@ -11,6 +11,7 @@ import { RpcProvider } from "starknet";
 import { mountCheckout } from "../../packages/strk20-pay/src/ui.js";
 import { EXPLORER_BASE, WalletApiAdapter } from "../../packages/strk20-pay/src/wallet/walletapi.js";
 import { TOKENS, amountToUnits, resolveToken } from "../../packages/strk20-pay/src/tokens.js";
+import { encodeQr, qrDataUri } from "../../packages/strk20-pay/src/qr.js";
 import type { Invoice } from "../../packages/strk20-pay/src/types.js";
 
 const RPC_URL = "https://rpc.starknet.lava.build";
@@ -72,8 +73,13 @@ if (!to) {
 } else if (!/^0x[0-9a-fA-F]{10,64}$/.test(to)) {
   // A malformed address would send an unshield into the void. Refuse loudly.
   renderError("This invoice link has an invalid receive address, so it cannot be paid safely.");
+} else if ((params.get("amount") ?? "").trim() === "") {
+  // A STATIC counter code: one printed QR that every customer scans, with the
+  // amount chosen at the till. It used to fall through to a hardcoded default
+  // of 2 STRK, so a link that named no price quietly charged one.
+  renderCounter(to);
 } else {
-  const amount = params.get("amount") ?? "2";
+  const amount = params.get("amount")!.trim();
   if (!/^\d+(\.\d{1,18})?$/.test(amount) || Number(amount) <= 0) {
     renderError("This invoice link has an invalid amount.");
   } else {
@@ -259,6 +265,110 @@ interface Authority {
   urlAmount: string;
 }
 
+/**
+ * A QR on a white card, whatever the page's theme.
+ *
+ * Two rules a payment QR has to obey and that are easy to get wrong: dark
+ * modules on a light field (an inverted code fails on many readers), and the
+ * four-module quiet zone, which `qrSvg` refuses to drop.
+ */
+function qrCard(text: string, caption: string, scale = 6): HTMLElement {
+  const card = document.createElement("div");
+  card.className = "qr";
+  const img = document.createElement("img");
+  img.src = qrDataUri(encodeQr(text), { scale, label: caption });
+  img.alt = caption;
+  const cap = document.createElement("div");
+  cap.className = "cap";
+  cap.textContent = caption;
+  card.append(img, cap);
+  return card;
+}
+
+/** Print just the counter card, without the rest of the page around it. */
+function printCard(title: string, text: string, lines: string[]): void {
+  const area = document.getElementById("print-area")!;
+  area.replaceChildren();
+  const h = document.createElement("h2");
+  h.textContent = title;
+  area.append(h, qrCard(text, "", 10));
+  for (const line of lines) {
+    const p = document.createElement("p");
+    p.textContent = line;
+    area.append(p);
+  }
+  window.print();
+}
+
+/**
+ * The payer half of a static counter code: the destination is fixed and
+ * printed, the amount is not.
+ *
+ * Reusing one address is the whole point of a counter code and also its cost,
+ * and a privacy checkout that stayed quiet about that would be selling the
+ * wrong thing. Every payment lands on the same public address, so anyone
+ * reading the chain can add up a shop's takings and count its customers. The
+ * payer's side stays private either way: the pool severs who sent it.
+ */
+function renderCounter(destination: string): void {
+  app.replaceChildren();
+  const title = document.createElement("h1");
+  title.textContent = "How much are you paying?";
+  const memo = document.createElement("p");
+  memo.className = "muted";
+  memo.textContent =
+    params.get("memo")?.slice(0, 140) || "This counter code does not carry a price, so enter one.";
+
+  const label = document.createElement("label");
+  label.textContent = "Amount (STRK)";
+  const input = document.createElement("input");
+  input.id = "c-amount";
+  input.inputMode = "decimal";
+  input.placeholder = "2";
+  input.autofocus = true;
+  label.append(input);
+
+  const problem = document.createElement("p");
+  problem.className = "check bad";
+  problem.hidden = true;
+
+  const go = document.createElement("button");
+  go.textContent = "Continue";
+
+  const where = document.createElement("p");
+  where.className = "muted small";
+  where.textContent = `Paying to ${destination.slice(0, 10)}…${destination.slice(-6)}.`;
+
+  const note = document.createElement("p");
+  note.className = "check";
+  note.textContent =
+    "This is a reusable counter code, so every payment made with it arrives at that one address. " +
+    "Anyone reading the chain can therefore add up what this address has taken. Who paid stays " +
+    "private: the pool severs that. For an invoice that should not be countable alongside the " +
+    "others, ask the merchant for a one-time link instead.";
+
+  const submit = () => {
+    const value = input.value.trim();
+    if (!/^\d+(\.\d{1,18})?$/.test(value) || Number(value) <= 0) {
+      problem.hidden = false;
+      problem.textContent = "Enter an amount greater than zero, with at most 18 decimal places.";
+      input.focus();
+      return;
+    }
+    // Back through the same URL, so the ordinary payer flow handles it and the
+    // link stays shareable and correct in the back button.
+    const url = new URL(location.href);
+    url.searchParams.set("amount", value);
+    location.href = url.toString();
+  };
+  go.addEventListener("click", submit);
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") submit();
+  });
+
+  app.append(title, memo, label, problem, go, where, note);
+}
+
 function renderError(message: string): void {
   app.replaceChildren();
   const h = document.createElement("h1");
@@ -270,51 +380,122 @@ function renderError(message: string): void {
 }
 
 function renderCreator(): void {
+  // Two shapes of code, which is the distinction IDEA-11 draws:
+  //   dynamic - one link and one QR per invoice, with the price baked in
+  //   static  - one code printed once, the price entered at the till
   app.innerHTML = `
-    <h1>Create an invoice link</h1>
-    <p class="muted">Fill this in and share the link. The payer pays privately; you watch the
-    address (or run <code>server/watcher</code> for webhooks). Use a FRESH address per invoice.</p>
-    <label>Receive address (fresh, one per invoice)<input id="f-to" placeholder="0x…" /></label>
-    <label>Amount (STRK)<input id="f-amount" value="2" /></label>
+    <h1>Create a payment link</h1>
+    <p class="muted">Share the link, or show the QR. The payer pays privately; you watch the
+    address (or run <code>server/watcher</code> for webhooks).</p>
+    <label>What kind of code?
+      <select id="f-kind">
+        <option value="dynamic">One-time invoice: fixed price, fresh address</option>
+        <option value="static">Counter code: printed once, price entered by the payer</option>
+      </select>
+    </label>
+    <label>Receive address<input id="f-to" placeholder="0x…" /></label>
+    <label id="f-amount-row">Amount (STRK)<input id="f-amount" value="2" /></label>
     <label>Memo (never goes on-chain)<input id="f-memo" placeholder="Order #42" /></label>
-    <label>Invoice id, as registered with your watcher (optional)<input id="f-id" placeholder="inv_9f2a" /></label>
-    <p class="muted small">The amount and the destination live in this link. A payer who edits it pays the
-    edited amount and still sees a receipt, so treat that receipt as an observation and never as proof.
-    To have the terms come from your server instead, serve this page from the same origin as your watcher:
-    a link cannot nominate its own auditor, so there is deliberately no field for one here.</p>
+    <label id="f-id-row">Invoice id, as registered with your watcher (optional)<input id="f-id" placeholder="inv_9f2a" /></label>
+    <p class="muted small" id="f-advice"></p>
     <button id="f-make">Create link</button>
     <div id="f-out" class="out" hidden></div>
   `;
+
+  const kind = document.getElementById("f-kind") as HTMLSelectElement;
+  const amountRow = document.getElementById("f-amount-row")!;
+  const idRow = document.getElementById("f-id-row")!;
+  const advice = document.getElementById("f-advice")!;
+  const out = document.getElementById("f-out")!;
+
+  const DYNAMIC_ADVICE =
+    "The amount and the destination live in this link. A payer who edits it pays the edited amount and " +
+    "still sees a receipt, so treat that receipt as an observation and never as proof. To have the terms " +
+    "come from your server instead, serve this page from the same origin as your watcher: a link cannot " +
+    "nominate its own auditor, so there is deliberately no field for one here. Use a FRESH address per invoice.";
+  const STATIC_ADVICE =
+    "A counter code names no price, so the payer enters one. It is the same address every time, which is " +
+    "what makes it printable and also what it costs you: anyone reading the chain can add up what this " +
+    "address has taken and count how many payments made it up. Your payers stay private either way, since " +
+    "the pool severs who sent each one. Use a counter code for tips and small trade, and a one-time link " +
+    "for anything whose size you would rather not publish.";
+
+  const sync = () => {
+    const isStatic = kind.value === "static";
+    amountRow.hidden = isStatic;
+    idRow.hidden = isStatic;
+    advice.textContent = isStatic ? STATIC_ADVICE : DYNAMIC_ADVICE;
+    out.hidden = true;
+  };
+  kind.addEventListener("change", sync);
+  sync();
+
   document.getElementById("f-make")!.addEventListener("click", () => {
+    const isStatic = kind.value === "static";
     const toValue = (document.getElementById("f-to") as HTMLInputElement).value.trim();
     const amount = (document.getElementById("f-amount") as HTMLInputElement).value.trim();
     const memo = (document.getElementById("f-memo") as HTMLInputElement).value.trim();
-    const out = document.getElementById("f-out")!;
-    if (!/^0x[0-9a-fA-F]{10,}$/.test(toValue)) {
-      out.hidden = false;
+    const invoiceId = (document.getElementById("f-id") as HTMLInputElement).value.trim();
+
+    out.hidden = false;
+    out.replaceChildren();
+    if (!/^0x[0-9a-fA-F]{10,64}$/.test(toValue)) {
       out.textContent = "Enter a valid Starknet address.";
       return;
     }
-    const invoiceId = (document.getElementById("f-id") as HTMLInputElement).value.trim();
+    if (!isStatic && (!/^\d+(\.\d{1,18})?$/.test(amount) || Number(amount) <= 0)) {
+      out.textContent = "Enter an amount greater than zero, with at most 18 decimal places.";
+      return;
+    }
+
     const url = new URL(location.href);
     url.search = new URLSearchParams({
       to: toValue,
-      amount,
+      // A static code carries no amount at all. Sending an empty one would make
+      // the link look priced and read as unpriced.
+      ...(isStatic ? {} : { amount }),
       ...(memo ? { memo } : {}),
-      ...(invoiceId ? { id: invoiceId } : {}),
+      ...(!isStatic && invoiceId ? { id: invoiceId } : {}),
     }).toString();
-    out.hidden = false;
-    out.replaceChildren();
+    const href = url.toString();
+
     const link = document.createElement("a");
-    link.href = url.toString();
-    link.textContent = url.toString();
+    link.href = href;
+    link.textContent = href;
+
+    const row = document.createElement("div");
+    row.className = "row";
+    row.append(
+      qrCard(
+        href,
+        isStatic ? "Scan to pay at this counter" : `Scan to pay ${amount} STRK`,
+        isStatic ? 7 : 6,
+      ),
+    );
+
+    const buttons = document.createElement("div");
     const copy = document.createElement("button");
-    copy.textContent = "Copy";
+    copy.textContent = "Copy link";
     copy.addEventListener("click", () => {
-      void navigator.clipboard.writeText(url.toString());
+      void navigator.clipboard.writeText(href);
       copy.textContent = "Copied ✓";
     });
-    out.append(link, copy);
+    buttons.append(copy);
+
+    if (isStatic) {
+      const print = document.createElement("button");
+      print.textContent = "Print card";
+      print.addEventListener("click", () =>
+        printCard(memo || "Pay privately", href, [
+          "Scan with a Starknet wallet that supports STRK20 private payments.",
+          `To: ${toValue}`,
+          "You choose the amount. The pool charges a flat 6 STRK per payment.",
+        ]),
+      );
+      buttons.append(print);
+    }
+    row.append(buttons);
+    out.append(link, row);
   });
 }
 
@@ -413,7 +594,19 @@ async function renderPayer(
   link.rel = "noreferrer";
   link.textContent = "look up this address";
   foot.append(link);
-  app.append(title, memo, source, check, host, foot);
+  // Wallets that can do STRK20 are browser extensions on the desktop and apps
+  // on a phone. A payer who opened this on the wrong one should not have to
+  // retype a link this long.
+  const hop = document.createElement("details");
+  const hopTitle = document.createElement("summary");
+  hopTitle.textContent = "Pay from your phone instead";
+  hopTitle.className = "muted";
+  const hopBody = document.createElement("div");
+  hopBody.style.marginTop = "10px";
+  hopBody.append(qrCard(location.href, "This same invoice, on your phone"));
+  hop.append(hopTitle, hopBody);
+
+  app.append(title, memo, source, check, host, hop, foot);
 
   const provider = new RpcProvider({ nodeUrl: RPC_URL });
   const token = resolveToken(invoice.token, TOKENS);

@@ -8,16 +8,39 @@ You need nothing from this repo except a URL. Create an invoice link and put it
 wherever your users are: a button, a QR, a chat message.
 
 1. Open the [invoice creator](https://bongbongcrypto.github.io/stealth-checkout/apps/pay-live/index.html).
-2. Enter a FRESH receive address (one per invoice: that is what keeps your
-   revenue untotalable) and the amount.
-3. Optionally give the invoice id you registered with your watcher, so the
+2. Choose **one-time invoice** or **counter code** (below).
+3. Enter a FRESH receive address (one per invoice: that is what keeps your
+   revenue untotalable) and, for a one-time invoice, the amount.
+4. Optionally give the invoice id you registered with your watcher, so the
    webhook and the link agree on which order this is.
-4. Share the generated link. The payer gets a full checkout: wallet connect,
-   private payment from their shielded balance, receipt. If they have not
-   shielded yet, the widget tells them what to shield and why, rather than
-   depositing for them.
+5. Share the link, or show the QR beside it. The payer gets a full checkout:
+   wallet connect, private payment from their shielded balance, receipt. If
+   they have not shielded yet, the widget tells them what to shield and why,
+   rather than depositing for them.
 
 Watch the address yourself, or run the watcher (Tier 2) for webhooks.
+
+### One-time invoice, or counter code
+
+|  | One-time invoice | Counter code |
+| --- | --- | --- |
+| The QR | different for every order | printed once, scanned by everyone |
+| The price | in the link | typed by the payer |
+| The address | fresh per invoice | the same one, forever |
+| Confirmation | a webhook per invoice id | you match amounts by hand, or per payment |
+| Good for | orders, carts, anything you ship | tips, a market stall, a donation jar |
+
+The difference that matters is the address. **A counter code publishes your
+takings.** Every payment it collects lands on one public address, so anyone can
+add them up and count how many there were. Your payers are unaffected: the pool
+severs who sent each one, whichever code they scanned. So the exposure is
+entirely yours, and it is a fair trade for a square of paper on a counter, as
+long as you are making it knowingly. For anything whose size you would rather
+not publish, issue a one-time link.
+
+The creator prints a counter card: the QR, the destination, and a line telling
+the payer the pool takes a flat 6 STRK per payment, which matters more at 5
+STRK than at 500.
 
 **The amount and the destination live in the link, and the payer controls it.**
 There is deliberately no field for naming a server to check them against: a
@@ -127,6 +150,26 @@ Buildless page? The core and UI import cleanly from our Pages host:
 
 (The real `WalletApiAdapter` pulls `starknet` at runtime, so that one needs a
 bundler; see `apps/pay-live/main.ts` for the exact wiring we ship.)
+
+### Your own QR
+
+The package ships the encoder, so a QR needs no dependency and no network call:
+
+```ts
+import { qrCodeSvg } from "strk20-pay";
+
+element.innerHTML = qrCodeSvg(payUrl, { scale: 8 });
+```
+
+`qrCodeSvg` returns an SVG string; `qrDataUri` returns the same thing packed for
+an `<img src>`; `encodeQr` gives you the raw module matrix if you would rather
+draw it yourself. Byte mode, error-correction level M, versions 1 to 20, which
+is 666 bytes and far more than a payment URL.
+
+Two defaults are deliberate and you should leave them alone. The quiet zone is
+four modules and cannot be set below that, because scanners need it. The
+background is opaque white, because a QR inverted to suit a dark page is a QR
+that many readers will not take.
 
 ## Tier 2: headless confirmation + webhooks (merchant backend)
 

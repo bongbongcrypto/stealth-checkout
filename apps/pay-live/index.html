@@ -27,10 +27,30 @@
       font-size:12.5px; color:var(--muted); }
     .check.good { border-color:var(--green); color:var(--green); }
     .check.bad { border-color:#ff7b72; color:#ff7b72; }
+    /* A QR is always dark-on-light, whatever the page theme. Inverting one to
+       suit a dark background is the most common way to ship a code that does
+       not read. */
+    .qr { background:#fff; padding:12px; border-radius:10px; display:inline-flex;
+      flex-direction:column; gap:6px; align-items:center; align-self:flex-start; }
+    .qr img { display:block; width:220px; max-width:100%; height:auto; image-rendering:pixelated; }
+    .qr .cap { color:#333; font-size:11px; text-align:center; max-width:220px; overflow-wrap:anywhere; }
+    .row { display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; }
+    #print-area { display:none; }
+    @media print {
+      body > * { display:none !important; }
+      body > #print-area { display:block !important; }
+      body { background:#fff; color:#000; padding:0; }
+      #print-area .qr { padding:0; }
+      #print-area img { width:min(74mm, 100%); }
+      #print-area h2 { font:700 18px system-ui,sans-serif; margin:0 0 4px; }
+      #print-area p { font:12px system-ui,sans-serif; color:#333; margin:2px 0; word-break:break-all; }
+    }
   </style>
 </head>
 <body>
   <div id="app"></div>
+  <!-- Filled by the Print button; hidden on screen, and the only thing printed. -->
+  <div id="print-area"></div>
   <script type="module" src="./bundle.js"></script>
 </body>
 </html>

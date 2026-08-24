@@ -48,6 +48,8 @@
   const ROOT = location.pathname.replace(/packages\/strk20-pay\/test\/[^/]*$/, "");
   const BASE = `${ROOT}apps`;
   const { auditPage } = await import("./layout-audit.mjs");
+  /** One stamp for the whole run, so every frame is fetched fresh but only once. */
+  const STAMP = String(Date.now());
 
   /** Wait until a selector appears, or give up. */
   const until = async (doc, selector, ms = 15000) => {
@@ -164,7 +166,10 @@
       const frame = document.createElement("iframe");
       frame.width = vp.w;
       frame.height = vp.h;
-      frame.src = screen.url;
+      // Cache-busted. Reloading this page picks up its own new copy while the
+      // frames keep serving whatever the browser remembers, so a fix can be
+      // deployed and verified and the check still shows the old failure. It did.
+      frame.src = screen.url + (screen.url.includes("?") ? "&" : "?") + "cb=" + STAMP;
       stage.append(frame);
       await new Promise((ok) => {
         frame.onload = ok;

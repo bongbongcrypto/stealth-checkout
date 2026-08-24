@@ -74,10 +74,13 @@ Two checks run in a browser rather than in Node, because what they measure only
 exists once something has been drawn:
 
 - `packages/strk20-pay/test/layout-check.html` loads all seven screens at a
-  laptop size and a phone size and measures each one. It exists because the pay
-  button on the arcade demo sat 699px below the fold on a laptop and 1298 on a
-  phone, and three rounds of clicking through the flow never noticed: whoever
-  clicks already knows where the button is.
+  laptop size and a phone size and measures each one against seven rules. It
+  exists because the pay button on the arcade demo sat 699px below the fold on a
+  laptop and 1298 on a phone, and three rounds of clicking through the flow never
+  noticed: whoever clicks already knows where the button is. Run it against the
+  [deployed copy](https://bongbongcrypto.github.io/stealth-checkout/packages/strk20-pay/test/layout-check.html)
+  as well as a dev server; a 13px link in the dashboard showed up only there,
+  because the local server filled the table faster than the check looked at it.
 - `packages/strk20-pay/test/qr-scan.html` renders every QR through the browser
   and reads the pixels back, which is the only way to catch a wrong viewBox, a
   missing quiet zone, or an inverted palette.

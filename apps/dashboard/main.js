@@ -4,7 +4,7 @@
 
 // The built widget, not the source: this page is a plain module served straight
 // to the browser, with no bundler in front of it.
-import { encodeQr, qrDataUri } from "../../packages/strk20-pay/dist/qr.js";
+import { encodeQr, qrDataUri, qrFits } from "../../packages/strk20-pay/dist/qr.js";
 
 const rowsEl = document.getElementById("rows");
 const statusEl = document.getElementById("status");
@@ -188,11 +188,20 @@ function showQr(link, inv) {
 
   const card = document.createElement("div");
   card.className = "qr";
-  const img = document.createElement("img");
   const label = `Pay invoice ${inv.id}`;
-  img.src = qrDataUri(encodeQr(link), { scale: 8, label });
-  img.alt = label;
-  card.append(img);
+  // The link is built from values this dashboard was handed, so its length is
+  // not ours to guarantee. A dialog that throws would take the page with it.
+  if (qrFits(link)) {
+    const img = document.createElement("img");
+    img.src = qrDataUri(encodeQr(link), { scale: 8, label });
+    img.alt = label;
+    card.append(img);
+  } else {
+    const note = document.createElement("div");
+    note.className = "meta";
+    note.textContent = "This pay link is too long for a QR code. Use copy instead.";
+    card.append(note);
+  }
 
   const meta = document.createElement("div");
   meta.className = "meta";

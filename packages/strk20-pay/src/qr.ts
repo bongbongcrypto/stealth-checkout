@@ -460,6 +460,24 @@ function escapeXml(value: string): string {
   );
 }
 
+/**
+ * The most a version-20 level-M code holds in byte mode: 669 data codewords is
+ * 5352 bits, less 4 for the mode indicator and 16 for the length.
+ */
+export const QR_MAX_BYTES = 666;
+
+/**
+ * Whether `encodeQr` will take this text.
+ *
+ * Callers should ask before building a QR out of anything they did not write
+ * themselves. A payment link carries a URL whose length someone else may
+ * control, and a checkout that throws while drawing an optional convenience is
+ * a checkout that a crafted link can take off the air.
+ */
+export function qrFits(text: string): boolean {
+  return new TextEncoder().encode(text).length <= QR_MAX_BYTES;
+}
+
 /** Convenience: text straight to SVG. */
 export function qrCodeSvg(text: string, options: QrSvgOptions = {}): string {
   return qrSvg(encodeQr(text), { label: options.label ?? `QR code for ${text}`, ...options });

@@ -13,7 +13,7 @@
 // `qr-scan.html`, because it needs a browser to draw the SVG.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { encodeQr, qrSvg, qrDataUri, qrCodeSvg, rsRemainder } from "../dist/qr.js";
+import { QR_MAX_BYTES, encodeQr, qrSvg, qrDataUri, qrCodeSvg, qrFits, rsRemainder } from "../dist/qr.js";
 import { decodeMatrix, legalFormats } from "./qr-reader.mjs";
 
 /** The most a version-20 level-M code holds in byte mode. */
@@ -61,6 +61,34 @@ test("the capacity boundary is exact in both directions", () => {
   assert.equal(matrix.version, 20);
   assert.equal(decodeMatrix(matrix).text, full);
   assert.throws(() => encodeQr("z".repeat(LARGEST + 1)), /667 bytes is more than a version-20 QR holds/);
+});
+
+test("qrFits agrees with encodeQr exactly, or it is not a guard", () => {
+  // A caller asks qrFits before drawing a QR out of a URL whose length someone
+  // else controls. If the two disagree by one byte, the guard passes something
+  // the encoder then throws on, and a crafted link blanks the checkout. That
+  // happened: a 600-digit `?amount=` took the whole payer page off the air.
+  for (let n = QR_MAX_BYTES - 3; n <= QR_MAX_BYTES + 3; n++) {
+    const text = "z".repeat(n);
+    const fits = qrFits(text);
+    let encoded = true;
+    try {
+      encodeQr(text);
+    } catch {
+      encoded = false;
+    }
+    assert.equal(fits, encoded, `qrFits says ${fits} at ${n} bytes, encodeQr says ${encoded}`);
+  }
+});
+
+test("qrFits counts bytes, not characters", () => {
+  // Hangul is three bytes in UTF-8. Counting characters would wave through a
+  // string three times too big and put the throw back.
+  const korean = "가".repeat(230); // 690 bytes
+  assert.equal(korean.length <= QR_MAX_BYTES, true, "the character count looks fine");
+  assert.equal(qrFits(korean), false, "but it does not fit, and qrFits must say so");
+  assert.throws(() => encodeQr(korean));
+  assert.equal(qrFits("가".repeat(222)), true, "666 bytes exactly still fits");
 });
 
 test("the version grows with the payload and never overshoots", () => {

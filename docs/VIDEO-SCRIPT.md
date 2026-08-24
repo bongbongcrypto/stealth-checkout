@@ -72,43 +72,47 @@ Two takes fit in one shielding.
 
 ## The shots, cue by cue
 
-Each row is one subtitle. `demo-subtitles.json` carries the same `shot` text, so
-the two never disagree.
+Generated from `demo-subtitles.json` by `scripts/make-srt.mjs`. Do not edit the
+table; edit the cues and run the script.
 
-| Time | On screen | Subtitle (English) |
+<!-- shots:start -->
+
+| Time | On screen | Subtitle |
 | --- | --- | --- |
-| 0:00 | README, "Why" | STRK20 gave Starknet private balances. |
-| 0:03 | scroll the sending tools | The ecosystem filled with ways to SEND. |
-| 0:08 | README, "Why" paragraph 2 | Run a shop and want to RECEIVE one? |
-| 0:14 | same | No checkout, no invoices, no webhook. |
-| 0:19 | landing page | Stealth Checkout is that missing half. |
-| 0:23 | arcade, top | This arcade is a merchant. |
-| 0:28 | circle the widget panel | The panel below is the entire widget. |
-| 0:33 | widget steps | Connect, balance, pay, receipt. |
-| 0:38 | click INSERT COIN | Insert a coin. |
-| 0:44 | credit granted, game starts | The backend confirms and grants the credit. |
-| 0:50 | confirmation block | The widget states the price before you sign. |
-| 0:55 | highlight the fee row | A flat 6 STRK per operation. |
-| 1:01 | highlight "You pay 7, or 13" | STRK20's own docs never say this. |
-| 1:07 | the fee warning | So private payments have a floor. |
-| 1:13 | honesty panel, PUBLIC rows | What the payment reveals. |
-| 1:20 | the RPC and timing rows | Open by default. |
-| 1:26 | dashboard | The merchant side. |
-| 1:31 | click `qr` on a row | Every row has a QR. |
-| 1:37 | creator, switch to counter code | Or print a counter code. |
-| 1:43 | the advice text | It reuses one address forever. |
-| 1:50 | print preview | The payer stays private either way. |
-| 1:56 | `src/qr.ts`, then `npm test` | The QR encoder is written in this repo. |
-| 2:02 | invoice page, mainnet | Now mainnet. |
-| 2:07 | the unverified-link banner | The page warns the terms are unchecked. |
-| 2:13 | same | A link cannot nominate its own auditor. |
-| 2:19 | wallet popup, sign | The pool submits it. |
-| 2:26 | watcher terminal | The watcher sees it over public RPC. |
-| 2:32 | the delta log line | It confirms on the DELTA. |
-| 2:39 | webhook log, dashboard goes PAID | A signed webhook goes out. |
-| 2:45 | `strk20.json`, `npm test` | Seven mainnet transactions. 196 tests. |
-| 2:51 | README, "do not show" | What those transactions do NOT prove. |
-| 2:57 | landing page | The accepting side of STRK20. |
+| 0:00 | README, the 'Why' section | STRK20 made Starknet balances private. |
+| 0:03 | scroll the ecosystem's sending tools | Plenty of ways to send. Claim links, red packets, payroll. |
+| 0:08 | README, 'Why', paragraph 2 | Nothing for receiving one. |
+| 0:12 | same | No checkout. No invoice. No way for a server to find out it was paid. |
+| 0:18 | landing page | We built the receiving side. |
+| 0:23 | arcade, top of page | This arcade is the shop. |
+| 0:27 | cursor circles the widget | No wallet, no install. |
+| 0:31 | widget panel | That panel is the widget. One call puts it on any page. |
+| 0:36 | click INSERT COIN, phases run | Insert a coin. |
+| 0:42 | credit granted, game starts | The shop's server saw the payment and gave the credit. |
+| 0:50 | scroll to the confirmation block | Look at the price before signing. |
+| 0:55 | highlight 'You pay 7 STRK' | A 1 STRK coin costs 7. |
+| 1:01 | highlight the pool fee row | The pool takes 6 per operation. Flat. The same at 1 and at 1,000. |
+| 1:07 | the amber fee warning | STRK20's docs never mention it. We read it off the contract. |
+| 1:13 | same | Under 60 STRK the fee passes 10%. Private payment has a floor. |
+| 1:20 | honesty panel, the PUBLIC rows | This panel lists what the payment leaks, including what we could not hide. |
+| 1:26 | dashboard with live invoices | The shop's side. |
+| 1:31 | click 'qr' on a row | Each invoice gets a link and a QR. |
+| 1:37 | creator, switch to counter code | Or print one code for the counter. The customer types the amount. |
+| 1:43 | the advice text under the selector | A printed code means one address, forever. Anyone can add up the takings. |
+| 1:50 | print preview of the counter card | The customer stays anonymous either way. The page says this before you choose. |
+| 1:56 | src/qr.ts, then npm test | The QR encoder has no dependency. Checked against ISO 18004. |
+| 2:02 | hosted invoice page, real wallet | Mainnet. Real money. |
+| 2:07 | the red unverified-link banner | Nothing here has checked this link's amount or destination. It says so. |
+| 2:13 | same banner | A link cannot vouch for itself, so there is no field for that. |
+| 2:19 | wallet popup, sign | Signing. The pool submits it. On chain, the sender is not me. |
+| 2:26 | watcher terminal | The watcher polls public RPC. No wallet is open anywhere. |
+| 2:32 | the delta log line, zoomed | It counts the increase. Money already sitting there proves nothing. |
+| 2:39 | webhook log, dashboard goes PAID | Signed webhook out. Invoice turns PAID. The order ships on its own. |
+| 2:45 | strk20.json, then npm test | Seven mainnet transactions. 198 tests. Nine rounds of adversarial audit. |
+| 2:51 | README, 'What these do and do not show' | The README also lists what those transactions do not prove. |
+| 2:57 | landing page | Stealth Checkout. The receiving side of STRK20. |
+
+<!-- shots:end -->
 
 ### Two shots that need care
 

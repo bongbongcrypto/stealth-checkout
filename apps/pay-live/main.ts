@@ -11,7 +11,7 @@ import { RpcProvider } from "starknet";
 import { mountCheckout } from "../../packages/strk20-pay/src/ui.js";
 import { EXPLORER_BASE, WalletApiAdapter } from "../../packages/strk20-pay/src/wallet/walletapi.js";
 import { TOKENS, amountToUnits, resolveToken } from "../../packages/strk20-pay/src/tokens.js";
-import { encodeQr, qrDataUri } from "../../packages/strk20-pay/src/qr.js";
+import { encodeQr, qrDataUri, qrFits } from "../../packages/strk20-pay/src/qr.js";
 import type { Invoice } from "../../packages/strk20-pay/src/types.js";
 
 const RPC_URL = "https://rpc.starknet.lava.build";
@@ -80,7 +80,7 @@ if (!to) {
   renderCounter(to);
 } else {
   const amount = params.get("amount")!.trim();
-  if (!/^\d+(\.\d{1,18})?$/.test(amount) || Number(amount) <= 0) {
+  if (!isPayableAmount(amount)) {
     renderError("This invoice link has an invalid amount.");
   } else {
     void start({
@@ -266,6 +266,22 @@ interface Authority {
 }
 
 /**
+ * Whether this is an amount this page will act on.
+ *
+ * The digit cap is the point. The pattern alone accepted an integer of any
+ * length, so `?amount=` followed by six hundred nines passed validation, made
+ * the page's own URL too long to fit in a QR code, and the exception thrown
+ * while drawing that QR stopped the whole checkout from rendering. One link,
+ * blank page. STRK's entire supply is ten digits.
+ */
+function isPayableAmount(value: string): boolean {
+  if (value.length > 40) return false;
+  const m = /^(\d{1,30})(?:\.(\d{1,18}))?$/.exec(value);
+  if (!m) return false;
+  return Number(value) > 0;
+}
+
+/**
  * A QR on a white card, whatever the page's theme.
  *
  * Two rules a payment QR has to obey and that are easy to get wrong: dark
@@ -274,12 +290,22 @@ interface Authority {
  */
 function qrCard(text: string, caption: string, scale = 6): HTMLElement {
   const card = document.createElement("div");
+  const cap = document.createElement("div");
+  cap.className = "cap";
+
+  // A QR is a convenience. If the link is too long to encode, say so and carry
+  // on: the payment must not depend on the picture.
+  if (!qrFits(text)) {
+    card.className = "check";
+    cap.textContent = "This link is too long for a QR code. Use the link itself.";
+    card.append(cap);
+    return card;
+  }
+
   card.className = "qr";
   const img = document.createElement("img");
   img.src = qrDataUri(encodeQr(text), { scale, label: caption });
   img.alt = caption;
-  const cap = document.createElement("div");
-  cap.className = "cap";
   cap.textContent = caption;
   card.append(img, cap);
   return card;
@@ -349,7 +375,7 @@ function renderCounter(destination: string): void {
 
   const submit = () => {
     const value = input.value.trim();
-    if (!/^\d+(\.\d{1,18})?$/.test(value) || Number(value) <= 0) {
+    if (!isPayableAmount(value)) {
       problem.hidden = false;
       problem.textContent = "Enter an amount greater than zero, with at most 18 decimal places.";
       input.focus();
@@ -443,7 +469,7 @@ function renderCreator(): void {
       out.textContent = "Enter a valid Starknet address.";
       return;
     }
-    if (!isStatic && (!/^\d+(\.\d{1,18})?$/.test(amount) || Number(amount) <= 0)) {
+    if (!isStatic && !isPayableAmount(amount)) {
       out.textContent = "Enter an amount greater than zero, with at most 18 decimal places.";
       return;
     }

@@ -51,6 +51,13 @@ from the same origin as your watcher. Anywhere else - including the copy on
 GitHub Pages - it renders a payable checkout behind a plain warning that
 nothing has checked the amount or the destination.
 
+**Three 404s in the console are the design, not a fault.** On load the page asks
+its own origin for `/public/healthz` and for the invoice. Where no watcher
+answers, as on the GitHub Pages copy, those calls 404 and the page falls back to
+the unverified-link warning. It is how the page finds out whether it has an
+authority to believe, and it cannot ask anywhere else, because the link is not
+allowed to name one.
+
 **A receipt on the payer's screen is not proof of payment to you.** It tells
 the payer what that page observed on-chain, nothing more. Confirm independently
 from your own ledger before you ship anything.

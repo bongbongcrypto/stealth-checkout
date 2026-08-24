@@ -33092,6 +33092,10 @@ function escapeXml(value) {
     (ch) => ch === "&" ? "&amp;" : ch === "<" ? "&lt;" : ch === ">" ? "&gt;" : ch === '"' ? "&quot;" : "&apos;"
   );
 }
+var QR_MAX_BYTES = 666;
+function qrFits(text) {
+  return new TextEncoder().encode(text).length <= QR_MAX_BYTES;
+}
 
 // apps/pay-live/main.ts
 var RPC_URL = "https://rpc.starknet.lava.build";
@@ -33127,7 +33131,7 @@ if (!to) {
   renderCounter(to);
 } else {
   const amount = params.get("amount").trim();
-  if (!/^\d+(\.\d{1,18})?$/.test(amount) || Number(amount) <= 0) {
+  if (!isPayableAmount(amount)) {
     renderError("This invoice link has an invalid amount.");
   } else {
     void start({
@@ -33228,14 +33232,26 @@ async function start(fromUrl) {
     foreign
   );
 }
+function isPayableAmount(value) {
+  if (value.length > 40) return false;
+  const m = /^(\d{1,30})(?:\.(\d{1,18}))?$/.exec(value);
+  if (!m) return false;
+  return Number(value) > 0;
+}
 function qrCard(text, caption, scale = 6) {
   const card = document.createElement("div");
+  const cap = document.createElement("div");
+  cap.className = "cap";
+  if (!qrFits(text)) {
+    card.className = "check";
+    cap.textContent = "This link is too long for a QR code. Use the link itself.";
+    card.append(cap);
+    return card;
+  }
   card.className = "qr";
   const img = document.createElement("img");
   img.src = qrDataUri(encodeQr(text), { scale, label: caption });
   img.alt = caption;
-  const cap = document.createElement("div");
-  cap.className = "cap";
   cap.textContent = caption;
   card.append(img, cap);
   return card;
@@ -33281,7 +33297,7 @@ function renderCounter(destination) {
   note.textContent = "This is a reusable counter code, so every payment made with it arrives at that one address. Anyone reading the chain can therefore add up what this address has taken. Who paid stays private: the pool severs that. For an invoice that should not be countable alongside the others, ask the merchant for a one-time link instead.";
   const submit = () => {
     const value = input.value.trim();
-    if (!/^\d+(\.\d{1,18})?$/.test(value) || Number(value) <= 0) {
+    if (!isPayableAmount(value)) {
       problem.hidden = false;
       problem.textContent = "Enter an amount greater than zero, with at most 18 decimal places.";
       input.focus();
@@ -33353,7 +33369,7 @@ function renderCreator() {
       out.textContent = "Enter a valid Starknet address.";
       return;
     }
-    if (!isStatic && (!/^\d+(\.\d{1,18})?$/.test(amount) || Number(amount) <= 0)) {
+    if (!isStatic && !isPayableAmount(amount)) {
       out.textContent = "Enter an amount greater than zero, with at most 18 decimal places.";
       return;
     }

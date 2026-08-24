@@ -42,5 +42,19 @@ export interface QrSvgOptions {
 export declare function qrSvg(matrix: QrMatrix, options?: QrSvgOptions): string;
 /** The same SVG as a `data:` URI, for an `<img src>` or a print stylesheet. */
 export declare function qrDataUri(matrix: QrMatrix, options?: QrSvgOptions): string;
+/**
+ * The most a version-20 level-M code holds in byte mode: 669 data codewords is
+ * 5352 bits, less 4 for the mode indicator and 16 for the length.
+ */
+export declare const QR_MAX_BYTES = 666;
+/**
+ * Whether `encodeQr` will take this text.
+ *
+ * Callers should ask before building a QR out of anything they did not write
+ * themselves. A payment link carries a URL whose length someone else may
+ * control, and a checkout that throws while drawing an optional convenience is
+ * a checkout that a crafted link can take off the air.
+ */
+export declare function qrFits(text: string): boolean;
 /** Convenience: text straight to SVG. */
 export declare function qrCodeSvg(text: string, options?: QrSvgOptions): string;

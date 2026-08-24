@@ -100,6 +100,38 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
+/**
+ * Rewrite the shot table inside VIDEO-SCRIPT.md.
+ *
+ * It used to be typed out by hand next to the cue list, and by the second edit
+ * the two disagreed about what the video says.
+ */
+function writeShotTable() {
+  const doc = join(ROOT, "docs", "VIDEO-SCRIPT.md");
+  const text = readFileSync(doc, "utf8");
+  const START = "<!-- shots:start -->";
+  const END = "<!-- shots:end -->";
+  const from = text.indexOf(START);
+  const to = text.indexOf(END);
+  if (from === -1 || to === -1) {
+    console.error(`VIDEO-SCRIPT.md has no ${START} / ${END} markers; table not written`);
+    return;
+  }
+  const rows = cues
+    .map((cue) => {
+      const ms = parseTime(cue.start);
+      const clock = `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
+      const line = cue.en.replace(/\n/g, " ").replace(/\|/g, "\\|");
+      return `| ${clock} | ${cue.shot} | ${line} |`;
+    })
+    .join("\n");
+  const table = [START, "", "| Time | On screen | Subtitle |", "| --- | --- | --- |", rows, "", END].join(
+    "\n",
+  );
+  writeFileSync(doc, text.slice(0, from) + table + text.slice(to + END.length), "utf8");
+  console.log("rewrote the shot table in docs/VIDEO-SCRIPT.md");
+}
+
 if (!process.argv.includes("--check")) {
   for (const lang of Object.keys(LIMITS)) {
     const body = cues
@@ -110,4 +142,5 @@ if (!process.argv.includes("--check")) {
     writeFileSync(out, body, "utf8");
     console.log(`wrote docs/demo.${lang}.srt`);
   }
+  writeShotTable();
 }

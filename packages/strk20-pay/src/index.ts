@@ -16,7 +16,7 @@ export type { SentPayment, PaymentStore, PayOptions } from "./checkout.js";
 export { mountCheckout } from "./ui.js";
 export type { MountOptions, MountedCheckout } from "./ui.js";
 export { revealReport } from "./honesty.js";
-export { encodeQr, qrSvg, qrDataUri, qrCodeSvg, rsRemainder } from "./qr.js";
+export { QR_MAX_BYTES, encodeQr, qrCodeSvg, qrDataUri, qrFits, qrSvg, rsRemainder } from "./qr.js";
 export type { QrMatrix, QrSvgOptions } from "./qr.js";
 export { MockWallet } from "./wallet/mock.js";
 export {

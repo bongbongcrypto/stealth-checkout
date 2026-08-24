@@ -67,11 +67,13 @@ test("the payer is shown the total, the fee, and the destination before signing"
 
   const rows = confirmRows(host);
   assert.equal(rows["Merchant receives"], "10 STRK");
-  // Before connecting, the widget must assume the payer has to deposit, which
-  // costs the pool's fee twice: once taken out of the deposit, once off the
-  // payment. Showing one fee understated a 5 STRK invoice by 55%.
-  assert.equal(rows["Pool fee"], "6 STRK × 2 (deposit + payment)");
-  assert.equal(rows["You pay"], "22 STRK", "10 + 6 + 6");
+  // Before connecting the widget does not KNOW which case applies, so it must
+  // quote both rather than pick one. Picking the worst case and stating it as
+  // the total overstated a 1 STRK arcade coin by 86% on the first screen
+  // anyone sees; picking the best case understated it by the same trick in the
+  // other direction.
+  assert.equal(rows["Pool fee"], "6 STRK per operation");
+  assert.equal(rows["You pay"], "16 STRK, or 22 with nothing shielded yet");
   assert.equal(rows["Network"], "Starknet sepolia");
   assert.match(rows["To"], /^0x0abc00/);
 });

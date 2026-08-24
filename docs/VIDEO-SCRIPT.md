@@ -64,8 +64,9 @@ worth showing on camera rather than hiding. To demo server-verified terms, serve
 
 *Before clicking pay, point at the confirmation block and the amber warning.*
 
-> Look at this before anything is signed. The invoice is one STRK. The payer pays
-> seven, because the pool charges a **flat six STRK per operation**, whatever the
+> Look at this before anything is signed. The invoice is one STRK, and the line
+> underneath says seven, or thirteen if you have nothing shielded yet. That is
+> because the pool charges a **flat six STRK per operation**, whatever the
 > amount, and that number is documented nowhere in STRK20's docs. We found it by
 > calling the contract and by making the arithmetic on our own seven mainnet
 > transactions balance.

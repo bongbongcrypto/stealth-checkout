@@ -128,8 +128,13 @@ export function mountCheckout(container: HTMLElement, opts: MountOptions): Mount
 
     let mustDeposit = true; // the safe assumption until a balance says otherwise
     let held = "0";
+    // Before connecting, we do not know which case applies - and saying so is
+    // the difference between a worst case and a wrong number. A checkout that
+    // mounts at page load (the arcade does) showed a flat 13 STRK for a 1 STRK
+    // coin while the actual charge was 7.
+    const known = wallet.isConnected();
     try {
-      if (wallet.isConnected()) {
+      if (known) {
         const shielded = await wallet.shieldedBalance(invoice.token);
         held = shielded ?? "0";
         mustDeposit =
@@ -141,13 +146,16 @@ export function mountCheckout(container: HTMLElement, opts: MountOptions): Mount
 
     // A partly-shielded payer only tops up the difference, so quoting the full
     // deposit overstates what they will part with.
-    const total = mustDeposit
-      ? addAmounts(depositNeededFor(invoice.amount, fee, decimals, held), "0", decimals)
-      : shieldedNeededFor(invoice.amount, fee, decimals);
-    feeCell.textContent = mustDeposit
-      ? `${fee} ${invoice.token} \u00d7 2 (deposit + payment)`
-      : `${fee} ${invoice.token}`;
-    totalCell.textContent = `${total} ${invoice.token}`;
+    const ifDepositing = depositNeededFor(invoice.amount, fee, decimals, held);
+    const ifFunded = shieldedNeededFor(invoice.amount, fee, decimals);
+    feeCell.textContent = !known
+      ? `${fee} ${invoice.token} per operation`
+      : mustDeposit
+        ? `${fee} ${invoice.token} \u00d7 2 (deposit + payment)`
+        : `${fee} ${invoice.token}`;
+    totalCell.textContent = known
+      ? `${mustDeposit ? ifDepositing : ifFunded} ${invoice.token}`
+      : `${ifFunded} ${invoice.token}, or ${ifDepositing} with nothing shielded yet`;
 
     if (compareAmounts(fee, invoice.amount, decimals) > 0) {
       feeWarning.hidden = false;

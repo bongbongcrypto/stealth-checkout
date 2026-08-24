@@ -32502,17 +32502,19 @@ function mountCheckout(container, opts) {
     }
     let mustDeposit = true;
     let held = "0";
+    const known = wallet.isConnected();
     try {
-      if (wallet.isConnected()) {
+      if (known) {
         const shielded = await wallet.shieldedBalance(invoice.token);
         held = shielded ?? "0";
         mustDeposit = shielded === null || compareAmounts(shielded, shieldedNeededFor(invoice.amount, fee, decimals), decimals) < 0;
       }
     } catch {
     }
-    const total = mustDeposit ? addAmounts(depositNeededFor(invoice.amount, fee, decimals, held), "0", decimals) : shieldedNeededFor(invoice.amount, fee, decimals);
-    feeCell.textContent = mustDeposit ? `${fee} ${invoice.token} \xD7 2 (deposit + payment)` : `${fee} ${invoice.token}`;
-    totalCell.textContent = `${total} ${invoice.token}`;
+    const ifDepositing = depositNeededFor(invoice.amount, fee, decimals, held);
+    const ifFunded = shieldedNeededFor(invoice.amount, fee, decimals);
+    feeCell.textContent = !known ? `${fee} ${invoice.token} per operation` : mustDeposit ? `${fee} ${invoice.token} \xD7 2 (deposit + payment)` : `${fee} ${invoice.token}`;
+    totalCell.textContent = known ? `${mustDeposit ? ifDepositing : ifFunded} ${invoice.token}` : `${ifFunded} ${invoice.token}, or ${ifDepositing} with nothing shielded yet`;
     if (compareAmounts(fee, invoice.amount, decimals) > 0) {
       feeWarning.hidden = false;
       feeWarning.textContent = `Heads up: the pool's flat fee of ${fee} ${invoice.token} is larger than this invoice. The pool charges it per operation whatever the amount, and takes it out of a deposit as well as off a payment, so shielding once for several purchases costs far less than shielding per purchase.`;

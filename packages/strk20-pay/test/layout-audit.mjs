@@ -47,9 +47,9 @@ const parseRgb = (value) => {
 };
 
 /** The nearest ancestor that actually paints a background. */
-function backdrop(node) {
+function backdrop(node, getComputedStyle, root) {
   let el = node;
-  while (el && el !== document.documentElement) {
+  while (el && el !== root) {
     const c = parseRgb(getComputedStyle(el).backgroundColor);
     if (c) return c;
     el = el.parentElement;
@@ -62,7 +62,7 @@ function contrastRatio(a, b) {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-const visible = (el) => {
+const makeVisible = (getComputedStyle) => (el) => {
   const r = el.getBoundingClientRect();
   const cs = getComputedStyle(el);
   return r.width > 0 && r.height > 0 && cs.visibility !== "hidden" && cs.display !== "none";
@@ -73,11 +73,23 @@ const visible = (el) => {
  * @param {string} opts.primary   selector for the action the page exists for
  * @param {string} [opts.price]   selector for the total the payer agrees to
  * @param {string} [opts.checkout] selector for the payment box
+ * @param {Window} [win] the window to measure; defaults to this one
+ *
+ * Taking the window as an argument is what lets the harness audit a page inside
+ * an iframe. Reaching into the frame and evaluating a string there instead was
+ * blocked outright by GitHub Pages' content security policy, so the harness
+ * worked on a dev server and nowhere else, which is the wrong way round: the
+ * deployed copy is the one a judge opens.
  */
-export function auditPage(opts) {
+export function auditPage(opts, win = globalThis) {
+  const document = win.document;
+  const innerWidth = win.innerWidth;
+  const innerHeight = win.innerHeight;
+  const getComputedStyle = (el) => win.getComputedStyle(el);
   const fails = [];
   const measured = {};
   const fail = (rule, detail) => fails.push({ rule, why: RULES[rule], detail });
+  const visible = makeVisible(getComputedStyle);
 
   // 1. The action the page exists for, in the viewport.
   const primary = opts.primary ? document.querySelector(opts.primary) : null;
@@ -173,7 +185,7 @@ export function auditPage(opts) {
   for (const el of texty) {
     const fg = parseRgb(getComputedStyle(el).color);
     if (!fg) continue;
-    const ratio = contrastRatio(fg, backdrop(el));
+    const ratio = contrastRatio(fg, backdrop(el, getComputedStyle, document.documentElement));
     const size = px(getComputedStyle(el).fontSize);
     const bold = Number(getComputedStyle(el).fontWeight) >= 700;
     // WCAG treats 18.66px bold and 24px regular as large text.

@@ -47,9 +47,10 @@
   // /stealth-checkout/, so "/apps/..." there is somebody else's repo entirely.
   const ROOT = location.pathname.replace(/packages\/strk20-pay\/test\/[^/]*$/, "");
   const BASE = `${ROOT}apps`;
+  const { auditPage } = await import("./layout-audit.mjs");
 
   /** Wait until a selector appears, or give up. */
-  const until = async (doc, selector, ms = 6000) => {
+  const until = async (doc, selector, ms = 15000) => {
     const stop = Date.now() + ms;
     while (Date.now() < stop) {
       const el = doc.querySelector(selector);
@@ -78,9 +79,10 @@
       name: "arcade, coin inserted",
       url: `${BASE}/demo-arcade/index.html`,
       async ready(doc) {
-        await until(doc, "#coin");
-        await settle(700);
-        doc.getElementById("coin").click();
+        const coin = await until(doc, "#coin");
+        if (!coin) throw new Error("the arcade never rendered its INSERT COIN button");
+        await settle(900);
+        coin.click();
         await settle(1400);
         const btn = [...doc.querySelectorAll("#checkout button")].find((b) => !b.hidden);
         btn?.setAttribute("data-audit-primary", "");
@@ -100,7 +102,7 @@
       name: "link creator, counter code made",
       url: `${BASE}/pay-live/index.html`,
       async ready(doc) {
-        await until(doc, "#f-make");
+        if (!(await until(doc, "#f-make"))) throw new Error("the creator form never rendered");
         doc.getElementById("f-to").value = "0x04ea15bf342c3f4b8b9c2d1e0f5a6b7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6";
         const kind = doc.getElementById("f-kind");
         kind.value = "static";
@@ -124,8 +126,8 @@
       name: "payer view",
       url: `${BASE}/pay-live/index.html?to=0x04ea15bf342c3f4b8b9c2d1e0f5a6b7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6&amount=3.25&memo=Corner+cafe`,
       async ready(doc) {
-        await until(doc, "#checkout button", 8000);
-        await settle(1200);
+        if (!(await until(doc, "#checkout button", 20000))) throw new Error("the checkout never mounted");
+        await settle(1500);
         const btn = [...doc.querySelectorAll("#checkout button")].find((b) => !b.hidden);
         btn?.setAttribute("data-audit-primary", "");
       },
@@ -170,12 +172,9 @@
       try {
         const doc = frame.contentDocument;
         await screen.ready(doc);
-        // The audit runs INSIDE the frame, so innerWidth and innerHeight are the
-        // viewport under test rather than this page's.
-        const mod = await frame.contentWindow.eval(
-          `import("${ROOT}packages/strk20-pay/test/layout-audit.mjs")`,
-        );
-        result = mod.auditPage(screen.opts);
+        // Measured against the FRAME's window, so innerWidth and innerHeight are
+        // the viewport under test rather than this page's.
+        result = auditPage(screen.opts, frame.contentWindow);
       } catch (err) {
         result = { passed: false, fails: [{ rule: "threw", detail: err.message }], measured: {} };
       }

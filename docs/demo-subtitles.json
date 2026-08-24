@@ -1,0 +1,237 @@
+{
+  "_comment": [
+    "The demo video's subtitles, in one file so the two languages cannot drift apart.",
+    "`en` is what goes in the video, because the judges read English.",
+    "`ko` is the same line in Korean, so the person editing knows what each cue says.",
+    "`shot` is what should be on screen while the cue is up.",
+    "Run `node scripts/make-srt.mjs` to write docs/demo.en.srt and docs/demo.ko.srt.",
+    "It also checks reading speed and line length, and refuses to write a file that",
+    "asks a viewer to read faster than they can."
+  ],
+  "cues": [
+    {
+      "start": "00:00.000",
+      "end": "00:03.500",
+      "shot": "README, the 'Why' section",
+      "en": "STRK20 gave Starknet private balances.",
+      "ko": "STRK20는 스타크넷에\n숨긴 잔액을 만들었습니다."
+    },
+    {
+      "start": "00:03.500",
+      "end": "00:08.500",
+      "shot": "scroll: the ecosystem's sending tools",
+      "en": "The ecosystem filled with ways to SEND.\nClaim links, red packets, payroll.",
+      "ko": "생태계는 '보내는' 도구로 찼습니다.\n클레임 링크, 봉투, 급여 지급."
+    },
+    {
+      "start": "00:08.500",
+      "end": "00:14.000",
+      "shot": "README, 'Why', the second paragraph",
+      "en": "Run a shop and want to RECEIVE one?\nThere is nothing to install.",
+      "ko": "가게를 하면서 '받고' 싶으면?\n설치할 게 아무것도 없습니다."
+    },
+    {
+      "start": "00:14.000",
+      "end": "00:19.500",
+      "shot": "same",
+      "en": "No checkout, no invoices, and no way for\nyour server to learn that it was paid.",
+      "ko": "결제창도 인보이스도 없고,\n서버가 결제를 알 방법도 없습니다."
+    },
+    {
+      "start": "00:19.500",
+      "end": "00:23.000",
+      "shot": "landing page",
+      "en": "Stealth Checkout is that missing half.",
+      "ko": "이게 그 빠진 절반입니다."
+    },
+    {
+      "start": "00:23.000",
+      "end": "00:28.000",
+      "shot": "arcade, top of page",
+      "en": "This arcade is a merchant.\nNothing installed, no wallet needed.",
+      "ko": "이 오락실이 가게입니다.\n설치도 지갑도 필요 없습니다."
+    },
+    {
+      "start": "00:28.000",
+      "end": "00:33.000",
+      "shot": "cursor circles the widget panel",
+      "en": "The panel below is the entire widget,\nrendered by one call.",
+      "ko": "아래 패널이 위젯 전부입니다.\n호출 한 번으로 뜹니다."
+    },
+    {
+      "start": "00:33.000",
+      "end": "00:38.000",
+      "shot": "widget, showing the steps",
+      "en": "Connect, check the balance,\npay, receipt. A React binding ships too.",
+      "ko": "연결, 잔액 확인, 결제, 영수증.\nReact 바인딩도 있습니다."
+    },
+    {
+      "start": "00:38.000",
+      "end": "00:44.000",
+      "shot": "click INSERT COIN, the widget works",
+      "en": "Insert a coin. The widget pays the invoice\nout of a shielded balance.",
+      "ko": "코인을 넣습니다. 위젯이 숨긴 잔액에서\n인보이스를 결제합니다."
+    },
+    {
+      "start": "00:44.000",
+      "end": "00:50.000",
+      "shot": "credit granted, game starts",
+      "en": "The arcade's backend confirms it and\ngrants the credit. That is the whole loop.",
+      "ko": "오락실 서버가 확인하고 크레딧을 줍니다.\n이게 전체 흐름입니다."
+    },
+    {
+      "start": "00:50.000",
+      "end": "00:55.000",
+      "shot": "scroll up to the confirmation block",
+      "en": "The widget states the price\nbefore you sign.",
+      "ko": "서명 전에 위젯이 가격을 밝힙니다."
+    },
+    {
+      "start": "00:55.000",
+      "end": "01:01.500",
+      "shot": "highlight 'Pool fee: 6 STRK per operation'",
+      "en": "A flat 6 STRK per operation.\nNot a percentage. Same at 1 or at 1,000.",
+      "ko": "풀은 건당 6 STRK를 고정으로 뗍니다.\n1이든 1000이든 똑같습니다."
+    },
+    {
+      "start": "01:01.500",
+      "end": "01:07.500",
+      "shot": "highlight 'You pay 7 STRK, or 13...'",
+      "en": "STRK20's own docs never say this.\nWe read it live from the pool contract.",
+      "ko": "STRK20 문서에는 이 말이 없습니다.\n우리가 컨트랙트에서 직접 읽습니다."
+    },
+    {
+      "start": "01:07.500",
+      "end": "01:13.500",
+      "shot": "the fee warning line",
+      "en": "So private payments have a floor.\nUnder 60 STRK, the fee is over 10%.",
+      "ko": "그래서 프라이빗 결제엔 하한선이 있습니다.\n60 STRK 아래면 수수료가 10% 초과."
+    },
+    {
+      "start": "01:13.500",
+      "end": "01:20.000",
+      "shot": "scroll the honesty panel, PUBLIC rows",
+      "en": "This panel says what the payment reveals,\nincluding what we cannot hide.",
+      "ko": "이 패널은 결제가 뭘 드러내는지 말합니다.\n우리가 못 숨기는 것까지."
+    },
+    {
+      "start": "01:20.000",
+      "end": "01:26.000",
+      "shot": "the RPC and timing rows",
+      "en": "Open by default. Overclaiming is a\njudging penalty, and a lie either way.",
+      "ko": "기본으로 펼쳐둡니다. 과장은 감점이고,\n어차피 거짓말입니다."
+    },
+    {
+      "start": "01:26.000",
+      "end": "01:31.500",
+      "shot": "dashboard with live invoices",
+      "en": "The merchant side. Create an invoice,\nget a link and a QR.",
+      "ko": "가게 쪽입니다. 인보이스를 만들면\n링크와 QR이 나옵니다."
+    },
+    {
+      "start": "01:31.500",
+      "end": "01:37.000",
+      "shot": "click 'qr' on a row, dialog opens",
+      "en": "Every row has one, sized for a customer\nto scan straight off the screen.",
+      "ko": "모든 행에 있습니다. 손님이 화면 보고\n바로 찍는 크기입니다."
+    },
+    {
+      "start": "01:37.000",
+      "end": "01:43.000",
+      "shot": "link creator, switch to counter code",
+      "en": "Or print a counter code. One square,\nand the payer names the price.",
+      "ko": "아니면 카운터 코드를 인쇄합니다.\n금액은 손님이 넣습니다."
+    },
+    {
+      "start": "01:43.000",
+      "end": "01:50.000",
+      "shot": "the advice text under the selector",
+      "en": "That code reuses one address forever, so\nanyone can total what the shop has taken.",
+      "ko": "그 코드는 주소 하나를 계속 씁니다.\n가게 매출이 합산 가능해집니다."
+    },
+    {
+      "start": "01:50.000",
+      "end": "01:56.000",
+      "shot": "print preview of the counter card",
+      "en": "The payer stays private either way.\nWe say this where the choice is made.",
+      "ko": "손님은 어느 쪽이든 익명입니다.\n선택하는 자리에서 말합니다."
+    },
+    {
+      "start": "01:56.000",
+      "end": "02:02.000",
+      "shot": "src/qr.ts, then the test run",
+      "en": "The QR encoder is written in this repo.\nNo dependency, checked against ISO 18004.",
+      "ko": "QR 인코더는 직접 짰습니다.\nISO 규격 대조로 검증했습니다."
+    },
+    {
+      "start": "02:02.000",
+      "end": "02:07.500",
+      "shot": "hosted invoice page, mainnet, real wallet",
+      "en": "Now mainnet. Real money, a real wallet.",
+      "ko": "이제 메인넷입니다.\n진짜 돈, 진짜 지갑."
+    },
+    {
+      "start": "02:07.500",
+      "end": "02:13.500",
+      "shot": "the red 'unverified link' banner",
+      "en": "The page warns that this link's terms\nare unchecked. It does not pretend.",
+      "ko": "이 링크 조건은 검증 안 됐다고 알립니다.\n아닌 척하지 않습니다."
+    },
+    {
+      "start": "02:13.500",
+      "end": "02:19.500",
+      "shot": "same banner",
+      "en": "A link cannot nominate its own auditor,\nso there is no field for one.",
+      "ko": "링크가 자기 감사자를 지정할 순 없습니다.\n그래서 그런 칸이 없습니다."
+    },
+    {
+      "start": "02:19.500",
+      "end": "02:26.000",
+      "shot": "wallet popup, sign",
+      "en": "Signing. The pool submits it, so my\naddress is not the sender on chain.",
+      "ko": "서명합니다. 풀이 대신 제출해서\n체인엔 제 주소가 발신자로 안 남습니다."
+    },
+    {
+      "start": "02:26.000",
+      "end": "02:32.500",
+      "shot": "watcher terminal logging the arrival",
+      "en": "The merchant's watcher sees it arrive over\npublic RPC. No wallet open anywhere.",
+      "ko": "가게 워처가 공개 RPC로 입금을 봅니다.\n어디에도 지갑을 안 열었습니다."
+    },
+    {
+      "start": "02:32.500",
+      "end": "02:39.000",
+      "shot": "watcher log line showing the delta",
+      "en": "It confirms on the DELTA, not the balance.\nA pre-funded address cannot settle itself.",
+      "ko": "잔액이 아니라 증가분으로 확인합니다.\n미리 돈이 있던 주소는 결제로 안 칩니다."
+    },
+    {
+      "start": "02:39.000",
+      "end": "02:45.500",
+      "shot": "webhook log, then dashboard flips to PAID",
+      "en": "A signed webhook goes out, the dashboard\nturns PAID, and the order can ship itself.",
+      "ko": "서명된 웹훅이 나갑니다.\n대시보드는 PAID, 주문은 자동 처리."
+    },
+    {
+      "start": "02:45.500",
+      "end": "02:51.500",
+      "shot": "strk20.json, then the test run",
+      "en": "Seven mainnet transactions, all verified.\n196 tests. Nine adversarial audit rounds.",
+      "ko": "메인넷 거래 7건, 전부 확인됨.\n테스트 196개, 적대적 감사 9라운드."
+    },
+    {
+      "start": "02:51.500",
+      "end": "02:57.000",
+      "shot": "README, 'What these do and do not show'",
+      "en": "The README says what those transactions\ndo NOT prove. Please read that part too.",
+      "ko": "README엔 그 거래가 증명 못 하는 것도\n적어뒀습니다. 그 부분도 봐주십시오."
+    },
+    {
+      "start": "02:57.000",
+      "end": "03:00.000",
+      "shot": "landing page",
+      "en": "Stealth Checkout.\nThe accepting side of STRK20.",
+      "ko": "Stealth Checkout.\nSTRK20의 받는 쪽입니다."
+    }
+  ]
+}

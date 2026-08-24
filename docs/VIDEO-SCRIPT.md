@@ -1,158 +1,131 @@
 # 3-minute demo video: shot list
 
-Judges watch this before they read anything. Three minutes, four beats, one real
-mainnet payment on camera.
+Judges watch this before they read anything.
 
-**Record at 1280x800.** Screen capture only, no webcam. Narrate live or add captions
-afterwards; the script below is what to say, roughly, not word for word.
+**No voice-over.** The video is screen capture with subtitles burned in, so the
+words are written once, checked, and never mispronounced under time pressure.
+The subtitles are generated from a single source:
+
+| File | What it is |
+| --- | --- |
+| [`demo-subtitles.json`](demo-subtitles.json) | The source. Timing, the English line, the Korean line, and what should be on screen. Edit this one. |
+| [`demo.en.srt`](demo.en.srt) | Goes in the video. Judges read English. |
+| [`demo.ko.srt`](demo.ko.srt) | The same cues in Korean, for whoever is editing. Not published. |
+
+```bash
+node scripts/make-srt.mjs          # rewrite both .srt files
+node scripts/make-srt.mjs --check  # validate without writing
+```
+
+The generator refuses to write a file whose lines run past 42 characters
+(English) or 24 (Korean), or that ask a viewer to read faster than 17 and 12
+characters per second. A subtitle nobody finishes reading takes the viewer's
+attention and gives nothing back.
+
+Total runtime is exactly 3:00 across 32 cues.
+
+## Recording, on Windows 11 with nothing installed
+
+**Snipping Tool** records the screen: `Win + Shift + S`, then the camcorder
+icon, select the region, Start. It writes MP4 to `Videos/Screen Recordings`.
+Xbox Game Bar (`Win + G`) does the same and can capture a single window.
+
+Settings that matter:
+
+- **1280x800 or 1920x1080, nothing wider.** A judge may watch on a laptop.
+- Browser zoom **110%**, so text survives compression.
+- **Hide bookmarks, close every other tab**, and empty the taskbar of anything
+  personal. The repo is pseudonymous; the recording should be too.
+- No microphone. There is no narration.
+
+Then drop the MP4 and `demo.en.srt` into any editor that takes subtitles
+(CapCut, Clipchamp, DaVinci Resolve, all free) and burn them in. Burned in, not
+attached: YouTube will not show a sidecar file on an unlisted video reliably,
+and a judge should not have to turn subtitles on.
 
 ## Before you hit record
 
-1. **Shield ahead of time.** In Ready X, shield **20 STRK**. The pool charges a flat
-   6 STRK per operation, so shield in one chunk, never in fives. Wait for the wallet to
-   show the new Shielded Starknet balance (about ten blocks).
-   This also matches what the widget tells payers to do, so the video stays consistent.
-2. Close every tab except the ones below. Zoom the browser to 110% so text reads on a
-   phone.
-3. Have these open as tabs, in order:
-   - `https://bongbongcrypto.github.io/stealth-checkout/` (the landing page)
-   - `https://bongbongcrypto.github.io/stealth-checkout/apps/demo-arcade/index.html`
-   - the invoice link (below)
-   - `https://voyager.online/`
-   - `https://github.com/bongbongcrypto/stealth-checkout`
-4. Start the watcher in a terminal you can show:
-   `WATCHER_TOKEN=demo node server/watcher/watcher.mjs`, and open the dashboard with
-   that token pasted in. Register the invoice below through the dashboard so the
-   payer page can read its terms from the server on camera.
+1. **Shield ahead of time.** In Ready X, shield **20 STRK** in one go. The pool
+   charges a flat 6 STRK per operation, so shielding five times costs 30 STRK in
+   fees and shielding once costs 6. Wait for the wallet to show the new Shielded
+   balance, about ten blocks. This is also what the widget tells payers to do,
+   so the video stays consistent with the product.
+2. Start the watcher in a terminal you can show:
+   ```bash
+   WATCHER_TOKEN=demo WATCHER_ORIGIN=http://127.0.0.1:4173 node server/watcher/watcher.mjs
+   ```
+3. Start the demo server in a second terminal: `npm run dev`.
+4. Open the dashboard at `http://127.0.0.1:4173/apps/dashboard/index.html`,
+   paste the watcher URL and the token, and register the invoice you are about
+   to pay. Serving the payer page from the same origin as the watcher is what
+   makes the server-verified path visible on camera.
+5. Tabs, in this order, so the recording is one left-to-right sweep:
+   1. `https://github.com/bongbongcrypto/stealth-checkout` (README)
+   2. `https://bongbongcrypto.github.io/stealth-checkout/`
+   3. `https://bongbongcrypto.github.io/stealth-checkout/apps/demo-arcade/index.html`
+   4. `http://127.0.0.1:4173/apps/dashboard/index.html`
+   5. the invoice link from step 4
+   6. `https://voyager.online/`
 
-**Invoice link for the live payment** (pays account 2, so money moves to a different
-address on camera):
+**Cost of one take**: 5 STRK paid plus 6 STRK pool fee, out of the 20 shielded.
+Two takes fit in one shielding.
 
-```
-https://bongbongcrypto.github.io/stealth-checkout/apps/pay-live/index.html?to=0x055b3434802D52dD37f0A29E04Eb1c497b8998c3360B7A0319f81E5e165C4FC3&amount=5&memo=Order%20%2342&id=demo-live
-```
+## The shots, cue by cue
 
-Cost of the take: 5 STRK paid plus 6 STRK pool fee, out of what you shielded.
+Each row is one subtitle. `demo-subtitles.json` carries the same `shot` text, so
+the two never disagree.
 
-There is deliberately no `watcher=` parameter: the payer's page decides its own
-authority from where it was deployed, because a link cannot vouch for itself. The
-hosted copy on GitHub Pages therefore shows its unverified-link warning, and that is
-worth showing on camera rather than hiding. To demo server-verified terms, serve
-`apps/pay-live` from the same origin as the watcher and open the link from there.
+| Time | On screen | Subtitle (English) |
+| --- | --- | --- |
+| 0:00 | README, "Why" | STRK20 gave Starknet private balances. |
+| 0:03 | scroll the sending tools | The ecosystem filled with ways to SEND. |
+| 0:08 | README, "Why" paragraph 2 | Run a shop and want to RECEIVE one? |
+| 0:14 | same | No checkout, no invoices, no webhook. |
+| 0:19 | landing page | Stealth Checkout is that missing half. |
+| 0:23 | arcade, top | This arcade is a merchant. |
+| 0:28 | circle the widget panel | The panel below is the entire widget. |
+| 0:33 | widget steps | Connect, balance, pay, receipt. |
+| 0:38 | click INSERT COIN | Insert a coin. |
+| 0:44 | credit granted, game starts | The backend confirms and grants the credit. |
+| 0:50 | confirmation block | The widget states the price before you sign. |
+| 0:55 | highlight the fee row | A flat 6 STRK per operation. |
+| 1:01 | highlight "You pay 7, or 13" | STRK20's own docs never say this. |
+| 1:07 | the fee warning | So private payments have a floor. |
+| 1:13 | honesty panel, PUBLIC rows | What the payment reveals. |
+| 1:20 | the RPC and timing rows | Open by default. |
+| 1:26 | dashboard | The merchant side. |
+| 1:31 | click `qr` on a row | Every row has a QR. |
+| 1:37 | creator, switch to counter code | Or print a counter code. |
+| 1:43 | the advice text | It reuses one address forever. |
+| 1:50 | print preview | The payer stays private either way. |
+| 1:56 | `src/qr.ts`, then `npm test` | The QR encoder is written in this repo. |
+| 2:02 | invoice page, mainnet | Now mainnet. |
+| 2:07 | the unverified-link banner | The page warns the terms are unchecked. |
+| 2:13 | same | A link cannot nominate its own auditor. |
+| 2:19 | wallet popup, sign | The pool submits it. |
+| 2:26 | watcher terminal | The watcher sees it over public RPC. |
+| 2:32 | the delta log line | It confirms on the DELTA. |
+| 2:39 | webhook log, dashboard goes PAID | A signed webhook goes out. |
+| 2:45 | `strk20.json`, `npm test` | Seven mainnet transactions. 196 tests. |
+| 2:51 | README, "do not show" | What those transactions do NOT prove. |
+| 2:57 | landing page | The accepting side of STRK20. |
 
----
+### Two shots that need care
 
-## 0:00 to 0:25 - the gap
+**2:02, the unverified-link banner.** Do not hide it. A judge who sees a
+checkout admit "nothing here has checked this amount" learns more about the
+project than any feature would tell them. Leave it on screen for the full six
+seconds.
 
-*Screen: the repo README, scrolled to "Why".*
-
-> STRK20 brought private balances to Starknet, and the ecosystem filled up fast with
-> ways to **send** money privately. Claim links, red packets, payroll.
-> Nobody built the other half. If you run a store or an app and want to **accept** a
-> private payment, there is nothing to install. No checkout, no invoices, no receipts,
-> and no way for your backend to find out you got paid.
-> Stealth Checkout is that half.
-
-## 0:25 to 1:10 - it works, with zero setup
-
-*Screen: the arcade demo. Click INSERT COIN, then the pay button.*
-
-> Here is a merchant. This arcade sells game credits, and the panel on the right is the
-> entire widget, the same one any Starknet app can embed.
-> Watch the flow: it checks the shielded balance, pays the invoice privately, the
-> arcade's backend confirms it, and a credit lands.
-
-*Before clicking pay, point at the confirmation block and the amber warning.*
-
-> Look at this before anything is signed. The invoice is one STRK, and the line
-> underneath says seven, or thirteen if you have nothing shielded yet. That is
-> because the pool charges a **flat six STRK per operation**, whatever the
-> amount, and that number is documented nowhere in STRK20's docs. We found it by
-> calling the contract and by making the arithmetic on our own seven mainnet
-> transactions balance.
-> So the widget reads it live, adds it to the total, and warns you when the fee is
-> bigger than the thing you are buying. Which on a one-STRK coin it is.
-> That is a real constraint on what private payments can be used for today, and a
-> checkout that showed a price and hid it would be lying.
-
-*Let the phases play. Point at the progress line.*
-
-> Every wait says what it is waiting for, right next to the button that caused it, and
-> the wallet popup is announced before it appears.
-
-*Point at the honesty panel, already open.*
-
-> And it is open by default, because a disclosure collapsed under the pay button is not
-> a disclosure. Amber is what goes on-chain, green is what stays hidden. No privacy
-> overclaiming.
-
-*Click START and play for five seconds.*
-
-> This runs on a mock wallet, so anyone can try the whole thing with no extension and
-> no funds. Now the real one.
-
-## 1:10 to 2:10 - a real payment on mainnet
-
-*Screen: the invoice link. Point at the green wallet check.*
-
-> A hosted invoice, on Starknet mainnet. The page checks which wallets are installed and
-> whether any of them can make private payments, and says so up front rather than letting
-> you find out from a failure halfway through.
-
-*Click pay. Approve in Ready X. Wait for the receipt.*
-
-> One prompt. The payment leaves my shielded balance and lands on a fresh address made
-> for this invoice.
-> Notice what it did not do: it did not offer to shield for me. A deposit is public and
-> names the depositor, so shielding right before paying is exactly what lets someone
-> tie the two ends together. The widget makes you shield ahead of time instead, and
-> says why.
-
-*Receipt appears. Copy the payment tx hash into Voyager.*
-
-> Here is the receipt with both hashes, and here is the transaction on Voyager.
-> Succeeded, against the pool. The sender is a relayer, not me: that is the pool
-> severing my identity from the payment.
-
-## 2:10 to 2:40 - the merchant side
-
-*Screen: terminal running `node server/watcher/watcher.mjs`, then the dashboard.*
-
-> Merchants need to know they got paid without opening a wallet. This watcher polls the
-> invoice address over plain public RPC and fires a signed webhook.
-> No proving service, no discovery endpoint, no infrastructure that is not published
-> yet. That is the whole trick that makes accepting payments work today.
-
-*Dashboard: create an invoice, show it flip to PAID, then hit Export CSV.*
-
-> Create an invoice, watch it confirm, copy the pay link, export the ledger. That is
-> the merchant loop.
-
-*Point at the UNDERPAID row.*
-
-> And the states are the ones a real merchant needs. A partial payment is not
-> "expired", it is underpaid, with the shortfall, and its address stays reserved so a
-> later invoice cannot settle on the money sitting there. A payment that lands after
-> the deadline is paid late, not lost. Deliveries survive a restart, and there is a
-> redeliver endpoint for when your endpoint was the thing that was down.
-
-## 2:40 to 3:00 - take it
-
-*Screen: docs/INTEGRATION.md, then `npm install strk20-pay`.*
-
-> Three ways in. An invoice link with zero code. The widget in one mount call, vanilla
-> or React. Or the watcher with webhooks if you want your own backend.
-> It is MIT. If your sprint project needs to get paid, this is the layer, and I will
-> fix whatever breaks the same day.
-
-*Only say "it is on npm" if `npm publish` has actually run by the time you record.*
-> Repo is in the description.
-
----
+**2:32, the delta.** The watcher's log prints the baseline and the delta on
+separate lines. Zoom the terminal to 16pt or larger before recording; this is
+the one shot where an unreadable line costs a scored point.
 
 ## After recording
 
-1. Upload unlisted to YouTube.
-2. Put the URL in `strk20.json` as `demo_video`, commit, push.
-3. Add the new payment hash to `transactions` in the same commit.
-4. Verify on chain, then confirm the hub row updates (it reads the repo every 30 min).
+1. Burn in `demo.en.srt`, export at 1080p.
+2. Upload unlisted to YouTube.
+3. Put the URL in `strk20.json` as `demo_video`.
+4. Add the new payment's transaction hash to `transactions` in the same commit.
+5. Verify the hash on Voyager, then confirm the hub row updates. It re-reads the
+   repo every 30 minutes.

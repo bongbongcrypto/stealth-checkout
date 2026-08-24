@@ -1,0 +1,223 @@
+{
+  "_comment": [
+    "The demo video's narration, in one file.",
+    "",
+    "`say` is spoken aloud by the TTS voice, and is the only text an audience hears.",
+    "`ko` is a plain-Korean gloss so the person editing knows what each line means.",
+    "     It is never spoken and never appears on screen.",
+    "`shot` is what should be on screen while the line is read.",
+    "",
+    "Written for the ear. Spoken lines are shorter than written ones, use",
+    "contractions, and address the viewer directly. Sentence lengths are uneven on",
+    "purpose: a track where every line is the same measured clause reads as",
+    "machine-written no matter how correct it is.",
+    "",
+    "Run `node scripts/make-video-assets.mjs` to write the narration text, the",
+    "caption files, and the short-form caption styling."
+  ],
+  "lines": [
+    {
+      "start": "00:00.000",
+      "end": "00:04.000",
+      "shot": "README, the Why section",
+      "say": "Starknet can hide who you are when you send money.",
+      "ko": "스타크넷은 돈을 보낼 때 보내는 사람을 숨길 수 있습니다."
+    },
+    {
+      "start": "00:04.000",
+      "end": "00:07.500",
+      "shot": "scroll past the ecosystem's sending tools",
+      "say": "Getting paid that way? Nothing exists.",
+      "ko": "그런데 그렇게 돈을 받으려면? 아무것도 없습니다."
+    },
+    {
+      "start": "00:07.500",
+      "end": "00:13.000",
+      "shot": "README, Why, second paragraph",
+      "say": "No checkout. No invoice. Nothing to tell your server the money landed.",
+      "ko": "결제창도 없고 인보이스도 없고, 서버에 입금을 알려줄 것도 없습니다."
+    },
+    {
+      "start": "00:13.000",
+      "end": "00:16.000",
+      "shot": "landing page",
+      "say": "So we built it.",
+      "ko": "그래서 우리가 만들었습니다."
+    },
+    {
+      "start": "00:16.000",
+      "end": "00:21.000",
+      "shot": "arcade, top of page",
+      "say": "This arcade is the shop. No wallet, no install, it just runs.",
+      "ko": "이 오락실이 가게입니다. 지갑도 설치도 없이 그냥 돌아갑니다."
+    },
+    {
+      "start": "00:21.000",
+      "end": "00:27.000",
+      "shot": "cursor circles the widget panel",
+      "say": "That panel is the whole widget. One call drops it into any page.",
+      "ko": "저 패널이 위젯 전부입니다. 호출 한 번이면 어느 페이지에나 들어갑니다."
+    },
+    {
+      "start": "00:27.000",
+      "end": "00:31.000",
+      "shot": "click INSERT COIN, the phases run",
+      "say": "Drop a coin in.",
+      "ko": "코인을 하나 넣습니다."
+    },
+    {
+      "start": "00:31.000",
+      "end": "00:38.000",
+      "shot": "credit granted, the game starts",
+      "say": "The shop's server saw the payment and granted the credit. That's the loop.",
+      "ko": "가게 서버가 입금을 확인하고 크레딧을 줬습니다. 이게 전체 흐름입니다."
+    },
+    {
+      "start": "00:38.000",
+      "end": "00:42.500",
+      "shot": "scroll up to the confirmation block",
+      "say": "Now look at the price before you sign.",
+      "ko": "서명하기 전에 가격을 보십시오."
+    },
+    {
+      "start": "00:42.500",
+      "end": "00:46.500",
+      "shot": "highlight the total line",
+      "say": "A one STRK coin costs seven.",
+      "ko": "1 STRK짜리 코인인데 7을 냅니다."
+    },
+    {
+      "start": "00:46.500",
+      "end": "00:54.000",
+      "shot": "highlight the pool fee row",
+      "say": "The pool takes six every single time. Flat. Doesn't matter if you move one or a thousand.",
+      "ko": "풀이 매번 6을 뗍니다. 고정입니다. 1을 옮기든 1000을 옮기든 같습니다."
+    },
+    {
+      "start": "00:54.000",
+      "end": "01:01.000",
+      "shot": "the amber fee warning",
+      "say": "That number is nowhere in STRK20's docs. We pulled it off the contract ourselves.",
+      "ko": "그 숫자는 STRK20 문서 어디에도 없습니다. 우리가 컨트랙트에서 직접 꺼냈습니다."
+    },
+    {
+      "start": "01:01.000",
+      "end": "01:09.000",
+      "shot": "the same warning, then scroll down",
+      "say": "Which means private payments have a floor. Under sixty STRK, fees eat more than ten percent.",
+      "ko": "그래서 프라이빗 결제엔 하한선이 있습니다. 60 STRK 아래면 수수료가 10%를 넘습니다."
+    },
+    {
+      "start": "01:09.000",
+      "end": "01:16.000",
+      "shot": "honesty panel, the public rows",
+      "say": "This panel spells out what the payment leaks. Including the parts we couldn't hide.",
+      "ko": "이 패널은 결제가 흘리는 정보를 하나씩 적어둡니다. 우리가 못 숨긴 것까지요."
+    },
+    {
+      "start": "01:16.000",
+      "end": "01:22.000",
+      "shot": "dashboard with live invoices",
+      "say": "Merchant side. Every invoice gets a link and a QR.",
+      "ko": "가게 쪽입니다. 인보이스마다 링크와 QR이 붙습니다."
+    },
+    {
+      "start": "01:22.000",
+      "end": "01:29.000",
+      "shot": "creator, switch to counter code, print preview",
+      "say": "Or print one code and stick it on the counter. The customer picks the amount.",
+      "ko": "아니면 코드 하나를 인쇄해서 카운터에 붙입니다. 금액은 손님이 고릅니다."
+    },
+    {
+      "start": "01:29.000",
+      "end": "01:36.500",
+      "shot": "the advice text under the selector",
+      "say": "One printed code means one address forever. Anyone can add up your takings.",
+      "ko": "인쇄한 코드는 주소가 하나로 고정됩니다. 누구나 매출을 더해볼 수 있습니다."
+    },
+    {
+      "start": "01:36.500",
+      "end": "01:43.000",
+      "shot": "same",
+      "say": "Your customers stay anonymous either way. We say so before you pick.",
+      "ko": "손님은 어느 쪽이든 익명입니다. 고르기 전에 그 사실을 말해둡니다."
+    },
+    {
+      "start": "01:43.000",
+      "end": "01:50.000",
+      "shot": "src/qr.ts, then the test run",
+      "say": "The QR encoder is ours. No dependencies, checked against the ISO spec.",
+      "ko": "QR 인코더는 우리가 짰습니다. 의존성 없이 ISO 규격과 대조했습니다."
+    },
+    {
+      "start": "01:50.000",
+      "end": "01:54.000",
+      "shot": "hosted invoice page, mainnet, real wallet",
+      "say": "Mainnet now. Real money.",
+      "ko": "이제 메인넷입니다. 진짜 돈입니다."
+    },
+    {
+      "start": "01:54.000",
+      "end": "02:02.000",
+      "shot": "the red unverified-link banner",
+      "say": "See the warning? Nothing here has checked this link's amount or address, and it says so out loud.",
+      "ko": "저 경고 보이십니까? 이 링크의 금액과 주소는 아무도 검증하지 않았고, 그걸 대놓고 씁니다."
+    },
+    {
+      "start": "02:02.000",
+      "end": "02:08.000",
+      "shot": "same banner",
+      "say": "A link can't vouch for itself, so we never let it try.",
+      "ko": "링크가 스스로를 보증할 수는 없습니다. 그래서 시도조차 못 하게 했습니다."
+    },
+    {
+      "start": "02:08.000",
+      "end": "02:15.500",
+      "shot": "wallet popup, sign",
+      "say": "Signing. The pool submits it, so the chain never records me as the sender.",
+      "ko": "서명합니다. 풀이 대신 제출해서, 체인에 제가 발신자로 안 남습니다."
+    },
+    {
+      "start": "02:15.500",
+      "end": "02:22.500",
+      "shot": "watcher terminal, the arrival",
+      "say": "The merchant's watcher picks it up off public RPC. No wallet open anywhere.",
+      "ko": "가게 워처가 공개 RPC에서 그걸 잡아냅니다. 지갑은 어디에도 안 열려 있습니다."
+    },
+    {
+      "start": "02:22.500",
+      "end": "02:30.000",
+      "shot": "the delta log line, zoomed",
+      "say": "It counts what came in, not what's sitting there. Money already on the address proves nothing.",
+      "ko": "들어온 것만 셉니다. 원래 주소에 있던 돈은 아무 근거도 안 됩니다."
+    },
+    {
+      "start": "02:30.000",
+      "end": "02:37.000",
+      "shot": "webhook log, then the dashboard flips to PAID",
+      "say": "Signed webhook fires, the invoice flips to paid, and the order ships itself.",
+      "ko": "서명된 웹훅이 나가고, 인보이스가 결제완료로 바뀌고, 주문이 알아서 나갑니다."
+    },
+    {
+      "start": "02:37.000",
+      "end": "02:44.000",
+      "shot": "strk20.json, then the test run",
+      "say": "Seven mainnet transactions. Nearly two hundred tests. Nine rounds of tearing it apart.",
+      "ko": "메인넷 거래 7건, 테스트 200개 가까이, 뜯어보는 감사 9회."
+    },
+    {
+      "start": "02:44.000",
+      "end": "02:50.000",
+      "shot": "README, what these do and do not show",
+      "say": "And the README says what those transactions don't prove, too.",
+      "ko": "README에는 그 거래들이 증명하지 못하는 것도 적혀 있습니다."
+    },
+    {
+      "start": "02:50.000",
+      "end": "03:00.000",
+      "shot": "landing page",
+      "say": "Stealth Checkout. The receiving side of STRK20. Code, docs and the transactions are all in the repo.",
+      "ko": "Stealth Checkout. STRK20의 받는 쪽입니다. 코드도 문서도 거래 내역도 전부 레포에 있습니다."
+    }
+  ]
+}

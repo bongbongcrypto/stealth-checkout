@@ -1,0 +1,8 @@
+# Line endings are normalised on the way in, so a clone on Windows does not show
+# twenty-three modified files the moment someone runs the build. They did.
+* text=auto eol=lf
+
+# Binary, and not to be touched.
+*.png binary
+*.ico binary
+*.gz binary

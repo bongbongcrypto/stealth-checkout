@@ -10,9 +10,22 @@ export const EXPLORER_BASE = {
     mainnet: "https://voyager.online",
     sepolia: "https://sepolia.voyager.online",
 };
+/**
+ * The STRK20 pool, per network.
+ *
+ * `sepolia` is null on purpose. It used to hold the mainnet address, copied
+ * across, and `starknet_getClassHashAt` answers "Contract not found" for it
+ * there: the fee lookup called nothing, fell into its catch, and quoted a
+ * sepolia payer no fee at all without saying why. A constant that names an
+ * address which does not exist is worse than one that admits it does not know,
+ * because everything downstream treats it as a fact.
+ *
+ * If a sepolia deployment is published, put the address here and the fee lookup
+ * starts working on that network with no other change.
+ */
 export const POOL_ADDRESS = {
     mainnet: "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a",
-    sepolia: "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a",
+    sepolia: null,
 };
 export class WalletApiAdapter {
     network;
@@ -161,11 +174,17 @@ export class WalletApiAdapter {
         const info = strk;
         if (this.feeCache !== undefined)
             return this.feeCache;
+        // No pool on this network is a different thing from a lookup that failed,
+        // and it is knowable without asking the chain. Saying so here keeps the
+        // catch below for what it is actually for: an RPC that did not answer.
+        const pool = POOL_ADDRESS[this.network];
+        if (!pool)
+            return null;
         try {
             const { RpcProvider } = (await import("starknet"));
             this.provider ??= new RpcProvider({ nodeUrl: this.rpcUrl });
             const res = await this.provider.callContract({
-                contractAddress: POOL_ADDRESS[this.network],
+                contractAddress: pool,
                 entrypoint: "get_fee_amount",
                 calldata: [],
             });

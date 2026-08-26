@@ -31647,7 +31647,7 @@ var EXPLORER_BASE = {
 };
 var POOL_ADDRESS = {
   mainnet: "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a",
-  sepolia: "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a"
+  sepolia: null
 };
 var WalletApiAdapter = class {
   network;
@@ -31778,11 +31778,13 @@ var WalletApiAdapter = class {
     if (BigInt(asked.address) !== BigInt(strk.address)) return null;
     const info = strk;
     if (this.feeCache !== void 0) return this.feeCache;
+    const pool = POOL_ADDRESS[this.network];
+    if (!pool) return null;
     try {
       const { RpcProvider: RpcProvider2 } = await Promise.resolve().then(() => (init_dist(), dist_exports));
       this.provider ??= new RpcProvider2({ nodeUrl: this.rpcUrl });
       const res2 = await this.provider.callContract({
-        contractAddress: POOL_ADDRESS[this.network],
+        contractAddress: pool,
         entrypoint: "get_fee_amount",
         calldata: []
       });

@@ -1,8 +1,47 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { WalletApiAdapter, amountToFelt, amountToUnits, explainWalletError, resolveToken, unitsToAmount } from "../dist/index.js";
+import {
+  POOL_ADDRESS,
+  WalletApiAdapter,
+  amountToFelt,
+  amountToUnits,
+  explainWalletError,
+  resolveToken,
+  unitsToAmount,
+} from "../dist/index.js";
 
 const STRK = "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
+
+test("the pool address is only claimed where a pool exists", async () => {
+  // It used to hold the mainnet address on both networks, copied across.
+  // `starknet_getClassHashAt` answers "Contract not found" for it on sepolia,
+  // so the fee lookup called nothing, landed in its catch, and quoted a sepolia
+  // payer no fee at all without ever saying why.
+  assert.equal(typeof POOL_ADDRESS.mainnet, "string");
+  assert.equal(
+    POOL_ADDRESS.sepolia,
+    null,
+    "there is no verified STRK20 pool on sepolia; naming one asserts a fact that is not true",
+  );
+  assert.notEqual(
+    POOL_ADDRESS.sepolia,
+    POOL_ADDRESS.mainnet,
+    "the mainnet address must never be copied back into sepolia",
+  );
+
+  // And the consequence, rather than the constant alone: asking for the fee on
+  // a network with no pool answers "unknown" without reaching for the network.
+  let called = false;
+  const wallet = new WalletApiAdapter({ network: "sepolia", rpcUrl: "http://127.0.0.1:1/never" });
+  wallet.provider = {
+    callContract() {
+      called = true;
+      throw new Error("the fee lookup must not reach a chain that has no pool");
+    },
+  };
+  assert.equal(await wallet.poolFee("STRK"), null);
+  assert.equal(called, false, "and it must not have tried");
+});
 
 test("token math: units and felts", () => {
   assert.equal(amountToUnits("1", 18), 10n ** 18n);

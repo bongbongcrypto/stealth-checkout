@@ -11,7 +11,8 @@
     "e2e:watcher": "node server/watcher/e2e-live.mjs",
     "build:pay": "esbuild apps/pay-live/main.ts --bundle --format=esm --target=es2022 --outfile=apps/pay-live/bundle.js",
     "build:all": "npm run build && npm run build:pay",
-    "dev": "node server/dev-static.mjs"
+    "dev": "node server/dev-static.mjs",
+    "check:claims": "node scripts/check-claims.mjs"
   },
   "devDependencies": {
     "esbuild": "0.25.9",

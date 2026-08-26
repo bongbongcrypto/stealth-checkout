@@ -8,7 +8,20 @@ export declare const MATURITY_BLOCKS = 10;
 /** The STRK20 privacy pool, which charges the flat per-operation fee. */
 /** Voyager has a separate host per network; one URL for both 404s on one. */
 export declare const EXPLORER_BASE: Record<Network, string>;
-export declare const POOL_ADDRESS: Record<Network, string>;
+/**
+ * The STRK20 pool, per network.
+ *
+ * `sepolia` is null on purpose. It used to hold the mainnet address, copied
+ * across, and `starknet_getClassHashAt` answers "Contract not found" for it
+ * there: the fee lookup called nothing, fell into its catch, and quoted a
+ * sepolia payer no fee at all without saying why. A constant that names an
+ * address which does not exist is worse than one that admits it does not know,
+ * because everything downstream treats it as a fact.
+ *
+ * If a sepolia deployment is published, put the address here and the fee lookup
+ * starts working on that network with no other change.
+ */
+export declare const POOL_ADDRESS: Record<Network, string | null>;
 export interface WalletApiOptions {
     network: Network;
     /** JSON-RPC endpoint; required on Sepolia, defaults to a public one on mainnet. */

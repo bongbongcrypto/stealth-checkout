@@ -123,6 +123,38 @@ test("a fee smaller than the invoice does not nag", async () => {
   assert.equal(host.find("spay-fee-warn").hidden, true);
 });
 
+test("the summary above the button cannot say something the list below does not", async () => {
+  // The summary was added to get the pay button back on the screen, and it
+  // works by naming a couple of facts per side and deferring the rest. That
+  // makes it a second, shorter claim about what a payment exposes, and two
+  // claims can disagree. On a product whose whole argument is that it does not
+  // overstate its privacy, a summary that drifted from the rows it summarises
+  // would be the worst possible defect.
+  const wallet = new MockWallet({ funded: { STRK: "100" }, latency: 0 });
+  mountCheckout(host, { invoice: invoice(), wallet, store: freshStore() });
+  await settle();
+
+  const root = host.children[0];
+  const rows = root.findAll("spay-honesty-row").map((r) => ({
+    badge: r.findAll("spay-badge")[0].textContent,
+    fact: r.find("spay-honesty-fact").textContent,
+  }));
+  assert.ok(rows.length >= 4, `expected a real list, got ${rows.length} rows`);
+
+  const heading = root.find("spay-honesty-summary-head").textContent;
+  assert.match(heading, new RegExp(`all ${rows.length} below`), "the count must be the real count");
+
+  for (const line of root.findAll("spay-honesty-summary-row")) {
+    const badge = line.findAll("spay-badge")[0].textContent;
+    const text = line.find("spay-honesty-summary-text").textContent;
+    for (const fact of text.replace(/, and \d+ more$/, "").split(", ")) {
+      const match = rows.find((r) => r.fact === fact);
+      assert.ok(match, `the summary names "${fact}", which is in no row`);
+      assert.equal(match.badge, badge, `"${fact}" is ${badge} in the summary and ${match.badge} in the list`);
+    }
+  }
+});
+
 test("what the payment reveals is stated before the button, and in full after it", async () => {
   const wallet = new MockWallet({ funded: { STRK: "100" }, latency: 0 });
   mountCheckout(host, { invoice: invoice(), wallet, store: freshStore() });

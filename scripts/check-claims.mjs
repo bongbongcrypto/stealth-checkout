@@ -89,6 +89,35 @@ for (const m of read("README.md").matchAll(spelled)) {
 }
 checked.push(`the same count spelled out: ${spelledFound} place${spelledFound === 1 ? "" : "s"}`);
 
+// ---------------------------------------------------- the spoken test count
+// The narration says a test count in words, and words slip past the digit check
+// above. "Nearly two hundred" was left in the recording script while the real
+// number climbed past two hundred, so a snapshot the judges hear would have
+// undercounted. The video is frozen once recorded, so this only has to be true
+// at record time, but it should at least be true then.
+{
+  const HUNDREDS = { "one hundred": 100, "two hundred": 200, "three hundred": 300 };
+  const script = read("docs/demo-script.json");
+  const m = /(nearly|about|over|around|more than)\s+(one|two|three) hundred tests/i.exec(script);
+  if (!m) {
+    checked.push("spoken test count: the narration states none, so nothing to check");
+  } else {
+    const qualifier = m[1].toLowerCase();
+    const base = HUNDREDS[`${m[2].toLowerCase()} hundred`];
+    // "over/more than N" needs actual > N; "nearly/about/around N" needs actual near N.
+    const ok =
+      qualifier === "over" || qualifier === "more than"
+        ? passed > base
+        : Math.abs(passed - base) <= 25 && passed < base;
+    if (Number.isFinite(passed) && !ok) {
+      problems.push(
+        `docs/demo-script.json: narration says "${m[0]}", and the suite has ${passed}`,
+      );
+    }
+    checked.push(`spoken test count: "${m[0]}" against ${passed}`);
+  }
+}
+
 // ------------------------------------------------------------------ the fee
 // Stated all over the docs and the UI, and it is the finding the project is
 // built on, so it is asked of the chain rather than trusted.

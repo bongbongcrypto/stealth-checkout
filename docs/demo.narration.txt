@@ -24,6 +24,6 @@ Signing. The pool submits it, so the chain never records me as the sender.
 The merchant's watcher picks it up off public RPC. No wallet open anywhere.
 It counts what came in, not what's sitting there. Money already on the address proves nothing.
 Signed webhook fires, the invoice flips to paid, and the order ships itself.
-Seven mainnet transactions. Nearly two hundred tests. Nine rounds of tearing it apart.
+Seven mainnet transactions. Over two hundred tests. Nine rounds of tearing it apart.
 And the README says what those transactions don't prove, too.
 Stealth Checkout. The receiving side of STRK20. Code, docs and the transactions are all in the repo.

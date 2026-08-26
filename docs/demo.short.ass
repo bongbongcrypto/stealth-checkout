@@ -97,10 +97,10 @@ Dialogue: 0,0:02:30.00,0:02:32.39,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy1
 Dialogue: 0,0:02:32.39,0:02:34.50,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}invoice flips to paid,
 Dialogue: 0,0:02:34.50,0:02:36.32,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}and the order ships
 Dialogue: 0,0:02:36.32,0:02:37.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}itself.
-Dialogue: 0,0:02:37.00,0:02:39.86,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Seven mainnet transactions. Nearly
-Dialogue: 0,0:02:39.86,0:02:41.80,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}two hundred tests. Nine
-Dialogue: 0,0:02:41.80,0:02:43.49,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}rounds of tearing it
-Dialogue: 0,0:02:43.49,0:02:44.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}apart.
+Dialogue: 0,0:02:37.00,0:02:39.76,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Seven mainnet transactions. Over
+Dialogue: 0,0:02:39.76,0:02:41.75,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}two hundred tests. Nine
+Dialogue: 0,0:02:41.75,0:02:43.48,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}rounds of tearing it
+Dialogue: 0,0:02:43.48,0:02:44.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}apart.
 Dialogue: 0,0:02:44.00,0:02:45.93,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}And the README says
 Dialogue: 0,0:02:45.93,0:02:48.88,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}what those transactions don't
 Dialogue: 0,0:02:48.88,0:02:50.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}prove, too.

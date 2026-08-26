@@ -4,7 +4,7 @@
 
 ---
 
-shipped something the other 70+ teams here might actually want to use
+shipped something the other 130+ teams here might actually want to use
 
 **Stealth Checkout**: the accepting side of STRK20. everyone is building rails to send money privately, so we built the part where your app gets paid.
 

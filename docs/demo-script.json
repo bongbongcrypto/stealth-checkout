@@ -202,8 +202,8 @@
       "start": "02:37.000",
       "end": "02:44.000",
       "shot": "strk20.json, then the test run",
-      "say": "Seven mainnet transactions. Nearly two hundred tests. Nine rounds of tearing it apart.",
-      "ko": "메인넷 거래 7건, 테스트 200개 가까이, 뜯어보는 감사 9회."
+      "say": "Seven mainnet transactions. Over two hundred tests. Nine rounds of tearing it apart.",
+      "ko": "메인넷 거래 7건, 테스트 200개 넘게, 뜯어보는 감사 9회."
     },
     {
       "start": "02:44.000",

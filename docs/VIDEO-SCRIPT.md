@@ -150,7 +150,7 @@ run the generator.
 | 2:15 | watcher terminal, the arrival | The merchant's watcher picks it up off public RPC. No wallet open anywhere. |
 | 2:22 | the delta log line, zoomed | It counts what came in, not what's sitting there. Money already on the address proves nothing. |
 | 2:30 | webhook log, then the dashboard flips to PAID | Signed webhook fires, the invoice flips to paid, and the order ships itself. |
-| 2:37 | strk20.json, then the test run | Seven mainnet transactions. Nearly two hundred tests. Nine rounds of tearing it apart. |
+| 2:37 | strk20.json, then the test run | Seven mainnet transactions. Over two hundred tests. Nine rounds of tearing it apart. |
 | 2:44 | README, what these do and do not show | And the README says what those transactions don't prove, too. |
 | 2:50 | landing page | Stealth Checkout. The receiving side of STRK20. Code, docs and the transactions are all in the repo. |
 

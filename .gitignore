@@ -31,3 +31,8 @@ Thumbs.db
 # Watcher state: real invoice ledgers, never committed
 server/watcher/invoices.json
 *.invoices.json
+
+# Video build artefacts. The narration mp3 is committed so the script's voice is
+# reviewable; the 33MB wav and the per-line pieces rebuild from it.
+docs/narration/
+docs/demo.narration.wav

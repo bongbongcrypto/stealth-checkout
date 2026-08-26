@@ -167,7 +167,10 @@ run([
 ]);
 
 const built = duration(final);
-console.log(`\nwrote docs/recording/demo.mp4  ${Math.floor(built / 60)}:${String(Math.round(built % 60)).padStart(2, "0")}`);
+console.log(
+  `\nwrote docs/recording/${review ? "demo.review.mp4" : "demo.mp4"}  ` +
+    `${Math.floor(built / 60)}:${String(Math.round(built % 60)).padStart(2, "0")}`,
+);
 const missing = SEGMENT_SLOTS.filter((s) => !existsSync(join(OUT, `seg-${s.id}.mp4`)));
 if (missing.length > 0) {
   console.log(`still on a slate: ${missing.map((s) => s.id).join(", ")}`);

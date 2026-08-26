@@ -208,10 +208,16 @@ const HELPERS = `
       const el = document.querySelector(sel);
       if (!el) throw new Error("no element for " + sel);
       const r = el.getBoundingClientRect();
-      ring.style.left = (r.left + scrollX - pad) + "px";
-      ring.style.top = (r.top + scrollY - pad) + "px";
-      ring.style.width = (r.width + pad * 2) + "px";
-      ring.style.height = (r.height + pad * 2) + "px";
+      // getBoundingClientRect answers in zoomed coordinates, and the ring's own
+      // left and top are then zoomed again by the root zoom it lives under, so
+      // at 1.4 the ring landed forty percent right and down of its target,
+      // hanging half off the frame next to the thing it was meant to circle.
+      // Divide once and the two cancel.
+      const z = parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
+      ring.style.left = ((r.left + scrollX) / z - pad) + "px";
+      ring.style.top = ((r.top + scrollY) / z - pad) + "px";
+      ring.style.width = (r.width / z + pad * 2) + "px";
+      ring.style.height = (r.height / z + pad * 2) + "px";
       ring.classList.add("on");
       return el.textContent.trim().slice(0, 60);
     },
@@ -228,18 +234,42 @@ const HELPERS = `
 
 const CHOREOGRAPHY = [
   {
+    // The first five seconds used to be the GitHub file listing. A judge who
+    // gives a video twenty seconds saw a repository page, scrolling. Now the
+    // first frame is the product and the first sentence is its name: the shot
+    // list opens on the thing itself and only reaches the landing page once
+    // the viewer knows what they are looking at.
     id: "a",
-    url: "https://github.com/bongbongcrypto/stealth-checkout",
+    url: `${BASE}/apps/demo-arcade/index.html`,
+    zoom: 1.4,
     steps: [
-      { at: 300, do: async (s) => evaluate(s, `window.__shoot.scrollTo(document.body.scrollHeight * 0.06, 1200)`) },
-      { at: 4200, do: async (s) => evaluate(s, `window.__shoot.scrollTo(window.scrollY + 520, 2400)`) },
-      { at: 7700, do: async (s) => evaluate(s, `window.__shoot.scrollTo(window.scrollY + 420, 2600)`) },
-      { at: 13000, do: async (s, go) => go("https://bongbongcrypto.github.io/stealth-checkout/") },
+      // Top-aligned, not centred. The widget is taller than the screen, and
+      // centring it put its middle in the middle: the header, the price and
+      // half the button were above the fold while the narration said "this is
+      // a payment box". The box has to enter head first.
+      {
+        at: 300,
+        do: async (s) =>
+          evaluate(
+            s,
+            `(() => { const r = document.querySelector(".spay").getBoundingClientRect();
+               return window.__shoot.scrollTo(window.scrollY + r.top - 40, 700); })()`,
+          ),
+      },
+      { at: 1200, do: async (s) => evaluate(s, `window.__shoot.spot(".spay", 12)`) },
+      // 0:05 what it hides: the summary's HIDDEN line
+      { at: 5000, do: async (s) => evaluate(s, `window.__shoot.spot(".spay-honesty-summary", 10)`) },
+      // 0:09.5 the gap it fills
+      { at: 8200, do: async (s) => evaluate(s, `window.__shoot.unspot()`) },
+      { at: 8600, do: async (s, go) => go(`${BASE}/index.html`) },
+      // 0:13.9 "So we did.", over the three cards
+      { at: 13900, do: async (s) => evaluate(s, `window.__shoot.scrollTo(240, 1500)`) },
     ],
   },
   {
     id: "b",
     url: `${BASE}/apps/demo-arcade/index.html`,
+    zoom: 1.4,
     steps: [
       // 0:16 the shop
       { at: 400, do: async (s) => evaluate(s, `window.__shoot.scrollTo(0, 600)`) },
@@ -265,6 +295,10 @@ const CHOREOGRAPHY = [
       // one has become a receipt and a receipt has no price on it.
       { at: 22000, do: async (s) => evaluate(s, `document.querySelector("#coin").click()`) },
       { at: 22400, do: async (s) => evaluate(s, `window.__shoot.scrollToEl(".spay-confirm", 1100)`) },
+      // The frame under "look at the price" was mostly the dark canvas: the
+      // scroll had centred the confirm rows but nothing told the eye where to
+      // land. Ring them as soon as the scroll settles.
+      { at: 23700, do: async (s) => evaluate(s, `window.__shoot.spot(".spay-confirm", 10)`) },
       // 0:42 a one STRK coin costs seven
       { at: 26800, do: async (s) => evaluate(s, `window.__shoot.spot(".spay-total", 10)`) },
       // 0:46 the pool takes six, flat
@@ -281,6 +315,7 @@ const CHOREOGRAPHY = [
   {
     id: "c",
     url: `${BASE}/apps/dashboard/index.html`,
+    zoom: 1.4,
     needsWatcher: true,
     // Run before a frame is captured. "Every invoice gets a link and a QR" over
     // an empty table would be a claim the screen contradicts, so the table is
@@ -336,19 +371,22 @@ const CHOREOGRAPHY = [
       { at: 13800, do: async (s) => evaluate(s, `window.__shoot.spot("#f-advice", 10)`) },
       // 1:36 your customers stay anonymous either way
       { at: 20800, do: async (s) => evaluate(s, `window.__shoot.spot("#f-out", 10)`) },
-      // 1:43 the QR encoder is ours
-      { at: 26400, do: async (s) => evaluate(s, `window.__shoot.unspot()`) },
+      // 1:43 the QR encoder is ours. The navigation leaves a second earlier
+      // than the narration needs it: GitHub takes a moment to paint, and the
+      // frame under this line used to be its loading background.
+      { at: 25400, do: async (s) => evaluate(s, `window.__shoot.unspot()`) },
       {
-        at: 27000,
+        at: 25800,
         do: async (s, go) =>
           go("https://github.com/bongbongcrypto/stealth-checkout/blob/main/packages/strk20-pay/src/qr.ts"),
       },
-      { at: 30000, do: async (s) => evaluate(s, `window.__shoot.scrollTo(700, 2500)`) },
+      { at: 29500, do: async (s) => evaluate(s, `window.__shoot.scrollTo(900, 2600)`) },
     ],
   },
   {
     id: "e",
     url: "https://github.com/bongbongcrypto/stealth-checkout/blob/main/strk20.json",
+    zoom: 1.25,
     steps: [
       { at: 500, do: async (s) => evaluate(s, `window.__shoot.scrollTo(400, 1800)`) },
       // 2:44 and the README says what those transactions don't prove
@@ -550,6 +588,15 @@ async function recordSegment(seg, { dry = false } = {}) {
     await loaded;
     await sleep(900);
     await evaluate(s, HELPERS);
+    // Everything on camera, larger. At 1920 wide the widget was 340px, 18% of
+    // the frame, and the price inside it 26px: readable at a desk, gone on a
+    // phone or a compressed stream. CSS zoom re-lays the page out, so it is a
+    // real enlargement rather than scaled pixels, and 1.4 was measured to add
+    // no sideways scroll on any screen this records.
+    if (seg.zoom) {
+      await evaluate(s, `document.documentElement.style.zoom = ${JSON.stringify(String(seg.zoom))}`);
+      await sleep(300);
+    }
   };
 
   try {

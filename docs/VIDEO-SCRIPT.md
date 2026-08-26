@@ -128,19 +128,19 @@ run the generator.
 
 | Time | On screen | Narration |
 | --- | --- | --- |
-| 0:00 | README, the Why section | Starknet can hide who you are when you send money. |
-| 0:04 | scroll past the ecosystem's sending tools | Getting paid that way? Nobody built that. |
-| 0:07 | README, Why, second paragraph | No checkout. No invoice. Nothing to tell your server the money landed. |
-| 0:13 | landing page | So we built it. |
+| 0:00 | arcade checkout widget, zoomed, ring on the panel | This is Stealth Checkout, a payment box you drop into any website. |
+| 0:04 | the honesty summary, ring on the HIDDEN row | Someone pays you privately. The chain never learns who. |
+| 0:08 | landing page, top | Starknet could already send money privately. Receiving it? Nobody built that. |
+| 0:13 | landing page, the three cards | So we did. |
 | 0:16 | arcade, top of page | This arcade is the shop. No wallet, no install, it just runs. |
 | 0:21 | cursor circles the widget panel | That panel is the whole widget. One call drops it into any page. |
 | 0:27 | click INSERT COIN, the phases run | Drop a coin in. |
-| 0:31 | credit granted, the game starts | The shop's server saw the payment and granted the credit. That's the loop. |
+| 0:31 | credit granted, the game starts | The shop's server saw the payment and granted the credit. Payment in, product out. |
 | 0:38 | scroll up to the confirmation block | Now look at the price before you sign. |
 | 0:42 | highlight the total line | A one STRK coin costs seven. |
 | 0:46 | highlight the pool fee row | The pool takes six every single time. Flat. Doesn't matter if you move one or a thousand. |
 | 0:54 | the amber fee warning | That number is nowhere in STRK20's docs. We read it off the contract ourselves. |
-| 1:01 | the same warning, then scroll down | Which means private payments have a floor. Under sixty STRK, fees eat more than ten percent. |
+| 1:01 | the same warning, then scroll down | So a private payment has a minimum practical size. Under sixty STRK, fees eat more than ten percent. |
 | 1:09 | honesty panel, the public rows | This panel spells out what the payment leaks. Including the parts we couldn't hide. |
 | 1:16 | dashboard with live invoices | Merchant side. Every invoice gets a link and a QR. |
 | 1:22 | creator, switch to counter code, print preview | Or print one code and stick it on the counter. The customer picks the amount. |
@@ -156,7 +156,7 @@ run the generator.
 | 2:30 | webhook log, then the dashboard flips to PAID | Signed webhook fires, the invoice flips to paid, and the order goes out. |
 | 2:37 | strk20.json, then the test run | Real mainnet transactions, all verified. Over two hundred tests. Nine rounds of tearing it apart. |
 | 2:44 | README, what these do and do not show | And the README also says what those transactions don't prove. |
-| 2:50 | landing page | Stealth Checkout. The receiving side of STRK20. Code, docs and the transactions are all in the repo. |
+| 2:50 | landing page | Stealth Checkout, the receiving side of STRK20. MIT licensed. Drop it into your app, and get paid. |
 
 <!-- shots:end -->
 

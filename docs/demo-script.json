@@ -18,30 +18,30 @@
   "lines": [
     {
       "start": "00:00.000",
-      "end": "00:04.000",
-      "shot": "README, the Why section",
-      "say": "Starknet can hide who you are when you send money.",
-      "ko": "스타크넷은 돈을 보낼 때 보내는 사람을 숨길 수 있습니다."
+      "end": "00:04.900",
+      "shot": "arcade checkout widget, zoomed, ring on the panel",
+      "say": "This is Stealth Checkout, a payment box you drop into any website.",
+      "ko": "이것이 Stealth Checkout입니다. 아무 웹사이트에나 붙이는 결제창입니다."
     },
     {
-      "start": "00:04.000",
-      "end": "00:07.500",
-      "shot": "scroll past the ecosystem's sending tools",
-      "say": "Getting paid that way? Nobody built that.",
-      "ko": "그런데 그렇게 돈을 받으려면? 아무도 안 만들었습니다."
+      "start": "00:04.900",
+      "end": "00:08.600",
+      "shot": "the honesty summary, ring on the HIDDEN row",
+      "say": "Someone pays you privately. The chain never learns who.",
+      "ko": "손님이 비공개로 결제합니다. 체인에는 누가 냈는지 안 남습니다."
     },
     {
-      "start": "00:07.500",
-      "end": "00:13.000",
-      "shot": "README, Why, second paragraph",
-      "say": "No checkout. No invoice. Nothing to tell your server the money landed.",
-      "ko": "결제창도 없고 인보이스도 없고, 서버에 입금을 알려줄 것도 없습니다."
+      "start": "00:08.600",
+      "end": "00:13.900",
+      "shot": "landing page, top",
+      "say": "Starknet could already send money privately. Receiving it? Nobody built that.",
+      "ko": "스타크넷은 이미 비공개로 보낼 수 있었습니다. 받는 쪽은? 아무도 안 만들었습니다."
     },
     {
-      "start": "00:13.000",
+      "start": "00:13.900",
       "end": "00:16.000",
-      "shot": "landing page",
-      "say": "So we built it.",
+      "shot": "landing page, the three cards",
+      "say": "So we did.",
       "ko": "그래서 우리가 만들었습니다."
     },
     {
@@ -69,8 +69,8 @@
       "start": "00:31.000",
       "end": "00:38.000",
       "shot": "credit granted, the game starts",
-      "say": "The shop's server saw the payment and granted the credit. That's the loop.",
-      "ko": "가게 서버가 입금을 확인하고 크레딧을 줬습니다. 이게 전체 흐름입니다."
+      "say": "The shop's server saw the payment and granted the credit. Payment in, product out.",
+      "ko": "가게 서버가 입금을 확인하고 크레딧을 줬습니다. 결제가 들어오면 상품이 나갑니다."
     },
     {
       "start": "00:38.000",
@@ -104,8 +104,8 @@
       "start": "01:01.000",
       "end": "01:09.000",
       "shot": "the same warning, then scroll down",
-      "say": "Which means private payments have a floor. Under sixty STRK, fees eat more than ten percent.",
-      "ko": "그래서 프라이빗 결제엔 하한선이 있습니다. 60 STRK 아래면 수수료가 10%를 넘습니다."
+      "say": "So a private payment has a minimum practical size. Under sixty STRK, fees eat more than ten percent.",
+      "ko": "그래서 프라이빗 결제에는 실용적인 최소 금액이 있습니다. 60 STRK 아래면 수수료가 10%를 넘습니다."
     },
     {
       "start": "01:09.000",
@@ -216,8 +216,8 @@
       "start": "02:50.000",
       "end": "03:00.000",
       "shot": "landing page",
-      "say": "Stealth Checkout. The receiving side of STRK20. Code, docs and the transactions are all in the repo.",
-      "ko": "Stealth Checkout. STRK20의 받는 쪽입니다. 코드도 문서도 거래 내역도 전부 레포에 있습니다."
+      "say": "Stealth Checkout, the receiving side of STRK20. MIT licensed. Drop it into your app, and get paid.",
+      "ko": "Stealth Checkout. STRK20의 받는 쪽입니다. MIT 라이선스니 여러분 앱에 넣고 결제를 받으십시오."
     }
   ]
 }

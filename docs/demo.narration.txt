@@ -1,16 +1,16 @@
-Starknet can hide who you are when you send money.
-Getting paid that way? Nobody built that.
-No checkout. No invoice. Nothing to tell your server the money landed.
-So we built it.
+This is Stealth Checkout, a payment box you drop into any website.
+Someone pays you privately. The chain never learns who.
+Starknet could already send money privately. Receiving it? Nobody built that.
+So we did.
 This arcade is the shop. No wallet, no install, it just runs.
 That panel is the whole widget. One call drops it into any page.
 Drop a coin in.
-The shop's server saw the payment and granted the credit. That's the loop.
+The shop's server saw the payment and granted the credit. Payment in, product out.
 Now look at the price before you sign.
 A one STRK coin costs seven.
 The pool takes six every single time. Flat. Doesn't matter if you move one or a thousand.
 That number is nowhere in STRK20's docs. We read it off the contract ourselves.
-Which means private payments have a floor. Under sixty STRK, fees eat more than ten percent.
+So a private payment has a minimum practical size. Under sixty STRK, fees eat more than ten percent.
 This panel spells out what the payment leaks. Including the parts we couldn't hide.
 Merchant side. Every invoice gets a link and a QR.
 Or print one code and stick it on the counter. The customer picks the amount.
@@ -26,4 +26,4 @@ It counts what came in, not what's sitting there. Money already on the address p
 Signed webhook fires, the invoice flips to paid, and the order goes out.
 Real mainnet transactions, all verified. Over two hundred tests. Nine rounds of tearing it apart.
 And the README also says what those transactions don't prove.
-Stealth Checkout. The receiving side of STRK20. Code, docs and the transactions are all in the repo.
+Stealth Checkout, the receiving side of STRK20. MIT licensed. Drop it into your app, and get paid.

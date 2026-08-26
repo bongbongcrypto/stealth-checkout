@@ -14,19 +14,20 @@ Style: Ko,Malgun Gothic,42,&H00DCEEFF,&H000000FF,&H30000000,&H30000000,0,0,0,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 0,0:00:00.00,0:00:01.45,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Starknet can hide who
-Dialogue: 0,0:00:01.45,0:00:02.28,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}you are when
-Dialogue: 0,0:00:02.28,0:00:03.32,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}you send money.
-Dialogue: 0,0:00:00.00,0:00:03.32,Ko,,0,0,0,,{\fad(120,120)}스타크넷은 돈을 보낼 때 보내는 사람을 숨길 수 있습니다.
-Dialogue: 0,0:00:04.00,0:00:05.68,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Getting paid that way?
-Dialogue: 0,0:00:05.68,0:00:07.06,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Nobody built that.
-Dialogue: 0,0:00:04.00,0:00:07.06,Ko,,0,0,0,,{\fad(120,120)}그런데 그렇게 돈을 받으려면? 아무도 안 만들었습니다.
-Dialogue: 0,0:00:07.50,0:00:09.26,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}No checkout. No invoice.
-Dialogue: 0,0:00:09.26,0:00:10.73,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Nothing to tell your
-Dialogue: 0,0:00:10.73,0:00:12.50,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}server the money landed.
-Dialogue: 0,0:00:07.50,0:00:12.50,Ko,,0,0,0,,{\fad(120,120)}결제창도 없고 인보이스도 없고, 서버에 입금을 알려줄 것도 없습니다.
-Dialogue: 0,0:00:13.00,0:00:15.12,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}So we built it.
-Dialogue: 0,0:00:13.00,0:00:15.12,Ko,,0,0,0,,{\fad(120,120)}그래서 우리가 만들었습니다.
+Dialogue: 0,0:00:00.00,0:00:01.91,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}This is Stealth Checkout,
+Dialogue: 0,0:00:01.91,0:00:03.21,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}a payment box you
+Dialogue: 0,0:00:03.21,0:00:04.90,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}drop into any website.
+Dialogue: 0,0:00:00.00,0:00:04.90,Ko,,0,0,0,,{\fad(120,120)}이것이 Stealth Checkout입니다. 아무 웹사이트에나 붙이는 결제창입니다.
+Dialogue: 0,0:00:04.90,0:00:06.01,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Someone pays you
+Dialogue: 0,0:00:06.01,0:00:07.41,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}privately. The chain
+Dialogue: 0,0:00:07.41,0:00:08.60,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}never learns who.
+Dialogue: 0,0:00:04.90,0:00:08.60,Ko,,0,0,0,,{\fad(120,120)}손님이 비공개로 결제합니다. 체인에는 누가 냈는지 안 남습니다.
+Dialogue: 0,0:00:08.60,0:00:10.50,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Starknet could already send
+Dialogue: 0,0:00:10.50,0:00:12.62,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}money privately. Receiving it?
+Dialogue: 0,0:00:12.62,0:00:13.90,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Nobody built that.
+Dialogue: 0,0:00:08.60,0:00:13.90,Ko,,0,0,0,,{\fad(120,120)}스타크넷은 이미 비공개로 보낼 수 있었습니다. 받는 쪽은? 아무도 안 만들었습니다.
+Dialogue: 0,0:00:13.90,0:00:16.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}So we did.
+Dialogue: 0,0:00:13.90,0:00:16.00,Ko,,0,0,0,,{\fad(120,120)}그래서 우리가 만들었습니다.
 Dialogue: 0,0:00:16.00,0:00:17.52,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}This arcade is the
 Dialogue: 0,0:00:17.52,0:00:19.13,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}shop. No wallet, no
 Dialogue: 0,0:00:19.13,0:00:21.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}install, it just runs.
@@ -38,11 +39,11 @@ Dialogue: 0,0:00:24.58,0:00:25.64,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy1
 Dialogue: 0,0:00:21.00,0:00:25.64,Ko,,0,0,0,,{\fad(120,120)}저 패널이 위젯 전부입니다. 호출 한 번이면 어느 페이지에나 들어갑니다.
 Dialogue: 0,0:00:27.00,0:00:29.12,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Drop a coin in.
 Dialogue: 0,0:00:27.00,0:00:29.12,Ko,,0,0,0,,{\fad(120,120)}코인을 하나 넣습니다.
-Dialogue: 0,0:00:31.00,0:00:32.38,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}The shop's server saw
-Dialogue: 0,0:00:32.38,0:00:33.36,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}the payment and
-Dialogue: 0,0:00:33.36,0:00:34.61,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}granted the credit.
-Dialogue: 0,0:00:34.61,0:00:35.67,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}That's the loop.
-Dialogue: 0,0:00:31.00,0:00:35.67,Ko,,0,0,0,,{\fad(120,120)}가게 서버가 입금을 확인하고 크레딧을 줬습니다. 이게 전체 흐름입니다.
+Dialogue: 0,0:00:31.00,0:00:32.46,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}The shop's server saw
+Dialogue: 0,0:00:32.46,0:00:34.06,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}the payment and granted
+Dialogue: 0,0:00:34.06,0:00:35.39,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}the credit. Payment
+Dialogue: 0,0:00:35.39,0:00:36.51,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}in, product out.
+Dialogue: 0,0:00:31.00,0:00:36.51,Ko,,0,0,0,,{\fad(120,120)}가게 서버가 입금을 확인하고 크레딧을 줬습니다. 결제가 들어오면 상품이 나갑니다.
 Dialogue: 0,0:00:38.00,0:00:39.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Now look at the
 Dialogue: 0,0:00:39.00,0:00:40.48,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}price before you sign.
 Dialogue: 0,0:00:38.00,0:00:40.48,Ko,,0,0,0,,{\fad(120,120)}서명하기 전에 가격을 보십시오.
@@ -60,11 +61,12 @@ Dialogue: 0,0:00:55.78,0:00:57.40,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy1
 Dialogue: 0,0:00:57.40,0:00:58.29,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}read it off
 Dialogue: 0,0:00:58.29,0:01:00.15,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}the contract ourselves.
 Dialogue: 0,0:00:54.00,0:01:00.15,Ko,,0,0,0,,{\fad(120,120)}그 숫자는 STRK20 문서 어디에도 없습니다. 우리가 컨트랙트에서 직접 읽어냈습니다.
-Dialogue: 0,0:01:01.00,0:01:03.11,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Which means private payments
-Dialogue: 0,0:01:03.11,0:01:04.55,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}have a floor. Under
-Dialogue: 0,0:01:04.55,0:01:06.07,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}sixty STRK, fees eat
-Dialogue: 0,0:01:06.07,0:01:07.73,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}more than ten percent.
-Dialogue: 0,0:01:01.00,0:01:07.73,Ko,,0,0,0,,{\fad(120,120)}그래서 프라이빗 결제엔 하한선이 있습니다. 60 STRK 아래면 수수료가 10%를 넘습니다.
+Dialogue: 0,0:01:01.00,0:01:02.59,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}So a private payment
+Dialogue: 0,0:01:02.59,0:01:04.42,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}has a minimum practical
+Dialogue: 0,0:01:04.42,0:01:06.25,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}size. Under sixty STRK,
+Dialogue: 0,0:01:06.25,0:01:07.29,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}fees eat more
+Dialogue: 0,0:01:07.29,0:01:08.64,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}than ten percent.
+Dialogue: 0,0:01:01.00,0:01:08.64,Ko,,0,0,0,,{\fad(120,120)}그래서 프라이빗 결제에는 실용적인 최소 금액이 있습니다. 60 STRK 아래면 수수료가 10%를 넘습니다.
 Dialogue: 0,0:01:09.00,0:01:10.32,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}This panel spells out
 Dialogue: 0,0:01:10.32,0:01:11.78,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}what the payment leaks.
 Dialogue: 0,0:01:11.78,0:01:12.98,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Including the parts
@@ -136,9 +138,9 @@ Dialogue: 0,0:02:44.00,0:02:45.31,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy1
 Dialogue: 0,0:02:45.31,0:02:46.34,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}says what those
 Dialogue: 0,0:02:46.34,0:02:48.07,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}transactions don't prove.
 Dialogue: 0,0:02:44.00,0:02:48.07,Ko,,0,0,0,,{\fad(120,120)}README에는 그 거래들이 증명하지 못하는 것도 적혀 있습니다.
-Dialogue: 0,0:02:50.00,0:02:52.58,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Stealth Checkout. The receiving
-Dialogue: 0,0:02:52.58,0:02:54.33,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}side of STRK20. Code,
-Dialogue: 0,0:02:54.33,0:02:55.33,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}docs and the
-Dialogue: 0,0:02:55.33,0:02:57.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}transactions are all
-Dialogue: 0,0:02:57.00,0:02:58.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}in the repo.
-Dialogue: 0,0:02:50.00,0:02:58.00,Ko,,0,0,0,,{\fad(120,120)}Stealth Checkout. STRK20의 받는 쪽입니다. 코드도 문서도 거래 내역도 전부 레포에 있습니다.
+Dialogue: 0,0:02:50.00,0:02:52.71,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Stealth Checkout, the receiving
+Dialogue: 0,0:02:52.71,0:02:54.38,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}side of STRK20. MIT
+Dialogue: 0,0:02:54.38,0:02:55.87,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}licensed. Drop it
+Dialogue: 0,0:02:55.87,0:02:57.10,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}into your app,
+Dialogue: 0,0:02:57.10,0:02:58.24,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}and get paid.
+Dialogue: 0,0:02:50.00,0:02:58.24,Ko,,0,0,0,,{\fad(120,120)}Stealth Checkout. STRK20의 받는 쪽입니다. MIT 라이선스니 여러분 앱에 넣고 결제를 받으십시오.

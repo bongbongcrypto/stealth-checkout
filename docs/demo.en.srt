@@ -1,18 +1,18 @@
 1
-00:00:00,000 --> 00:00:03,326
-Starknet can hide who you are when you send money.
+00:00:00,000 --> 00:00:04,900
+This is Stealth Checkout, a payment box you drop into any website.
 
 2
-00:00:04,000 --> 00:00:07,062
-Getting paid that way? Nobody built that.
+00:00:04,900 --> 00:00:08,600
+Someone pays you privately. The chain never learns who.
 
 3
-00:00:07,500 --> 00:00:12,506
-No checkout. No invoice. Nothing to tell your server the money landed.
+00:00:08,600 --> 00:00:13,900
+Starknet could already send money privately. Receiving it? Nobody built that.
 
 4
-00:00:13,000 --> 00:00:15,126
-So we built it.
+00:00:13,900 --> 00:00:16,000
+So we did.
 
 5
 00:00:16,000 --> 00:00:21,000
@@ -27,8 +27,8 @@ That panel is the whole widget. One call drops it into any page.
 Drop a coin in.
 
 8
-00:00:31,000 --> 00:00:35,670
-The shop's server saw the payment and granted the credit. That's the loop.
+00:00:31,000 --> 00:00:36,510
+The shop's server saw the payment and granted the credit. Payment in, product out.
 
 9
 00:00:38,000 --> 00:00:40,486
@@ -47,8 +47,8 @@ The pool takes six every single time. Flat. Doesn't matter if you move one or a 
 That number is nowhere in STRK20's docs. We read it off the contract ourselves.
 
 13
-00:01:01,000 --> 00:01:07,734
-Which means private payments have a floor. Under sixty STRK, fees eat more than ten percent.
+00:01:01,000 --> 00:01:08,646
+So a private payment has a minimum practical size. Under sixty STRK, fees eat more than ten percent.
 
 14
 00:01:09,000 --> 00:01:14,054
@@ -111,5 +111,5 @@ Real mainnet transactions, all verified. Over two hundred tests. Nine rounds of 
 And the README also says what those transactions don't prove.
 
 29
-00:02:50,000 --> 00:02:58,006
-Stealth Checkout. The receiving side of STRK20. Code, docs and the transactions are all in the repo.
+00:02:50,000 --> 00:02:58,246
+Stealth Checkout, the receiving side of STRK20. MIT licensed. Drop it into your app, and get paid.

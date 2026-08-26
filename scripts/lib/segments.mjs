@@ -8,7 +8,7 @@
 // The times are the ones in docs/demo-script.json. Nothing here is chosen; each
 // boundary is where a run of related shots ends in the script.
 export const SEGMENT_SLOTS = [
-  { id: "a", from: "00:00.000", to: "00:16.000", what: "README, then the landing page" },
+  { id: "a", from: "00:00.000", to: "00:16.000", what: "the product itself, then the gap it fills" },
   {
     id: "b",
     from: "00:16.000",

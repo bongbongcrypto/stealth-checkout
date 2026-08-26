@@ -21,6 +21,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { evaluate, launch } from "./lib/cdp.mjs";
+import { SEGMENT_SLOTS, checkSlots, seconds } from "./lib/segments.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = join(ROOT, "docs", "recording");
@@ -108,12 +109,6 @@ function findFfmpeg(name = "ffmpeg") {
   }
   return name;
 }
-
-const seconds = (stamp) => {
-  const m = /^(\d{1,2}):(\d{2})\.(\d{3})$/.exec(stamp);
-  if (!m) throw new Error(`not a mm:ss.mmm timestamp: ${stamp}`);
-  return Number(m[1]) * 60 + Number(m[2]) + Number(m[3]) / 1000;
-};
 
 // ---------------------------------------------------------------- page tools
 //
@@ -206,12 +201,9 @@ const HELPERS = `
 // `at` is milliseconds from the start of the segment, which is also the moment
 // capture begins, so a step lands under the sentence it belongs to.
 
-const SEGMENTS = [
+const CHOREOGRAPHY = [
   {
     id: "a",
-    from: "00:00.000",
-    to: "00:16.000",
-    what: "README, then the landing page",
     url: "https://github.com/bongbongcrypto/stealth-checkout",
     steps: [
       { at: 300, do: async (s) => evaluate(s, `window.__shoot.scrollTo(document.body.scrollHeight * 0.06, 1200)`) },
@@ -222,9 +214,6 @@ const SEGMENTS = [
   },
   {
     id: "b",
-    from: "00:16.000",
-    to: "01:16.000",
-    what: "the arcade: pay, play, then the price and the honesty panel",
     url: `${BASE}/apps/demo-arcade/index.html`,
     steps: [
       // 0:16 the shop
@@ -258,9 +247,6 @@ const SEGMENTS = [
   },
   {
     id: "c",
-    from: "01:16.000",
-    to: "01:50.000",
-    what: "the merchant dashboard, the printable counter code, and the QR encoder",
     url: `${BASE}/apps/dashboard/index.html`,
     needsWatcher: true,
     // Run before a frame is captured. "Every invoice gets a link and a QR" over
@@ -329,9 +315,6 @@ const SEGMENTS = [
   },
   {
     id: "e",
-    from: "02:37.000",
-    to: "03:00.000",
-    what: "the transaction manifest, what it does not prove, and the close",
     url: "https://github.com/bongbongcrypto/stealth-checkout/blob/main/strk20.json",
     steps: [
       { at: 500, do: async (s) => evaluate(s, `window.__shoot.scrollTo(400, 1800)`) },
@@ -347,13 +330,31 @@ const SEGMENTS = [
   },
 ];
 
-/** The one segment nobody can automate, listed so it is never quietly skipped. */
-const OWNER_SEGMENT = {
-  id: "d",
-  from: "01:50.000",
-  to: "02:37.000",
-  what: "the live mainnet payment: the owner signs, so this is recorded with them at the desk",
-};
+/**
+ * Choreography joined to the slot table, which owns every time in this file.
+ *
+ * The two used to each carry their own copy of from and to. That is the exact
+ * shape of drift this project keeps finding: nothing warns you when the copies
+ * disagree, and a recorder that thinks a segment is 34 seconds while the
+ * assembler thinks it is 33 makes a video whose voice slides later at every cut.
+ */
+const SEGMENTS = SEGMENT_SLOTS.filter((slot) => CHOREOGRAPHY.some((c) => c.id === slot.id)).map((slot) => ({
+  ...slot,
+  ...CHOREOGRAPHY.find((c) => c.id === slot.id),
+}));
+
+/** Slots nobody can automate, listed so they are never quietly skipped. */
+const OWNER_SEGMENTS = SEGMENT_SLOTS.filter((slot) => !CHOREOGRAPHY.some((c) => c.id === slot.id));
+
+{
+  const orphan = CHOREOGRAPHY.find((c) => !SEGMENT_SLOTS.some((s) => s.id === c.id));
+  if (orphan) throw new Error(`there is choreography for segment ${orphan.id} and no slot for it`);
+  const problems = checkSlots();
+  if (problems.length > 0) {
+    for (const p of problems) console.error(`  ${p}`);
+    process.exit(1);
+  }
+}
 
 // -------------------------------------------------------------------- record
 
@@ -657,14 +658,14 @@ if (argv.includes("--list") || argv.length === 0) {
   const { lines } = JSON.parse(readFileSync(join(ROOT, "docs", "demo-script.json"), "utf8"));
   const say = (from, to) =>
     lines.filter((l) => seconds(l.start) >= seconds(from) && seconds(l.start) < seconds(to)).length;
-  for (const seg of [...SEGMENTS, OWNER_SEGMENT].sort((a, b) => a.id.localeCompare(b.id))) {
+  for (const seg of [...SEGMENTS, ...OWNER_SEGMENTS].sort((a, b) => a.id.localeCompare(b.id))) {
     const auto = seg.steps ? "automatic" : "OWNER AT THE DESK";
     console.log(
       `  ${seg.id}  ${seg.from}-${seg.to}  ${String((seconds(seg.to) - seconds(seg.from)).toFixed(0)).padStart(2)}s  ` +
         `${String(say(seg.from, seg.to)).padStart(2)} lines  ${auto.padEnd(17)}  ${seg.what}`,
     );
   }
-  const covered = [...SEGMENTS, OWNER_SEGMENT].reduce((n, s) => n + seconds(s.to) - seconds(s.from), 0);
+  const covered = [...SEGMENTS, ...OWNER_SEGMENTS].reduce((n, s) => n + seconds(s.to) - seconds(s.from), 0);
   console.log(`\n  ${covered.toFixed(0)}s of 180s covered`);
   process.exit(0);
 }

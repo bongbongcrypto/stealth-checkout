@@ -175,7 +175,16 @@ function pops(text) {
   return out;
 }
 
-function buildAss() {
+/**
+ * @param {boolean} korean add the Korean gloss under each English burst.
+ *
+ * Two files come out of this. The one that gets submitted carries English only,
+ * because that is the video the judges watch. The review copy carries the gloss
+ * underneath, so the person whose name is on the entry can read what it says
+ * about their project before it goes out. Nobody should have to submit a video
+ * in a language they cannot check.
+ */
+function buildAss(korean = false) {
   const head = [
     "[Script Info]",
     "; Short-form captions for the Stealth Checkout demo.",
@@ -193,6 +202,19 @@ function buildAss() {
     // White fill, heavy black outline, sitting just above the lower third, which
     // is where a phone's UI is not.
     "Style: Pop,Arial Black,96,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,7,4,2,140,140,150,1",
+    // The gloss: smaller, calmer, and low enough to sit clear of the 96px burst
+    // above it. Malgun Gothic because this is Windows and it is the system's
+    // Korean face; a font that cannot draw Hangul draws boxes, which is worse
+    // than no gloss at all, so the built file is checked against a rendered
+    // frame rather than trusted.
+    ...(korean
+      // BorderStyle 3 draws a filled box behind the text rather than an outline
+      // around it, and with BorderStyle 3 the box takes OutlineColour. Plain
+      // outlined text sat straight on top of a README and the two read as one
+      // paragraph; a band underneath makes the gloss obviously a caption and
+      // obviously not part of the product.
+      ? ["Style: Ko,Malgun Gothic,42,&H00DCEEFF,&H000000FF,&H30000000,&H30000000,0,0,0,0,100,100,0,0,3,10,0,2,90,90,52,129"]
+      : []),
     "",
     "[Events]",
     // MarginV MUST be here. The Dialogue lines below emit three margin values
@@ -231,6 +253,14 @@ function buildAss() {
       events.push(`Dialogue: 0,${assTime(at)},${assTime(to)},Pop,,0,0,0,,${effect}${text}`);
       at = to;
     });
+
+    // One gloss for the whole line, held for as long as the line is spoken,
+    // rather than chopped to match the bursts above it. The bursts are paced for
+    // the ear; a sentence in another language is read once.
+    if (korean && line.ko) {
+      const gloss = line.ko.replace(/\{/g, "(").replace(/\}/g, ")");
+      events.push(`Dialogue: 0,${assTime(start)},${assTime(end)},Ko,,0,0,0,,{\\fad(120,120)}${gloss}`);
+    }
   });
 
   // The header and the Dialogue lines must agree on how many fields precede the
@@ -305,6 +335,7 @@ if (!process.argv.includes("--check")) {
   }
 
   write("demo.short.ass", buildAss());
+  write("demo.review.ass", buildAss(true));
 
   const doc = join(ROOT, "docs", "VIDEO-SCRIPT.md");
   const text = readFileSync(doc, "utf8");

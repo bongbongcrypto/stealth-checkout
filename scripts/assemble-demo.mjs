@@ -148,8 +148,14 @@ if (Math.abs(picture - total) > 0.4) {
 }
 
 // ----------------------------------------------------- voice, then captions
-const final = join(OUT, "demo.mp4");
-const ass = join(ROOT, "docs", "demo.short.ass").replace(/\\/g, "/").replace(/^([A-Za-z]):/, "$1\\:");
+// The review copy carries a Korean gloss under each English burst. It is not
+// the submission: the entry is in English and goes out that way. It exists so
+// the person whose name is on it can read what the video says before it is
+// public, which is not a thing to leave to trust.
+const review = process.argv.includes("--review");
+const final = join(OUT, review ? "demo.review.mp4" : "demo.mp4");
+const assFile = review ? "demo.review.ass" : "demo.short.ass";
+const ass = join(ROOT, "docs", assFile).replace(/\\/g, "/").replace(/^([A-Za-z]):/, "$1\\:");
 run([
   "-i", silent,
   "-i", narration,

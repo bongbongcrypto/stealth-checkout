@@ -138,10 +138,27 @@
     {
       name: "merchant dashboard",
       url: `${BASE}/dashboard/index.html`,
-      async ready(doc) {
+      async ready(doc, win) {
         const make = await until(doc, "#f-create");
         if (!make) throw new Error("the dashboard never rendered its create button");
         make.setAttribute("data-audit-primary", "");
+
+        // Point it at a port nothing listens on, so the fallback demo rows are
+        // what gets measured, every time.
+        //
+        // Left to itself this audit measured whatever the machine happened to be
+        // running. On a host with no watcher it fell back to demo rows and
+        // passed; on this one, with a watcher up for a recording session and no
+        // token in the form, the dashboard correctly said the token was rejected
+        // and drew an empty table, and the audit called that a failure. A layout
+        // check whose verdict depends on which servers are up is not a check.
+        const field = doc.querySelector("#f-watcher");
+        if (field) {
+          field.value = "http://127.0.0.1:9";
+          field.dispatchEvent(new win.Event("change", { bubbles: true }));
+        }
+        doc.querySelector("#f-refresh")?.click();
+
         // Wait for a ROW, not a fixed delay. A flat 600ms was enough on a remote
         // host and not on a fast local one, so the table was empty exactly where
         // the check ran quickest, and a 13px link in it went unseen.
@@ -180,7 +197,7 @@
       let result;
       try {
         const doc = frame.contentDocument;
-        await screen.ready(doc);
+        await screen.ready(doc, frame.contentWindow);
         // Measured against the FRAME's window, so innerWidth and innerHeight are
         // the viewport under test rather than this page's.
         result = auditPage(screen.opts, frame.contentWindow);

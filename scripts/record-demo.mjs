@@ -16,8 +16,8 @@
 //
 // One segment is deliberately missing: the live mainnet payment. That one needs
 // a wallet signature, which is the owner's to give.
-import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { evaluate, launch } from "./lib/cdp.mjs";
@@ -32,20 +32,81 @@ const BASE = `http://127.0.0.1:${PORT}`;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function findFfmpeg() {
+/** Which screen to film on, from --monitor. Null means pick a spare one. */
+let monitorArg = null;
+/** Cut the take short, for proving the rig without sitting through a segment. */
+let secondsArg = null;
+
+/**
+ * Every monitor attached, so the shoot can be sent to one nobody is using.
+ *
+ * This is what makes the whole thing unattended rather than merely hands-free:
+ * driving the browser over a socket already means not stealing the mouse, and
+ * putting the window on a second screen means not stealing the view either.
+ */
+function monitors() {
+  const out = execFileSync("powershell.exe", [
+    "-NoProfile",
+    "-Command",
+    "Add-Type -AssemblyName System.Windows.Forms; " +
+      "[System.Windows.Forms.Screen]::AllScreens | ForEach-Object { " +
+      "'{0},{1},{2},{3},{4}' -f $_.Bounds.X,$_.Bounds.Y,$_.Bounds.Width,$_.Bounds.Height,$_.Primary }",
+  ]).toString();
+  return out
+    .trim()
+    .split(/\r?\n/)
+    .map((line, i) => {
+      const [x, y, w, h, primary] = line.split(",");
+      return { index: i, x: Number(x), y: Number(y), width: Number(w), height: Number(h), primary: primary === "True" };
+    })
+    .sort((a, b) => a.x - b.x);
+}
+
+/** The screen to shoot on: a named one, else the largest that is not primary. */
+function pickMonitor(wanted) {
+  const all = monitors();
+  if (wanted !== null) {
+    const found = all[Number(wanted)];
+    if (!found) throw new Error(`no monitor ${wanted}; there are ${all.length} (0 to ${all.length - 1})`);
+    return found;
+  }
+  const spare = all.filter((m) => !m.primary && m.width >= WIDTH && m.height >= HEIGHT);
+  // A screen to the LEFT of the primary one has a negative origin, and gdigrab
+  // takes its offsets as plain integers. Rather than find out mid-shoot whether
+  // it handles that, a screen at a positive origin wins when there is one; the
+  // negative case still works if it is asked for by number.
+  //
+  // Falling back to the primary is correct but worth saying out loud, because
+  // it is the difference between a shoot someone can work through and one that
+  // takes their desk.
+  const rank = (m) => (m.x < 0 || m.y < 0 ? 1 : 0);
+  return (
+    spare.sort((a, b) => rank(a) - rank(b) || b.width * b.height - a.width * a.height)[0] ??
+    all.find((m) => m.primary)
+  );
+}
+
+/**
+ * ffmpeg or ffprobe, by name.
+ *
+ * By name rather than by patching "ffmpeg" into "ffprobe" in the path this
+ * returns: the winget layout puts the word in the folder as well as the file,
+ * so a replace hit `ffmpeg-8.1.1-full_build` and produced a path to nothing.
+ */
+function findFfmpeg(name = "ffmpeg") {
   const winget = join(
     process.env.LOCALAPPDATA ?? "",
     "Microsoft/WinGet/Packages/Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe",
   );
   try {
     for (const dir of readdirSync(winget)) {
-      const exe = join(winget, dir, "bin", "ffmpeg.exe");
+      const exe = join(winget, dir, "bin", `${name}.exe`);
       if (existsSync(exe)) return exe;
     }
   } catch {
     /* fall through to PATH */
   }
-  return "ffmpeg";
+  return name;
 }
 
 const seconds = (stamp) => {
@@ -334,8 +395,53 @@ async function ensureWatcher() {
   throw new Error("the watcher never came up on 8787");
 }
 
+/**
+ * Compare what the camera sees against what the page is, before recording.
+ *
+ * Everything that has gone wrong with this rig went wrong the same way: the
+ * flags looked right, the script reported success, and the take came back with
+ * something over it. A translate bubble in Korean. A leftover window showing
+ * about:blank. The taskbar. None of that is in the DOM, so nothing the page can
+ * be asked about would ever mention it.
+ *
+ * So the page is asked to draw itself, the screen is grabbed, and the two are
+ * subtracted. Browser furniture only exists in one of them, and the difference
+ * says so as a number. It catches the popup nobody has thought of yet, which is
+ * the point: the next one will not be translate.
+ */
+async function cameraSeesThePage(s, region) {
+  const shot = join(OUT, "preflight-page.png");
+  const cam = join(OUT, "preflight-camera.png");
+  const { data } = await s.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
+  writeFileSync(shot, Buffer.from(data, "base64"));
+
+  execFileSync(findFfmpeg(), [
+    "-y", "-loglevel", "error",
+    "-f", "gdigrab", "-framerate", "2",
+    "-offset_x", String(region.x), "-offset_y", String(region.y),
+    "-video_size", `${region.w}x${region.h}`,
+    "-i", "desktop", "-frames:v", "1", cam,
+  ]);
+
+  // Both are scaled to the same small size first: the page screenshot comes back
+  // at the emulated resolution and the grab at the monitor's, and a difference
+  // filter given two sizes fails rather than reporting one.
+  // spawnSync, not execFileSync: ffmpeg prints filter metadata on stderr, and
+  // execFileSync hands back stdout only, so the number was never there to read.
+  const run = spawnSync(findFfmpeg(), [
+    "-v", "info",
+    "-i", shot, "-i", cam,
+    "-filter_complex",
+    "[0:v]scale=480:270,format=gray[a];[1:v]scale=480:270,format=gray[b];" +
+      "[a][b]blend=all_mode=difference,signalstats,metadata=print:key=lavfi.signalstats.YAVG",
+    "-f", "null", "-",
+  ], { encoding: "utf8" });
+  const match = /YAVG=([\d.]+)/.exec(`${run.stdout ?? ""}${run.stderr ?? ""}`);
+  return match ? Number(match[1]) : null;
+}
+
 async function recordSegment(seg, { dry = false } = {}) {
-  const length = seconds(seg.to) - seconds(seg.from);
+  const length = secondsArg ?? seconds(seg.to) - seconds(seg.from);
   mkdirSync(OUT, { recursive: true });
   const file = join(OUT, `seg-${seg.id}.mp4`);
 
@@ -344,16 +450,63 @@ async function recordSegment(seg, { dry = false } = {}) {
 
   if (seg.needsWatcher) console.log(`  watcher: ${await ensureWatcher()}`);
 
+  const mon = pickMonitor(monitorArg);
+  if (!dry) {
+    console.log(
+      `  monitor ${mon.index}: ${mon.width}x${mon.height} at ${mon.x},${mon.y}` +
+        (mon.primary ? "  (PRIMARY: this is the screen someone is using)" : ""),
+    );
+  }
+
   const browser = await launch({
     width: WIDTH,
     height: HEIGHT,
-    x: 0,
-    y: 0,
+    x: mon.x,
+    y: mon.y,
     port: 9222,
     headless: dry,
-    fullscreen: !dry,
   });
   const s = browser.session;
+
+  // Fullscreen on the chosen monitor, and film that whole monitor.
+  //
+  // The first attempt sized the window so its content was 1920x1080 and filmed
+  // from window.screenX. Chrome reports the OUTER window there, not the content
+  // box, so the take came back with the tab strip, the address bar and a
+  // profile avatar across the top and the bottom of the page cut off. Rather
+  // than guess at the height of browser furniture, there is now none: fullscreen
+  // makes content and monitor the same rectangle, which is a fact rather than
+  // an estimate. It also keeps the toolbar out of a video for a repository
+  // whose whole point is that nobody knows who wrote it.
+  let region = null;
+  if (!dry) {
+    const { windowId } = await s.send("Browser.getWindowForTarget");
+    await s.send("Browser.setWindowBounds", { windowId, bounds: { windowState: "fullscreen" } });
+    await sleep(800);
+
+    // Give the page a 1920x1080 viewport, whatever the monitor is.
+    //
+    // A 2560-wide screen is not a bigger view of this page, it is a wider one:
+    // the layout is capped, so the first take had the whole product in a column
+    // down the middle with black either side. Overriding the metrics hands it
+    // the viewport the design was built for, and Chrome paints that at 1:1 in
+    // the top-left corner of the fullscreen window. Which is the good outcome:
+    // the region is native 1080p, with no resampling anywhere in the chain.
+    await s.send("Emulation.setDeviceMetricsOverride", {
+      width: WIDTH,
+      height: HEIGHT,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await sleep(500);
+
+    const geo = await evaluate(s, `({iw: innerWidth, ih: innerHeight, dpr: devicePixelRatio})`);
+    region = { x: mon.x, y: mon.y, w: WIDTH, h: HEIGHT };
+    if (geo.iw !== WIDTH || geo.ih !== HEIGHT) {
+      console.log(`  note: the page laid out at ${geo.iw}x${geo.ih}, not ${WIDTH}x${HEIGHT}`);
+    }
+    console.log(`  filming ${region.w}x${region.h} at ${region.x},${region.y}, no scaling`);
+  }
 
   /** Navigate and wait for the page to be usable, then re-inject the helpers. */
   const go = async (url) => {
@@ -382,6 +535,30 @@ async function recordSegment(seg, { dry = false } = {}) {
       }
     }
 
+    if (!dry) {
+      // Retried, because some of what this catches goes away on its own. Chrome
+      // puts up a "press and hold Esc to exit full screen" bubble across the top
+      // of the window and takes it down a few seconds later; the first run of
+      // this check found it sitting over the widget panel. A bubble fades and a
+      // real problem does not, so the difference is measured until it settles.
+      let diff = null;
+      for (let i = 0; i < 12; i++) {
+        diff = await cameraSeesThePage(s, region);
+        if (diff !== null && diff <= 6) break;
+        await sleep(1000);
+      }
+      if (diff === null) {
+        console.log("  preflight: could not measure the screen against the page");
+      } else if (diff > 6) {
+        console.log(`  preflight: FAILED, the screen differs from the page by ${diff.toFixed(1)}/255`);
+        console.log(`    something is drawn over the shot. Look at docs/recording/preflight-camera.png`);
+        console.log(`    against preflight-page.png; whatever is in one and not the other is the problem.`);
+        throw new Error("refusing to record a screen that is not the page");
+      } else {
+        console.log(`  preflight: the screen is the page (${diff.toFixed(1)}/255 apart)`);
+      }
+    }
+
     let capture = null;
     if (!dry) {
       capture = spawn(
@@ -389,10 +566,15 @@ async function recordSegment(seg, { dry = false } = {}) {
         [
           "-y", "-loglevel", "error",
           "-f", "gdigrab", "-framerate", "30",
-          "-offset_x", "0", "-offset_y", "0",
-          "-video_size", `${WIDTH}x${HEIGHT}`,
+          "-offset_x", String(region.x), "-offset_y", String(region.y),
+          "-video_size", `${region.w}x${region.h}`,
           "-i", "desktop",
           "-t", String(length),
+          // Only if the region is not already the output size. Scaling 1920x1080
+          // to 1920x1080 still runs every pixel through a resampler.
+          ...(region.w === WIDTH && region.h === HEIGHT
+            ? []
+            : ["-vf", `scale=${WIDTH}:${HEIGHT}:flags=lanczos`]),
           "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
           "-pix_fmt", "yuv420p",
           file,
@@ -405,7 +587,11 @@ async function recordSegment(seg, { dry = false } = {}) {
     }
 
     const t0 = Date.now();
-    for (const step of seg.steps) {
+    // A shortened take runs only the choreography that lands inside it. Without
+    // this a --seconds 12 proof still sat through the remaining forty seconds of
+    // cues with the camera already off.
+    const steps = secondsArg === null ? seg.steps : seg.steps.filter((x) => x.at <= secondsArg * 1000);
+    for (const step of steps) {
       const wait = step.at - (Date.now() - t0);
       if (wait > 0) await sleep(wait);
       const mark = ((Date.now() - t0) / 1000).toFixed(1);
@@ -422,8 +608,17 @@ async function recordSegment(seg, { dry = false } = {}) {
     if (remaining > 0) await sleep(remaining + 400);
 
     if (capture) {
-      await new Promise((r) => capture.on("exit", r));
-      const probe = execFileSync(findFfmpeg().replace("ffmpeg", "ffprobe"), [
+      // ffmpeg stops itself at -t, which can happen before this line is reached.
+      // Attaching an exit listener to a process that has already exited waits
+      // for an event that will never come again, and two runs hung there with
+      // the video already written to disk.
+      if (capture.exitCode === null) {
+        await Promise.race([
+          new Promise((r) => capture.on("exit", r)),
+          sleep(15000).then(() => capture.kill()),
+        ]);
+      }
+      const probe = execFileSync(findFfmpeg("ffprobe"), [
         "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file,
       ]).toString().trim();
       console.log(`  wrote docs/recording/seg-${seg.id}.mp4 (${Number(probe).toFixed(1)}s)`);
@@ -442,6 +637,21 @@ const arg = (name) => {
   const i = argv.indexOf(name);
   return i === -1 ? null : argv[i + 1];
 };
+
+monitorArg = arg("--monitor");
+secondsArg = arg("--seconds") === null ? null : Number(arg("--seconds"));
+
+if (argv.includes("--monitors")) {
+  for (const m of monitors()) {
+    console.log(
+      `  ${m.index}  ${String(m.width).padStart(4)}x${String(m.height).padStart(4)} at ` +
+        `${String(m.x).padStart(6)},${m.y}${m.primary ? "   PRIMARY" : ""}`,
+    );
+  }
+  const chosen = pickMonitor(null);
+  console.log(`\n  with no --monitor, the shoot goes to monitor ${chosen.index}`);
+  process.exit(0);
+}
 
 if (argv.includes("--list") || argv.length === 0) {
   const { lines } = JSON.parse(readFileSync(join(ROOT, "docs", "demo-script.json"), "utf8"));

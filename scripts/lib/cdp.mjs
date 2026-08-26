@@ -10,8 +10,8 @@
 // Nothing is installed for this. Node 24 ships WebSocket and fetch, and the
 // protocol is the browser's own, which is what keeps this inside the rule about
 // not running unvetted code on the machine that holds the keys.
-import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -47,7 +47,43 @@ export async function launch({
   headless = false,
   fullscreen = false,
 } = {}) {
+  // A port that something is already answering on is not a port to launch onto.
+  //
+  // A browser left over from an earlier run held 9222; the new one could not
+  // bind it, /json/list returned the OLD browser's tabs, and the script spent a
+  // full take driving a browser it could not see while the new window sat on
+  // top of the shot showing about:blank. The recording came back as a picture
+  // of that. So the port is probed first and a free one is taken.
+  for (let tries = 0; tries < 20; tries++) {
+    try {
+      await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(400) });
+      port += 1; // answered, so it belongs to someone else
+    } catch {
+      break; // nothing there
+    }
+  }
+
   const profile = mkdtempSync(join(tmpdir(), "shoot-"));
+  // Translate is switched off in the profile as well as on the command line.
+  // The flag is one Chrome release away from being renamed, and the failure is
+  // silent: a bubble appears over the corner of the shot and the take is only
+  // wrong once it is watched back.
+  try {
+    mkdirSync(join(profile, "Default"), { recursive: true });
+    writeFileSync(
+      join(profile, "Default", "Preferences"),
+      JSON.stringify({
+        translate: { enabled: false },
+        translate_blocked_languages: ["en", "ko"],
+        intl: { accept_languages: "en-US,en", selected_languages: "en-US,en" },
+        browser: { has_seen_welcome_page: true },
+        profile: { exit_type: "Normal", exited_cleanly: true },
+      }),
+    );
+  } catch {
+    /* the flags are still in force; this is the belt to their braces */
+  }
+
   const child = spawn(
     findBrowser(),
     [
@@ -73,8 +109,17 @@ export async function launch({
       // Chrome's own furniture, on camera, in a video about a payment page.
       "--no-first-run",
       "--no-default-browser-check",
-      "--disable-features=Translate,MediaRouter",
       "--hide-crash-restore-bubble",
+      // The first take came back with a translate bubble over the top right
+      // corner offering to turn the page Korean, in Korean, because that is the
+      // language this machine's Chrome runs in. Two separate problems in one
+      // popup: furniture on camera, and a very clear signal about who is holding
+      // the mouse in a repository that is meant not to say. `Translate` alone
+      // did not suppress it; the bubble is `TranslateUI`, and the interface
+      // language has to be set as well or the next one arrives in Korean too.
+      "--lang=en-US",
+      "--accept-lang=en-US,en",
+      "--disable-features=TranslateUI,Translate,MediaRouter",
       "about:blank",
     ],
     { detached: false, stdio: "ignore" },
@@ -101,9 +146,18 @@ export async function launch({
 
   return {
     session,
+    port,
     async close() {
       session.close();
-      child.kill();
+      // Killing the process this spawned leaves the rest of Chrome behind: it
+      // forks a renderer and a GPU process per tab and the launcher is not
+      // their parent. Nine of them survived the first run and the script never
+      // exited, so the whole tree goes, by pid, through Windows' own tool.
+      try {
+        execFileSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+      } catch {
+        child.kill();
+      }
       await sleep(300);
       try {
         rmSync(profile, { recursive: true, force: true });

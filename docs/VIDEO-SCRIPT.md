@@ -172,8 +172,16 @@ the one shot where an unreadable line costs a scored point.
 1. Generate the voice from `demo.narration.txt`.
 2. Lay the recording, the audio and `demo.short.ass` together, and export at
    1080p.
-3. Upload unlisted to YouTube.
+3. Upload to YouTube as **Public**, not unlisted. The sprint rules say
+   "Public only. Your repository, your demo, and anything you link must resolve
+   for someone who isn't logged in." Unlisted resolves without a login, but the
+   rule is worded strictly and Public removes all doubt.
 4. Put the URL in `strk20.json` as `demo_video`.
-5. Add the new payment's transaction hash to `transactions` in the same commit.
-6. Verify the hash on Voyager, then confirm the hub row updates. It re-reads the
-   repo every 30 minutes.
+5. Only if you recorded a live payment: add its transaction hash to
+   `transactions` in the same commit. If the video shows the seven existing
+   transactions on Voyager instead, `transactions` is already complete.
+6. **Link-check.** Open the YouTube URL in a private window (logged out) and
+   confirm it plays. The rules require every linked URL to resolve for someone
+   not logged in, and a broken `demo_video` reads as no video at all.
+7. Confirm the hub row updates. It re-reads the repo every 30 minutes; the row
+   shows a green check against "demo video" once it has read the new URL.

@@ -128,7 +128,11 @@ function buildAss() {
     "Style: Pop,Arial Black,96,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,7,4,2,140,140,150,1",
     "",
     "[Events]",
-    "Format: Layer, Start, End, Style, Name, MarginL, MarginR, Effect, Text",
+    // MarginV MUST be here. The Dialogue lines below emit three margin values
+    // (0,0,0); a Format that names only two makes libass read the third as
+    // Effect and fold the comma that follows into the caption text, so every
+    // burst rendered with a leading comma: ",Starknet can hide who".
+    "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
   ];
 
   const events = [];
@@ -148,9 +152,27 @@ function buildAss() {
       // rather than appearing.
       const effect = "{\\fad(50,50)\\t(0,90,\\fscx112\\fscy112)\\t(90,190,\\fscx100\\fscy100)}";
       const text = chunk.replace(/\{/g, "(").replace(/\}/g, ")");
+      // 0,time,time,Pop,,0,0,0,, = Layer, Start, End, Style, Name, MarginL,
+      // MarginR, MarginV, Effect(empty), then Text. Nine fields, matching the
+      // nine names before Text in the Format line above. Drop MarginV from
+      // either side and libass reads a comma into the text.
       events.push(`Dialogue: 0,${assTime(at)},${assTime(to)},Pop,,0,0,0,,${effect}${text}`);
       at = to;
     });
+  }
+
+  // The header and the Dialogue lines must agree on how many fields precede the
+  // text, or a comma folds into every caption. This was shipped once, invisible
+  // until the .ass was rendered, so it is asserted rather than trusted.
+  const eventsFormat = head.find((l) => l.startsWith("Format: Layer"));
+  const namesBeforeText = eventsFormat.replace("Format:", "").split(",").length - 1; // minus Text
+  const fieldsBeforeText = "0,0:00:00.00,0:00:00.50,Pop,,0,0,0,".split(",").length; // a sample Dialogue prefix
+  if (namesBeforeText !== fieldsBeforeText) {
+    console.error(
+      `the ASS Events Format names ${namesBeforeText} fields before Text, but each Dialogue emits ` +
+        `${fieldsBeforeText}; the mismatch folds a comma into every caption`,
+    );
+    process.exit(1);
   }
   // A burst nobody can read is worse than none, so this is checked rather than
   // assumed. Half a second is about the floor for taking in three words.

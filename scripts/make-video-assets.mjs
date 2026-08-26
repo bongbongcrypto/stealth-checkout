@@ -98,12 +98,28 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
-/** Split a spoken line into short caption bursts. */
+/**
+ * Split a spoken line into short caption bursts, evenly.
+ *
+ * Slicing four words at a time leaves whatever is left over alone in the last
+ * burst, so a thirteen-word line ended "...into any page." / "page." and that
+ * single word flashed for a fifth of a second. Three lines of the original
+ * script did it, and the half-second floor below missed all three by eight
+ * milliseconds.
+ *
+ * So the burst count is fixed first, and the words are spread across it: the
+ * remainder rides in the early bursts, where there is company, instead of
+ * being stranded at the end.
+ */
 function pops(text) {
   const words = text.trim().split(/\s+/);
+  const count = Math.ceil(words.length / WORDS_PER_POP);
   const out = [];
-  for (let i = 0; i < words.length; i += WORDS_PER_POP) {
-    out.push(words.slice(i, i + WORDS_PER_POP).join(" "));
+  let i = 0;
+  for (let c = 0; c < count; c++) {
+    const take = Math.ceil((words.length - i) / (count - c));
+    out.push(words.slice(i, i + take).join(" "));
+    i += take;
   }
   return out;
 }
@@ -188,6 +204,18 @@ function buildAss() {
   if (tooFast.length > 0) {
     console.error(`${tooFast.length} captions are on screen for under half a second`);
     process.exit(1);
+  }
+  // A lone word between two full bursts reads as a glitch even when it is on
+  // screen long enough to read, so it is caught by shape and not only by
+  // duration. Single-burst lines ("Drop a coin in.") are not orphans.
+  for (const line of lines) {
+    const chunks = pops(line.say);
+    if (chunks.length < 2) continue;
+    const orphan = chunks.findIndex((c) => c.trim().split(/\s+/).length < 2);
+    if (orphan !== -1) {
+      console.error(`"${line.say}" leaves "${chunks[orphan]}" alone in a caption`);
+      process.exit(1);
+    }
   }
 
   return [...head, ...events].join("\n") + "\n";

@@ -4,7 +4,7 @@ Starknet can hide who you are when you send money.
 
 2
 00:00:04,000 --> 00:00:07,500
-Getting paid that way? Nothing exists.
+Getting paid that way? Nobody built that.
 
 3
 00:00:07,500 --> 00:00:13,000
@@ -44,7 +44,7 @@ The pool takes six every single time. Flat. Doesn't matter if you move one or a 
 
 12
 00:00:54,000 --> 00:01:01,000
-That number is nowhere in STRK20's docs. We pulled it off the contract ourselves.
+That number is nowhere in STRK20's docs. We read it off the contract ourselves.
 
 13
 00:01:01,000 --> 00:01:09,000
@@ -64,11 +64,11 @@ Or print one code and stick it on the counter. The customer picks the amount.
 
 17
 00:01:29,000 --> 00:01:36,500
-One printed code means one address forever. Anyone can add up your takings.
+One printed code means one address forever. Anyone can add up your sales.
 
 18
 00:01:36,500 --> 00:01:43,000
-Your customers stay anonymous either way. We say so before you pick.
+Your customers stay anonymous either way. We tell you that before you choose.
 
 19
 00:01:43,000 --> 00:01:50,000
@@ -80,11 +80,11 @@ Mainnet now. Real money.
 
 21
 00:01:54,000 --> 00:02:02,000
-See the warning? Nothing here has checked this link's amount or address, and it says so out loud.
+See the warning? Nothing here has checked this link's amount or address. We print that in red instead of hiding it.
 
 22
 00:02:02,000 --> 00:02:08,000
-A link can't vouch for itself, so we never let it try.
+A link can't vouch for itself. So there's no box here for naming your own auditor.
 
 23
 00:02:08,000 --> 00:02:15,500
@@ -100,7 +100,7 @@ It counts what came in, not what's sitting there. Money already on the address p
 
 26
 00:02:30,000 --> 00:02:37,000
-Signed webhook fires, the invoice flips to paid, and the order ships itself.
+Signed webhook fires, the invoice flips to paid, and the order goes out.
 
 27
 00:02:37,000 --> 00:02:44,000
@@ -108,7 +108,7 @@ Real mainnet transactions, all verified. Over two hundred tests. Nine rounds of 
 
 28
 00:02:44,000 --> 00:02:50,000
-And the README says what those transactions don't prove, too.
+And the README also says what those transactions don't prove.
 
 29
 00:02:50,000 --> 00:03:00,000

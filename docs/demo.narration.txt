@@ -1,5 +1,5 @@
 Starknet can hide who you are when you send money.
-Getting paid that way? Nothing exists.
+Getting paid that way? Nobody built that.
 No checkout. No invoice. Nothing to tell your server the money landed.
 So we built it.
 This arcade is the shop. No wallet, no install, it just runs.
@@ -9,21 +9,21 @@ The shop's server saw the payment and granted the credit. That's the loop.
 Now look at the price before you sign.
 A one STRK coin costs seven.
 The pool takes six every single time. Flat. Doesn't matter if you move one or a thousand.
-That number is nowhere in STRK20's docs. We pulled it off the contract ourselves.
+That number is nowhere in STRK20's docs. We read it off the contract ourselves.
 Which means private payments have a floor. Under sixty STRK, fees eat more than ten percent.
 This panel spells out what the payment leaks. Including the parts we couldn't hide.
 Merchant side. Every invoice gets a link and a QR.
 Or print one code and stick it on the counter. The customer picks the amount.
-One printed code means one address forever. Anyone can add up your takings.
-Your customers stay anonymous either way. We say so before you pick.
+One printed code means one address forever. Anyone can add up your sales.
+Your customers stay anonymous either way. We tell you that before you choose.
 The QR encoder is ours. No dependencies, checked against the ISO spec.
 Mainnet now. Real money.
-See the warning? Nothing here has checked this link's amount or address, and it says so out loud.
-A link can't vouch for itself, so we never let it try.
+See the warning? Nothing here has checked this link's amount or address. We print that in red instead of hiding it.
+A link can't vouch for itself. So there's no box here for naming your own auditor.
 Signing. The pool submits it, so the chain never records me as the sender.
 The merchant's watcher picks it up off public RPC. No wallet open anywhere.
 It counts what came in, not what's sitting there. Money already on the address proves nothing.
-Signed webhook fires, the invoice flips to paid, and the order ships itself.
+Signed webhook fires, the invoice flips to paid, and the order goes out.
 Real mainnet transactions, all verified. Over two hundred tests. Nine rounds of tearing it apart.
-And the README says what those transactions don't prove, too.
+And the README also says what those transactions don't prove.
 Stealth Checkout. The receiving side of STRK20. Code, docs and the transactions are all in the repo.

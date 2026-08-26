@@ -27,8 +27,8 @@
       "start": "00:04.000",
       "end": "00:07.500",
       "shot": "scroll past the ecosystem's sending tools",
-      "say": "Getting paid that way? Nothing exists.",
-      "ko": "그런데 그렇게 돈을 받으려면? 아무것도 없습니다."
+      "say": "Getting paid that way? Nobody built that.",
+      "ko": "그런데 그렇게 돈을 받으려면? 아무도 안 만들었습니다."
     },
     {
       "start": "00:07.500",
@@ -97,8 +97,8 @@
       "start": "00:54.000",
       "end": "01:01.000",
       "shot": "the amber fee warning",
-      "say": "That number is nowhere in STRK20's docs. We pulled it off the contract ourselves.",
-      "ko": "그 숫자는 STRK20 문서 어디에도 없습니다. 우리가 컨트랙트에서 직접 꺼냈습니다."
+      "say": "That number is nowhere in STRK20's docs. We read it off the contract ourselves.",
+      "ko": "그 숫자는 STRK20 문서 어디에도 없습니다. 우리가 컨트랙트에서 직접 읽어냈습니다."
     },
     {
       "start": "01:01.000",
@@ -132,15 +132,15 @@
       "start": "01:29.000",
       "end": "01:36.500",
       "shot": "the advice text under the selector",
-      "say": "One printed code means one address forever. Anyone can add up your takings.",
+      "say": "One printed code means one address forever. Anyone can add up your sales.",
       "ko": "인쇄한 코드는 주소가 하나로 고정됩니다. 누구나 매출을 더해볼 수 있습니다."
     },
     {
       "start": "01:36.500",
       "end": "01:43.000",
       "shot": "same",
-      "say": "Your customers stay anonymous either way. We say so before you pick.",
-      "ko": "손님은 어느 쪽이든 익명입니다. 고르기 전에 그 사실을 말해둡니다."
+      "say": "Your customers stay anonymous either way. We tell you that before you choose.",
+      "ko": "손님은 어느 쪽이든 익명입니다. 고르기 전에 그 사실을 알려줍니다."
     },
     {
       "start": "01:43.000",
@@ -160,15 +160,15 @@
       "start": "01:54.000",
       "end": "02:02.000",
       "shot": "the red unverified-link banner",
-      "say": "See the warning? Nothing here has checked this link's amount or address, and it says so out loud.",
-      "ko": "저 경고 보이십니까? 이 링크의 금액과 주소는 아무도 검증하지 않았고, 그걸 대놓고 씁니다."
+      "say": "See the warning? Nothing here has checked this link's amount or address. We print that in red instead of hiding it.",
+      "ko": "저 경고 보이십니까? 이 링크의 금액과 주소는 아무도 검증하지 않았습니다. 숨기지 않고 빨간색으로 띄웁니다."
     },
     {
       "start": "02:02.000",
       "end": "02:08.000",
       "shot": "same banner",
-      "say": "A link can't vouch for itself, so we never let it try.",
-      "ko": "링크가 스스로를 보증할 수는 없습니다. 그래서 시도조차 못 하게 했습니다."
+      "say": "A link can't vouch for itself. So there's no box here for naming your own auditor.",
+      "ko": "링크가 스스로를 보증할 수는 없습니다. 그래서 검증자를 직접 지정하는 칸을 아예 두지 않았습니다."
     },
     {
       "start": "02:08.000",
@@ -195,8 +195,8 @@
       "start": "02:30.000",
       "end": "02:37.000",
       "shot": "webhook log, then the dashboard flips to PAID",
-      "say": "Signed webhook fires, the invoice flips to paid, and the order ships itself.",
-      "ko": "서명된 웹훅이 나가고, 인보이스가 결제완료로 바뀌고, 주문이 알아서 나갑니다."
+      "say": "Signed webhook fires, the invoice flips to paid, and the order goes out.",
+      "ko": "서명된 웹훅이 나가고, 인보이스가 결제완료로 바뀌고, 주문이 자동으로 나갑니다."
     },
     {
       "start": "02:37.000",
@@ -209,7 +209,7 @@
       "start": "02:44.000",
       "end": "02:50.000",
       "shot": "README, what these do and do not show",
-      "say": "And the README says what those transactions don't prove, too.",
+      "say": "And the README also says what those transactions don't prove.",
       "ko": "README에는 그 거래들이 증명하지 못하는 것도 적혀 있습니다."
     },
     {

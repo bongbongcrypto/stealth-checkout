@@ -67,6 +67,7 @@ npm install
 npm test                 # 205 tests: widget, checkout core, QR encoder, watcher logic, HTTP API
 npm run build:all        # widget dist + hosted-page bundle
 npm run dev              # demos at http://127.0.0.1:4173
+npm run check:claims     # every number in the docs, checked against the suite, the manifest, the chain
 WATCHER_TOKEN=dev node server/watcher/watcher.mjs
 ```
 

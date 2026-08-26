@@ -32728,6 +32728,19 @@ function injectStylesOnce() {
   const style = document.createElement("style");
   style.id = "spay-styles";
   style.textContent = `
+/* Hidden must mean hidden, in someone else's page.
+ *
+ * [hidden] is display:none in the browser's own stylesheet, and ANY author rule
+ * that sets display beats it: a host site with "button{display:inline-block}"
+ * or "div{display:flex}" puts every hidden element of this widget back on the
+ * screen. The sibling creator page proved it is not hypothetical - one
+ * "label{display:block}" left an Amount field visible on a code that has no
+ * amount, and left the previous invoice's QR under a form that had moved on.
+ *
+ * Here it would surface the danger button, which offers to pay a second time
+ * after an attempt that may already have spent money. That button appears when
+ * this widget decides it should and never because a stylesheet said so. */
+.spay [hidden]{display:none !important}
 .spay{--spay-bg:#111318;--spay-fg:#e8eaf0;--spay-accent:#7ee787;--spay-muted:#9aa1ad;--spay-danger:#ff7b72;
   background:var(--spay-bg);color:var(--spay-fg);border:1px solid #2a2e37;border-radius:12px;
   padding:16px;max-width:100%;width:340px;box-sizing:border-box;font:14px/1.45 system-ui,sans-serif}

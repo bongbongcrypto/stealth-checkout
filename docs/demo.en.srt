@@ -1,17 +1,17 @@
 1
-00:00:00,000 --> 00:00:04,000
+00:00:00,000 --> 00:00:03,326
 Starknet can hide who you are when you send money.
 
 2
-00:00:04,000 --> 00:00:07,500
+00:00:04,000 --> 00:00:07,062
 Getting paid that way? Nobody built that.
 
 3
-00:00:07,500 --> 00:00:13,000
+00:00:07,500 --> 00:00:12,506
 No checkout. No invoice. Nothing to tell your server the money landed.
 
 4
-00:00:13,000 --> 00:00:16,000
+00:00:13,000 --> 00:00:15,126
 So we built it.
 
 5
@@ -19,87 +19,87 @@ So we built it.
 This arcade is the shop. No wallet, no install, it just runs.
 
 6
-00:00:21,000 --> 00:00:27,000
+00:00:21,000 --> 00:00:25,646
 That panel is the whole widget. One call drops it into any page.
 
 7
-00:00:27,000 --> 00:00:31,000
+00:00:27,000 --> 00:00:29,126
 Drop a coin in.
 
 8
-00:00:31,000 --> 00:00:38,000
+00:00:31,000 --> 00:00:35,670
 The shop's server saw the payment and granted the credit. That's the loop.
 
 9
-00:00:38,000 --> 00:00:42,500
+00:00:38,000 --> 00:00:40,486
 Now look at the price before you sign.
 
 10
-00:00:42,500 --> 00:00:46,500
+00:00:42,500 --> 00:00:45,538
 A one STRK coin costs seven.
 
 11
-00:00:46,500 --> 00:00:54,000
+00:00:46,500 --> 00:00:53,162
 The pool takes six every single time. Flat. Doesn't matter if you move one or a thousand.
 
 12
-00:00:54,000 --> 00:01:01,000
+00:00:54,000 --> 00:01:00,158
 That number is nowhere in STRK20's docs. We read it off the contract ourselves.
 
 13
-00:01:01,000 --> 00:01:09,000
+00:01:01,000 --> 00:01:07,734
 Which means private payments have a floor. Under sixty STRK, fees eat more than ten percent.
 
 14
-00:01:09,000 --> 00:01:16,000
+00:01:09,000 --> 00:01:14,054
 This panel spells out what the payment leaks. Including the parts we couldn't hide.
 
 15
-00:01:16,000 --> 00:01:22,000
+00:01:16,000 --> 00:01:20,286
 Merchant side. Every invoice gets a link and a QR.
 
 16
-00:01:22,000 --> 00:01:29,000
+00:01:22,000 --> 00:01:27,054
 Or print one code and stick it on the counter. The customer picks the amount.
 
 17
-00:01:29,000 --> 00:01:36,500
+00:01:29,000 --> 00:01:34,342
 One printed code means one address forever. Anyone can add up your sales.
 
 18
-00:01:36,500 --> 00:01:43,000
+00:01:36,500 --> 00:01:41,386
 Your customers stay anonymous either way. We tell you that before you choose.
 
 19
-00:01:43,000 --> 00:01:50,000
+00:01:43,000 --> 00:01:48,942
 The QR encoder is ours. No dependencies, checked against the ISO spec.
 
 20
-00:01:50,000 --> 00:01:54,000
+00:01:50,000 --> 00:01:52,342
 Mainnet now. Real money.
 
 21
-00:01:54,000 --> 00:02:02,000
+00:01:54,000 --> 00:02:01,310
 See the warning? Nothing here has checked this link's amount or address. We print that in red instead of hiding it.
 
 22
-00:02:02,000 --> 00:02:08,000
+00:02:02,000 --> 00:02:07,270
 A link can't vouch for itself. So there's no box here for naming your own auditor.
 
 23
-00:02:08,000 --> 00:02:15,500
+00:02:08,000 --> 00:02:13,462
 Signing. The pool submits it, so the chain never records me as the sender.
 
 24
-00:02:15,500 --> 00:02:22,500
+00:02:15,500 --> 00:02:21,250
 The merchant's watcher picks it up off public RPC. No wallet open anywhere.
 
 25
-00:02:22,500 --> 00:02:30,000
+00:02:22,500 --> 00:02:28,370
 It counts what came in, not what's sitting there. Money already on the address proves nothing.
 
 26
-00:02:30,000 --> 00:02:37,000
+00:02:30,000 --> 00:02:35,366
 Signed webhook fires, the invoice flips to paid, and the order goes out.
 
 27
@@ -107,9 +107,9 @@ Signed webhook fires, the invoice flips to paid, and the order goes out.
 Real mainnet transactions, all verified. Over two hundred tests. Nine rounds of tearing it apart.
 
 28
-00:02:44,000 --> 00:02:50,000
+00:02:44,000 --> 00:02:48,070
 And the README also says what those transactions don't prove.
 
 29
-00:02:50,000 --> 00:03:00,000
+00:02:50,000 --> 00:02:58,006
 Stealth Checkout. The receiving side of STRK20. Code, docs and the transactions are all in the repo.

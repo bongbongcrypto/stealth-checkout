@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Stealth Checkout: merchant dashboard</title>
   <style>
+    /* Hidden means hidden. [hidden] is display:none in the browser's own
+       stylesheet, and any author rule that sets display beats it: one
+       label{display:block} left an Amount field on screen for a counter code
+       that has no amount, and left the previous code's QR sitting under a form
+       that had moved on, which is how a shop prints the wrong one. */
+    [hidden] { display: none !important; }
     :root { --bg:#07080c; --panel:#111318; --line:#2a2e37; --fg:#e8eaf0; --muted:#9aa1ad;
       --green:#7ee787; --red:#ff7b72; --yellow:#f0c674; }
     * { box-sizing:border-box; }

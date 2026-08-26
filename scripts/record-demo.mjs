@@ -172,6 +172,31 @@ const HELPERS = `
       el.dispatchEvent(new Event("change", { bubbles: true }));
       return el.value.slice(0, 24) + "…";
     },
+    // Actually play, with the keys the game listens for.
+    //
+    // The credit landing is the evidence the whole segment exists for: the
+    // shop's server saw a private payment and unlocked something. A canvas
+    // sitting still proves nothing, and the first take had exactly that,
+    // because pressing START is not playing and nobody was at the keyboard.
+    //
+    // Real keydown and keyup on window, which is where the game listens, so the
+    // movement on screen is the game's own physics responding to input. Held
+    // for a beat each, the way a person holds a direction rather than tapping.
+    async play(ms) {
+      const keys = ["ArrowRight", "ArrowUp", "ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp", "ArrowLeft", "ArrowRight"];
+      const press = (key, type) =>
+        window.dispatchEvent(new KeyboardEvent(type, { key, bubbles: true, cancelable: true }));
+      const until = performance.now() + ms;
+      let i = 0;
+      while (performance.now() < until) {
+        const key = keys[i++ % keys.length];
+        press(key, "keydown");
+        await new Promise((r) => setTimeout(r, 260 + (i % 3) * 90));
+        press(key, "keyup");
+        await new Promise((r) => setTimeout(r, 60));
+      }
+      return "played " + (ms / 1000).toFixed(1) + "s";
+    },
     pick(sel, value) {
       const el = document.querySelector(sel);
       if (!el) throw new Error("no element for " + sel);
@@ -225,13 +250,21 @@ const CHOREOGRAPHY = [
       { at: 11200, do: async (s) => evaluate(s, `document.querySelector("#coin").click()`) },
       { at: 13000, do: async (s) => evaluate(s, `document.querySelector(".spay-btn").click()`) },
       // 0:31 the credit is granted and the game runs
-      { at: 17000, do: async (s) => evaluate(s, `window.__shoot.scrollToEl("#screen", 900)`) },
-      { at: 18500, do: async (s) => evaluate(s, `document.querySelector("#start")?.click()`) },
+      //
+      // Four seconds on the game, and not one more. It is the evidence that the
+      // shop's server acted on a confirmed private payment, and evidence is all
+      // it is: gameplay scores nothing here, and every second of it is a second
+      // not spent on the three things that do score. It does have to move,
+      // though. The first take pressed START and left the canvas sitting there,
+      // which reads as a demo that froze.
+      { at: 16800, do: async (s) => evaluate(s, `window.__shoot.scrollToEl("#screen", 900)`) },
+      { at: 18000, do: async (s) => evaluate(s, `document.querySelector("#start")?.click()`) },
+      { at: 18500, do: async (s) => evaluate(s, `window.__shoot.play(3300)`) },
       // 0:38 look at the price before you sign. A second coin, stopped before
       // paying, is what puts the confirmation block back on screen: the first
       // one has become a receipt and a receipt has no price on it.
       { at: 22000, do: async (s) => evaluate(s, `document.querySelector("#coin").click()`) },
-      { at: 22600, do: async (s) => evaluate(s, `window.__shoot.scrollToEl(".spay-confirm", 1100)`) },
+      { at: 22400, do: async (s) => evaluate(s, `window.__shoot.scrollToEl(".spay-confirm", 1100)`) },
       // 0:42 a one STRK coin costs seven
       { at: 26800, do: async (s) => evaluate(s, `window.__shoot.spot(".spay-total", 10)`) },
       // 0:46 the pool takes six, flat

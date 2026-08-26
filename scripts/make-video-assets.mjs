@@ -14,7 +14,8 @@
 //
 // One source, because two hand-kept copies of the same script had already
 // started to disagree about what the video says.
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -47,8 +48,58 @@ const assTime = (ms) =>
   `${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}.` +
   `${String(Math.floor((ms % 1000) / 10)).padStart(2, "0")}`;
 
+/** ffprobe, wherever winget put it, else whatever is on PATH. */
+const FFPROBE = (() => {
+  const winget = join(
+    process.env.LOCALAPPDATA ?? "",
+    "Microsoft/WinGet/Packages/Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe",
+  );
+  try {
+    for (const dir of readdirSync(winget)) {
+      const exe = join(winget, dir, "bin", "ffprobe.exe");
+      if (existsSync(exe)) return exe;
+    }
+  } catch {
+    /* fall through to PATH */
+  }
+  return "ffprobe";
+})();
+
 const { lines } = JSON.parse(readFileSync(SOURCE, "utf8"));
 const problems = [];
+
+/**
+ * How long each line actually takes to say, read off the synthesised audio.
+ *
+ * Captions used to be spread across the whole slot a line occupies. A slot is
+ * longer than its sentence on purpose, so that the screen has room to work, and
+ * the effect was that the last words of a caption sat there for up to 2.7
+ * seconds after the voice had stopped saying them. Measured against the audio,
+ * a caption ends when the sentence ends.
+ *
+ * Before the audio exists there is nothing to measure, so the words-per-minute
+ * estimate stands in and says so. That case is the first run only.
+ */
+function spokenLengths() {
+  const dir = join(ROOT, "docs", "narration");
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const file = join(dir, `${String(i + 1).padStart(2, "0")}.mp3`);
+    if (!existsSync(file)) return null;
+    const probe = spawnSync(FFPROBE, ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file], {
+      encoding: "utf8",
+    });
+    const seconds = Number((probe.stdout ?? "").trim());
+    if (!Number.isFinite(seconds) || seconds <= 0) return null;
+    out.push(seconds * 1000);
+  }
+  return out;
+}
+
+const spoken = spokenLengths();
+if (spoken === null) {
+  console.log("no narration audio yet, so captions are timed from the words-per-minute estimate");
+}
 
 let previousEnd = -1;
 lines.forEach((line, i) => {
@@ -152,9 +203,14 @@ function buildAss() {
   ];
 
   const events = [];
-  for (const line of lines) {
+  lines.forEach((line, index) => {
     const start = parseTime(line.start);
-    const end = parseTime(line.end);
+    const slotEnd = parseTime(line.end);
+    // The caption tracks the sentence, not the slot. A small tail is added so
+    // the last burst does not vanish on the syllable it ends with, and it is
+    // never allowed past the slot, or two lines would be on screen at once.
+    const spokenFor = spoken ? spoken[index] : ((line.say.trim().split(/\s+/).length / SPEAKING_RATE) * 60000);
+    const end = Math.min(slotEnd, start + spokenFor + 350);
     const chunks = pops(line.say);
     // Share the slot out by length, so a long burst is not on screen as briefly
     // as a two-word one.
@@ -175,7 +231,7 @@ function buildAss() {
       events.push(`Dialogue: 0,${assTime(at)},${assTime(to)},Pop,,0,0,0,,${effect}${text}`);
       at = to;
     });
-  }
+  });
 
   // The header and the Dialogue lines must agree on how many fields precede the
   // text, or a comma folds into every caption. This was shipped once, invisible
@@ -231,11 +287,19 @@ if (!process.argv.includes("--check")) {
   // audio lines up with the cues without hand-trimming.
   write("demo.narration.txt", lines.map((l) => l.say).join("\n") + "\n");
 
+  // The sidecar tracks end when the sentence ends too, for the same reason the
+  // burned ones do: a subtitle still up two seconds after the voice moved on
+  // reads as a video that is out of sync, whichever track it is on.
+  const srtEnd = (line, i) => {
+    const start = parseTime(line.start);
+    const spokenFor = spoken ? spoken[i] : ((line.say.trim().split(/\s+/).length / SPEAKING_RATE) * 60000);
+    return Math.min(parseTime(line.end), start + spokenFor + 350);
+  };
   for (const [name, key] of [["demo.en.srt", "say"], ["demo.ko.srt", "ko"]]) {
     write(
       name,
       lines
-        .map((l, i) => `${i + 1}\n${srtTime(parseTime(l.start))} --> ${srtTime(parseTime(l.end))}\n${l[key]}\n`)
+        .map((l, i) => `${i + 1}\n${srtTime(parseTime(l.start))} --> ${srtTime(Math.round(srtEnd(l, i)))}\n${l[key]}\n`)
         .join("\n"),
     );
   }

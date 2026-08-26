@@ -26,6 +26,11 @@ const RULES = {
   contrast: "Text below 4.5:1 against its background fails WCAG AA and disappears in a compressed video.",
   headingScale: "If the title, the body and the buttons are all one size, nothing leads the eye.",
   checkoutLength: "A payment box longer than three screens is a document, not a checkout.",
+  hiddenIsHidden:
+    "[hidden] is display:none in the browser's own stylesheet and any author rule " +
+    "that sets display beats it. One label{display:block} kept an Amount field on " +
+    "screen for a counter code that has no amount, and kept the previous code's QR " +
+    "under a form that had moved on, which is how a shop prints the wrong one.",
 };
 
 const px = (v) => Number.parseFloat(v) || 0;
@@ -135,13 +140,36 @@ export function auditPage(opts, win = globalThis) {
     }
   }
 
-  // 3. Sideways scroll.
+  // 3. Anything the page says is hidden, actually gone.
+  //
+  // Measured rather than reasoned about: whether [hidden] wins depends on every
+  // stylesheet that reaches the element, which for an embeddable widget includes
+  // stylesheets nobody here has read.
+  const leaking = [...document.querySelectorAll("[hidden]")]
+    .map((el) => ({ el, r: el.getBoundingClientRect() }))
+    .filter(({ r }) => r.width > 0 && r.height > 0);
+  measured.hiddenElements = document.querySelectorAll("[hidden]").length;
+  if (leaking.length > 0) {
+    fail(
+      "hiddenIsHidden",
+      leaking
+        .map(
+          ({ el, r }) =>
+            `${el.id || el.className || el.tagName.toLowerCase()} is marked hidden and still ` +
+            `${Math.round(r.width)}x${Math.round(r.height)} on screen ` +
+            `(display: ${getComputedStyle(el).display})`,
+        )
+        .join("; "),
+    );
+  }
+
+  // 4. Sideways scroll.
   measured.scrollWidth = document.documentElement.scrollWidth;
   if (document.documentElement.scrollWidth > innerWidth + 1) {
     fail("noSideScroll", `the page is ${document.documentElement.scrollWidth}px wide in a ${innerWidth}px viewport`);
   }
 
-  // 4. Tap targets.
+  // 5. Tap targets.
   //
   // A link inside a sentence is exempt, because making it 44px tall would break
   // the paragraph it lives in, and the standard says so. Everything a finger is

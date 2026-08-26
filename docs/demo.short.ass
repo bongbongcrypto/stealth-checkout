@@ -13,102 +13,102 @@ Style: Pop,Arial Black,96,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,-1,0,0,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 0,0:00:00.00,0:00:01.75,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Starknet can hide who
-Dialogue: 0,0:00:01.75,0:00:02.75,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}you are when
-Dialogue: 0,0:00:02.75,0:00:04.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}you send money.
-Dialogue: 0,0:00:04.00,0:00:05.92,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Getting paid that way?
-Dialogue: 0,0:00:05.92,0:00:07.50,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Nobody built that.
-Dialogue: 0,0:00:07.50,0:00:09.44,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}No checkout. No invoice.
-Dialogue: 0,0:00:09.44,0:00:11.05,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Nothing to tell your
-Dialogue: 0,0:00:11.05,0:00:13.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}server the money landed.
-Dialogue: 0,0:00:13.00,0:00:16.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}So we built it.
+Dialogue: 0,0:00:00.00,0:00:01.45,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Starknet can hide who
+Dialogue: 0,0:00:01.45,0:00:02.28,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}you are when
+Dialogue: 0,0:00:02.28,0:00:03.32,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}you send money.
+Dialogue: 0,0:00:04.00,0:00:05.68,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Getting paid that way?
+Dialogue: 0,0:00:05.68,0:00:07.06,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Nobody built that.
+Dialogue: 0,0:00:07.50,0:00:09.26,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}No checkout. No invoice.
+Dialogue: 0,0:00:09.26,0:00:10.73,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Nothing to tell your
+Dialogue: 0,0:00:10.73,0:00:12.50,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}server the money landed.
+Dialogue: 0,0:00:13.00,0:00:15.12,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}So we built it.
 Dialogue: 0,0:00:16.00,0:00:17.52,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}This arcade is the
 Dialogue: 0,0:00:17.52,0:00:19.13,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}shop. No wallet, no
 Dialogue: 0,0:00:19.13,0:00:21.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}install, it just runs.
-Dialogue: 0,0:00:21.00,0:00:22.67,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}That panel is the
-Dialogue: 0,0:00:22.67,0:00:24.34,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}whole widget. One
-Dialogue: 0,0:00:24.34,0:00:25.62,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}call drops it
-Dialogue: 0,0:00:25.62,0:00:27.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}into any page.
-Dialogue: 0,0:00:27.00,0:00:31.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Drop a coin in.
-Dialogue: 0,0:00:31.00,0:00:33.07,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}The shop's server saw
-Dialogue: 0,0:00:33.07,0:00:34.54,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}the payment and
-Dialogue: 0,0:00:34.54,0:00:36.42,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}granted the credit.
-Dialogue: 0,0:00:36.42,0:00:38.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}That's the loop.
-Dialogue: 0,0:00:38.00,0:00:39.82,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Now look at the
-Dialogue: 0,0:00:39.82,0:00:42.50,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}price before you sign.
-Dialogue: 0,0:00:42.50,0:00:43.98,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}A one STRK
-Dialogue: 0,0:00:43.98,0:00:46.50,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}coin costs seven.
-Dialogue: 0,0:00:46.50,0:00:48.08,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}The pool takes six
-Dialogue: 0,0:00:48.08,0:00:50.20,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}every single time. Flat.
-Dialogue: 0,0:00:50.20,0:00:51.70,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Doesn't matter if
-Dialogue: 0,0:00:51.70,0:00:52.76,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}you move one
-Dialogue: 0,0:00:52.76,0:00:54.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}or a thousand.
-Dialogue: 0,0:00:54.00,0:00:56.02,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}That number is nowhere
-Dialogue: 0,0:00:56.02,0:00:57.86,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}in STRK20's docs. We
-Dialogue: 0,0:00:57.86,0:00:58.88,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}read it off
-Dialogue: 0,0:00:58.88,0:01:01.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}the contract ourselves.
-Dialogue: 0,0:01:01.00,0:01:03.51,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Which means private payments
-Dialogue: 0,0:01:03.51,0:01:05.22,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}have a floor. Under
-Dialogue: 0,0:01:05.22,0:01:07.02,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}sixty STRK, fees eat
-Dialogue: 0,0:01:07.02,0:01:09.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}more than ten percent.
-Dialogue: 0,0:01:09.00,0:01:10.83,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}This panel spells out
-Dialogue: 0,0:01:10.83,0:01:12.85,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}what the payment leaks.
-Dialogue: 0,0:01:12.85,0:01:14.51,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Including the parts
-Dialogue: 0,0:01:14.51,0:01:16.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}we couldn't hide.
-Dialogue: 0,0:01:16.00,0:01:19.50,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Merchant side. Every invoice
-Dialogue: 0,0:01:19.50,0:01:20.87,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}gets a link
-Dialogue: 0,0:01:20.87,0:01:22.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}and a QR.
-Dialogue: 0,0:01:22.00,0:01:23.60,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Or print one code
-Dialogue: 0,0:01:23.60,0:01:25.02,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}and stick it on
-Dialogue: 0,0:01:25.02,0:01:27.39,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}the counter. The customer
-Dialogue: 0,0:01:27.39,0:01:29.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}picks the amount.
-Dialogue: 0,0:01:29.00,0:01:31.35,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}One printed code means
-Dialogue: 0,0:01:31.35,0:01:33.50,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}one address forever.
-Dialogue: 0,0:01:33.50,0:01:35.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Anyone can add
-Dialogue: 0,0:01:35.00,0:01:36.50,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}up your sales.
-Dialogue: 0,0:01:36.50,0:01:39.04,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Your customers stay anonymous
-Dialogue: 0,0:01:39.04,0:01:40.27,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}either way. We
-Dialogue: 0,0:01:40.27,0:01:41.41,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}tell you that
-Dialogue: 0,0:01:41.41,0:01:43.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}before you choose.
-Dialogue: 0,0:01:43.00,0:01:44.75,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}The QR encoder is
-Dialogue: 0,0:01:44.75,0:01:47.83,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}ours. No dependencies, checked
-Dialogue: 0,0:01:47.83,0:01:50.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}against the ISO spec.
-Dialogue: 0,0:01:50.00,0:01:54.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Mainnet now. Real money.
-Dialogue: 0,0:01:54.00,0:01:55.74,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}See the warning? Nothing
-Dialogue: 0,0:01:55.74,0:01:57.27,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}here has checked this
-Dialogue: 0,0:01:57.27,0:01:59.09,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}link's amount or address.
-Dialogue: 0,0:01:59.09,0:02:00.03,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}We print that
-Dialogue: 0,0:02:00.03,0:02:01.05,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}in red instead
-Dialogue: 0,0:02:01.05,0:02:02.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}of hiding it.
-Dialogue: 0,0:02:02.00,0:02:03.36,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}A link can't vouch
-Dialogue: 0,0:02:03.36,0:02:05.03,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}for itself. So there's
-Dialogue: 0,0:02:05.03,0:02:06.17,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}no box here for
-Dialogue: 0,0:02:06.17,0:02:08.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}naming your own auditor.
-Dialogue: 0,0:02:08.00,0:02:10.64,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Signing. The pool submits
-Dialogue: 0,0:02:10.64,0:02:12.33,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}it, so the chain
-Dialogue: 0,0:02:12.33,0:02:14.02,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}never records me
-Dialogue: 0,0:02:14.02,0:02:15.50,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}as the sender.
-Dialogue: 0,0:02:15.50,0:02:18.22,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}The merchant's watcher picks
-Dialogue: 0,0:02:18.22,0:02:19.09,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}it up off
-Dialogue: 0,0:02:19.09,0:02:20.45,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}public RPC. No
-Dialogue: 0,0:02:20.45,0:02:22.50,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}wallet open anywhere.
-Dialogue: 0,0:02:22.50,0:02:24.06,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}It counts what came
-Dialogue: 0,0:02:24.06,0:02:25.87,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}in, not what's sitting
-Dialogue: 0,0:02:25.87,0:02:27.77,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}there. Money already on
-Dialogue: 0,0:02:27.77,0:02:30.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}the address proves nothing.
-Dialogue: 0,0:02:30.00,0:02:32.53,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Signed webhook fires, the
-Dialogue: 0,0:02:32.53,0:02:34.15,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}invoice flips to
-Dialogue: 0,0:02:34.15,0:02:35.47,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}paid, and the
-Dialogue: 0,0:02:35.47,0:02:37.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}order goes out.
+Dialogue: 0,0:00:21.00,0:00:22.29,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}That panel is the
+Dialogue: 0,0:00:22.29,0:00:23.59,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}whole widget. One
+Dialogue: 0,0:00:23.59,0:00:24.58,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}call drops it
+Dialogue: 0,0:00:24.58,0:00:25.64,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}into any page.
+Dialogue: 0,0:00:27.00,0:00:29.12,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Drop a coin in.
+Dialogue: 0,0:00:31.00,0:00:32.38,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}The shop's server saw
+Dialogue: 0,0:00:32.38,0:00:33.36,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}the payment and
+Dialogue: 0,0:00:33.36,0:00:34.61,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}granted the credit.
+Dialogue: 0,0:00:34.61,0:00:35.67,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}That's the loop.
+Dialogue: 0,0:00:38.00,0:00:39.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Now look at the
+Dialogue: 0,0:00:39.00,0:00:40.48,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}price before you sign.
+Dialogue: 0,0:00:42.50,0:00:43.62,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}A one STRK
+Dialogue: 0,0:00:43.62,0:00:45.53,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}coin costs seven.
+Dialogue: 0,0:00:46.50,0:00:47.91,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}The pool takes six
+Dialogue: 0,0:00:47.91,0:00:49.79,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}every single time. Flat.
+Dialogue: 0,0:00:49.79,0:00:51.12,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Doesn't matter if
+Dialogue: 0,0:00:51.12,0:00:52.06,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}you move one
+Dialogue: 0,0:00:52.06,0:00:53.16,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}or a thousand.
+Dialogue: 0,0:00:54.00,0:00:55.78,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}That number is nowhere
+Dialogue: 0,0:00:55.78,0:00:57.40,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}in STRK20's docs. We
+Dialogue: 0,0:00:57.40,0:00:58.29,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}read it off
+Dialogue: 0,0:00:58.29,0:01:00.15,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}the contract ourselves.
+Dialogue: 0,0:01:01.00,0:01:03.11,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Which means private payments
+Dialogue: 0,0:01:03.11,0:01:04.55,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}have a floor. Under
+Dialogue: 0,0:01:04.55,0:01:06.07,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}sixty STRK, fees eat
+Dialogue: 0,0:01:06.07,0:01:07.73,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}more than ten percent.
+Dialogue: 0,0:01:09.00,0:01:10.32,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}This panel spells out
+Dialogue: 0,0:01:10.32,0:01:11.78,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}what the payment leaks.
+Dialogue: 0,0:01:11.78,0:01:12.98,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Including the parts
+Dialogue: 0,0:01:12.98,0:01:14.05,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}we couldn't hide.
+Dialogue: 0,0:01:16.00,0:01:18.50,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Merchant side. Every invoice
+Dialogue: 0,0:01:18.50,0:01:19.48,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}gets a link
+Dialogue: 0,0:01:19.48,0:01:20.28,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}and a QR.
+Dialogue: 0,0:01:22.00,0:01:23.16,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Or print one code
+Dialogue: 0,0:01:23.16,0:01:24.18,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}and stick it on
+Dialogue: 0,0:01:24.18,0:01:25.89,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}the counter. The customer
+Dialogue: 0,0:01:25.89,0:01:27.05,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}picks the amount.
+Dialogue: 0,0:01:29.00,0:01:30.67,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}One printed code means
+Dialogue: 0,0:01:30.67,0:01:32.20,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}one address forever.
+Dialogue: 0,0:01:32.20,0:01:33.27,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Anyone can add
+Dialogue: 0,0:01:33.27,0:01:34.34,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}up your sales.
+Dialogue: 0,0:01:36.50,0:01:38.41,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Your customers stay anonymous
+Dialogue: 0,0:01:38.41,0:01:39.33,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}either way. We
+Dialogue: 0,0:01:39.33,0:01:40.19,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}tell you that
+Dialogue: 0,0:01:40.19,0:01:41.38,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}before you choose.
+Dialogue: 0,0:01:43.00,0:01:44.48,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}The QR encoder is
+Dialogue: 0,0:01:44.48,0:01:47.10,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}ours. No dependencies, checked
+Dialogue: 0,0:01:47.10,0:01:48.94,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}against the ISO spec.
+Dialogue: 0,0:01:50.00,0:01:52.34,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Mainnet now. Real money.
+Dialogue: 0,0:01:54.00,0:01:55.59,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}See the warning? Nothing
+Dialogue: 0,0:01:55.59,0:01:56.99,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}here has checked this
+Dialogue: 0,0:01:56.99,0:01:58.65,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}link's amount or address.
+Dialogue: 0,0:01:58.65,0:01:59.51,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}We print that
+Dialogue: 0,0:01:59.51,0:02:00.44,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}in red instead
+Dialogue: 0,0:02:00.44,0:02:01.31,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}of hiding it.
+Dialogue: 0,0:02:02.00,0:02:03.20,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}A link can't vouch
+Dialogue: 0,0:02:03.20,0:02:04.66,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}for itself. So there's
+Dialogue: 0,0:02:04.66,0:02:05.67,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}no box here for
+Dialogue: 0,0:02:05.67,0:02:07.27,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}naming your own auditor.
+Dialogue: 0,0:02:08.00,0:02:09.92,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Signing. The pool submits
+Dialogue: 0,0:02:09.92,0:02:11.15,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}it, so the chain
+Dialogue: 0,0:02:11.15,0:02:12.38,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}never records me
+Dialogue: 0,0:02:12.38,0:02:13.46,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}as the sender.
+Dialogue: 0,0:02:15.50,0:02:17.73,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}The merchant's watcher picks
+Dialogue: 0,0:02:17.73,0:02:18.45,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}it up off
+Dialogue: 0,0:02:18.45,0:02:19.57,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}public RPC. No
+Dialogue: 0,0:02:19.57,0:02:21.25,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}wallet open anywhere.
+Dialogue: 0,0:02:22.50,0:02:23.72,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}It counts what came
+Dialogue: 0,0:02:23.72,0:02:25.14,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}in, not what's sitting
+Dialogue: 0,0:02:25.14,0:02:26.62,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}there. Money already on
+Dialogue: 0,0:02:26.62,0:02:28.37,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}the address proves nothing.
+Dialogue: 0,0:02:30.00,0:02:31.94,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Signed webhook fires, the
+Dialogue: 0,0:02:31.94,0:02:33.18,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}invoice flips to
+Dialogue: 0,0:02:33.18,0:02:34.19,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}paid, and the
+Dialogue: 0,0:02:34.19,0:02:35.36,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}order goes out.
 Dialogue: 0,0:02:37.00,0:02:39.23,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Real mainnet transactions, all
 Dialogue: 0,0:02:39.23,0:02:41.17,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}verified. Over two hundred
 Dialogue: 0,0:02:41.17,0:02:42.73,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}tests. Nine rounds of
 Dialogue: 0,0:02:42.73,0:02:44.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}tearing it apart.
-Dialogue: 0,0:02:44.00,0:02:45.93,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}And the README also
-Dialogue: 0,0:02:45.93,0:02:47.45,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}says what those
-Dialogue: 0,0:02:47.45,0:02:50.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}transactions don't prove.
-Dialogue: 0,0:02:50.00,0:02:53.22,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Stealth Checkout. The receiving
-Dialogue: 0,0:02:53.22,0:02:55.41,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}side of STRK20. Code,
-Dialogue: 0,0:02:55.41,0:02:56.66,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}docs and the
-Dialogue: 0,0:02:56.66,0:02:58.75,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}transactions are all
-Dialogue: 0,0:02:58.75,0:03:00.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}in the repo.
+Dialogue: 0,0:02:44.00,0:02:45.31,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}And the README also
+Dialogue: 0,0:02:45.31,0:02:46.34,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}says what those
+Dialogue: 0,0:02:46.34,0:02:48.07,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}transactions don't prove.
+Dialogue: 0,0:02:50.00,0:02:52.58,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Stealth Checkout. The receiving
+Dialogue: 0,0:02:52.58,0:02:54.33,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}side of STRK20. Code,
+Dialogue: 0,0:02:54.33,0:02:55.33,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}docs and the
+Dialogue: 0,0:02:55.33,0:02:57.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}transactions are all
+Dialogue: 0,0:02:57.00,0:02:58.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}in the repo.

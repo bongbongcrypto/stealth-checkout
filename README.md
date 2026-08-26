@@ -106,7 +106,7 @@ strk20.json            # sprint manifest (txs, demo, video)
 
 ## Verified on mainnet
 
-`strk20.json` lists seven Starknet mainnet transactions against the live STRK20 pool. Every one exists, SUCCEEDED, and reached L1.
+`strk20.json` lists eight Starknet mainnet transactions against the live STRK20 pool. Every one exists, SUCCEEDED, and reached L1.
 
 | Block | What it is | Tx |
 |---|---|---|
@@ -117,8 +117,9 @@ strk20.json            # sprint manifest (txs, demo, video)
 | 13645507 | `Deposit` | `0x1663fa3f...700b` |
 | 13645574 | `Withdrawal`: 5 STRK out of the pool to a chosen destination | `0x683df5a6...2c14` |
 | 13645946 | `Deposit` | `0x5a054090...629d` |
+| 13916430 | `Withdrawal`: the first end-to-end invoice payment. 2 STRK out of the pool to a fresh per-invoice merchant address (`order-42`), confirmed headlessly by the watcher and delivered as a signed webhook | `0x2dd84ad4...c2b7` |
 
-**What these do and do not show.** The two withdrawals exercise the exact
+**What these do and do not show.** Every withdrawal here exercises the exact
 operation an invoice payment uses: shielded funds leaving the pool to a
 destination address. Each transaction's `sender_address` is a different
 address, and none of them is the pool account that owns the funds: nobody
@@ -127,17 +128,26 @@ severing the payer's identity, and it is real. (Inside the transaction the STRK
 transfer is emitted by the pool contract, as it must be; the identity that is
 hidden is the one that submitted it.)
 
-They are **not** end-to-end payments to a merchant. Both sent their 5 STRK to
-`0x4ea15bf3…`, the same address that made all five deposits, because they were
-run as tests of the mechanism with the only funds available. A payment to a
-fresh per-invoice address is the same operation with a different destination,
-but this table would be overclaiming if it said one had happened.
+The first seven were tests of the mechanism: both of their withdrawals sent
+5 STRK back to `0x4ea15bf3…`, the same address that made the deposits, because
+those were run with the only funds available, and this section said so plainly
+while that was all the table held.
+
+The eighth is the end-to-end payment the others were not. A payer account
+shielded from its own balance, opened the hosted invoice page for `order-42`,
+and paid 2 STRK through the pool to a fresh receive address that had never held
+funds. The watcher, holding a baseline of zero from registration, confirmed the
+arrival over public RPC and delivered the signed `payment.confirmed` webhook.
+The payer's wallet appears nowhere in that transaction, and the demo video's
+live section is a recording of this payment being made.
 
 The ledger balances exactly, and this is where the pool's undocumented fee was
-found: 55 STRK deposited, 10 withdrawn, 42 taken as a flat 6 STRK on each of
-the seven operations, leaving 3 STRK shielded. The direction matters and is not
-obvious: the fee comes **out of** a deposit and **on top of** a withdrawal, so
-`20-6, -5-6, +5-6, +5-6, +20-6, -5-6, +5-6 = 3`.
+found. The first seven operations: 55 STRK deposited, 10 withdrawn, 42 taken as
+a flat 6 STRK on each operation, leaving 3 STRK shielded. The direction matters
+and is not obvious: the fee comes **out of** a deposit and **on top of** a
+withdrawal, so `20-6, -5-6, +5-6, +5-6, +20-6, -5-6, +5-6 = 3`. The eighth ran
+from a separate payer account and balances the same way: 15 deposited, 6 taken,
+9 credited; the 2 STRK payment then cost `2+6`, leaving 1 shielded.
 
 No contracts were deployed, so these are judged against the pool alone.
 

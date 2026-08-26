@@ -28,17 +28,18 @@ Dialogue: 0,0:00:12.62,0:00:13.90,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy1
 Dialogue: 0,0:00:08.60,0:00:13.90,Ko,,0,0,0,,{\fad(120,120)}스타크넷은 이미 비공개로 보낼 수 있었습니다. 받는 쪽은? 아무도 안 만들었습니다.
 Dialogue: 0,0:00:13.90,0:00:16.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}So we did.
 Dialogue: 0,0:00:13.90,0:00:16.00,Ko,,0,0,0,,{\fad(120,120)}그래서 우리가 만들었습니다.
-Dialogue: 0,0:00:16.00,0:00:17.52,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}This arcade is the
-Dialogue: 0,0:00:17.52,0:00:19.13,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}shop. No wallet, no
-Dialogue: 0,0:00:19.13,0:00:21.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}install, it just runs.
-Dialogue: 0,0:00:16.00,0:00:21.00,Ko,,0,0,0,,{\fad(120,120)}이 오락실이 가게입니다. 지갑도 설치도 없이 그냥 돌아갑니다.
+Dialogue: 0,0:00:16.00,0:00:17.64,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Here's our demo shop:
+Dialogue: 0,0:00:17.64,0:00:18.74,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}an arcade that
+Dialogue: 0,0:00:18.74,0:00:20.23,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}sells game credits.
+Dialogue: 0,0:00:16.00,0:00:20.23,Ko,,0,0,0,,{\fad(120,120)}우리 시연용 가게입니다. 게임 크레딧을 파는 오락실입니다.
 Dialogue: 0,0:00:21.00,0:00:22.29,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}That panel is the
 Dialogue: 0,0:00:22.29,0:00:23.59,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}whole widget. One
 Dialogue: 0,0:00:23.59,0:00:24.58,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}call drops it
 Dialogue: 0,0:00:24.58,0:00:25.64,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}into any page.
 Dialogue: 0,0:00:21.00,0:00:25.64,Ko,,0,0,0,,{\fad(120,120)}저 패널이 위젯 전부입니다. 호출 한 번이면 어느 페이지에나 들어갑니다.
-Dialogue: 0,0:00:27.00,0:00:29.12,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Drop a coin in.
-Dialogue: 0,0:00:27.00,0:00:29.12,Ko,,0,0,0,,{\fad(120,120)}코인을 하나 넣습니다.
+Dialogue: 0,0:00:27.00,0:00:29.17,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}No wallet, no install.
+Dialogue: 0,0:00:29.17,0:00:30.66,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Drop a coin in.
+Dialogue: 0,0:00:27.00,0:00:30.66,Ko,,0,0,0,,{\fad(120,120)}지갑도 설치도 필요 없습니다. 코인을 하나 넣습니다.
 Dialogue: 0,0:00:31.00,0:00:32.46,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}The shop's server saw
 Dialogue: 0,0:00:32.46,0:00:34.06,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}the payment and granted
 Dialogue: 0,0:00:34.06,0:00:35.39,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}the credit. Payment

@@ -48,8 +48,8 @@
       "start": "00:16.000",
       "end": "00:21.000",
       "shot": "arcade, top of page",
-      "say": "This arcade is the shop. No wallet, no install, it just runs.",
-      "ko": "이 오락실이 가게입니다. 지갑도 설치도 없이 그냥 돌아갑니다."
+      "say": "Here's our demo shop: an arcade that sells game credits.",
+      "ko": "우리 시연용 가게입니다. 게임 크레딧을 파는 오락실입니다."
     },
     {
       "start": "00:21.000",
@@ -62,8 +62,8 @@
       "start": "00:27.000",
       "end": "00:31.000",
       "shot": "click INSERT COIN, the phases run",
-      "say": "Drop a coin in.",
-      "ko": "코인을 하나 넣습니다."
+      "say": "No wallet, no install. Drop a coin in.",
+      "ko": "지갑도 설치도 필요 없습니다. 코인을 하나 넣습니다."
     },
     {
       "start": "00:31.000",

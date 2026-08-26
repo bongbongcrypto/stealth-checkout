@@ -15,16 +15,16 @@ Starknet could already send money privately. Receiving it? Nobody built that.
 So we did.
 
 5
-00:00:16,000 --> 00:00:21,000
-This arcade is the shop. No wallet, no install, it just runs.
+00:00:16,000 --> 00:00:20,238
+Here's our demo shop: an arcade that sells game credits.
 
 6
 00:00:21,000 --> 00:00:25,646
 That panel is the whole widget. One call drops it into any page.
 
 7
-00:00:27,000 --> 00:00:29,126
-Drop a coin in.
+00:00:27,000 --> 00:00:30,662
+No wallet, no install. Drop a coin in.
 
 8
 00:00:31,000 --> 00:00:36,510

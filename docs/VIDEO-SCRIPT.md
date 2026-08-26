@@ -132,9 +132,9 @@ run the generator.
 | 0:04 | the honesty summary, ring on the HIDDEN row | Someone pays you privately. The chain never learns who. |
 | 0:08 | landing page, top | Starknet could already send money privately. Receiving it? Nobody built that. |
 | 0:13 | landing page, the three cards | So we did. |
-| 0:16 | arcade, top of page | This arcade is the shop. No wallet, no install, it just runs. |
+| 0:16 | arcade, top of page | Here's our demo shop: an arcade that sells game credits. |
 | 0:21 | cursor circles the widget panel | That panel is the whole widget. One call drops it into any page. |
-| 0:27 | click INSERT COIN, the phases run | Drop a coin in. |
+| 0:27 | click INSERT COIN, the phases run | No wallet, no install. Drop a coin in. |
 | 0:31 | credit granted, the game starts | The shop's server saw the payment and granted the credit. Payment in, product out. |
 | 0:38 | scroll up to the confirmation block | Now look at the price before you sign. |
 | 0:42 | highlight the total line | A one STRK coin costs seven. |

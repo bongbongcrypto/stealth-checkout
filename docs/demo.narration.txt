@@ -2,9 +2,9 @@ This is Stealth Checkout, a payment box you drop into any website.
 Someone pays you privately. The chain never learns who.
 Starknet could already send money privately. Receiving it? Nobody built that.
 So we did.
-This arcade is the shop. No wallet, no install, it just runs.
+Here's our demo shop: an arcade that sells game credits.
 That panel is the whole widget. One call drops it into any page.
-Drop a coin in.
+No wallet, no install. Drop a coin in.
 The shop's server saw the payment and granted the credit. Payment in, product out.
 Now look at the price before you sign.
 A one STRK coin costs seven.

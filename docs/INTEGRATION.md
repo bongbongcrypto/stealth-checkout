@@ -11,8 +11,9 @@ wherever your users are: a button, a QR, a chat message.
 2. Choose **one-time invoice** or **counter code** (below).
 3. Enter a FRESH receive address (one per invoice: that is what keeps your
    revenue untotalable) and, for a one-time invoice, the amount.
-4. Optionally give the invoice id you registered with your watcher, so the
-   webhook and the link agree on which order this is.
+4. Optionally give the invoice id you registered with your watcher (the
+   confirmation server Tier 2 sets up), so the webhook and the link agree on
+   which order this is.
 5. Share the link, or show the QR beside it. The payer gets a full checkout:
    wallet connect, private payment from their shielded balance, receipt. If
    they have not shielded yet, the widget tells them what to shield and why,

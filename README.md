@@ -25,8 +25,8 @@ Stealth Checkout is that missing accepting side.
 | Piece | What it does |
 |---|---|
 | [`strk20-pay`](packages/strk20-pay) | Framework-agnostic TS widget, plus a React binding. One call renders the whole flow: connect → check balance → pay → confirmed → receipt. It refuses to shield for the payer by default, and says why. |
-| Hosted invoice page | `apps/pay-live/?to=0x…&amount=25&id=…` — a shareable payment link, with a QR beside it. Served from the same origin as your watcher, it reads the amount from your server and refuses to take a payment for an invoice that server has already settled or never heard of. Served from anywhere else - including the copy on GitHub Pages - it renders a payable checkout behind a plain warning that the amount and destination came from the link and nothing has checked them. A link cannot nominate its own auditor. |
-| Watcher + webhooks | Confirms payments by watching per-invoice receive addresses over public RPC. No proving dependency, fully headless. Signed webhooks with a persisted retry queue. |
+| Watcher + webhooks | The merchant's confirmation server. Confirms payments by watching per-invoice receive addresses over public RPC. No proving dependency, fully headless. Signed webhooks with a persisted retry queue. |
+| Hosted invoice page | `apps/pay-live/?to=0x…&amount=25&id=…`: a shareable payment link, with a QR beside it. Served from the same origin as your watcher, it reads the amount from your server and refuses to take a payment for an invoice that server has already settled or never heard of. Served from anywhere else - including the copy on GitHub Pages - it renders a payable checkout behind a plain warning that the amount and destination came from the link and nothing has checked them. A link cannot nominate its own auditor. |
 | Merchant dashboard | Create invoices, watch them settle, release stuck rows, export the ledger as CSV. |
 | QR codes | **Dynamic**: one code per invoice, price baked in, shown next to the link and on every dashboard row. **Static**: a counter code printed once, where the payer enters the amount. Encoder written in-repo, no dependency. |
 | Honesty panel | Before signing, what this payment reveals on-chain and what it hides. Open by default. |
@@ -34,11 +34,11 @@ Stealth Checkout is that missing accepting side.
 
 ## Three findings worth more than the code
 
-**1. The pool charges a flat 6 STRK per operation, and documents it nowhere.**
+**1. STRK20's pool charges a flat 6 STRK per operation, and documents it nowhere.**
 Not a percentage: the same 6 STRK whether you move 1 STRK or 1,000. It is read live from the pool's `get_fee_amount()`. A checkout that shows a price and hides that is lying by omission, so the widget adds it to the total before the payer signs, and warns when it is larger than the invoice. It also means private payments have an economic floor: below roughly 60 STRK, the fee is more than 10% of the purchase.
 
 **2. Confirmation must be a delta, never a balance.**
-Invoice addresses can already hold funds — they need STRK to deploy before a merchant can sweep them, merchants reuse addresses by mistake, and airdrops happen. Confirming on the absolute balance marks such an invoice paid the moment it is created. The watcher captures a baseline at registration and confirms only on growth, and refuses to judge any row whose baseline is missing.
+Invoice addresses can already hold funds: they need STRK to deploy before a merchant can sweep them, merchants reuse addresses by mistake, and airdrops happen. Confirming on the absolute balance marks such an invoice paid the moment it is created. The watcher captures a baseline at registration and confirms only on growth, and refuses to judge any row whose baseline is missing.
 
 **3. A static QR publishes the shop's takings, and only the shop's.**
 A counter code is one printed square that every customer scans, which means one
@@ -130,8 +130,8 @@ hidden is the one that submitted it.)
 They are **not** end-to-end payments to a merchant. Both sent their 5 STRK to
 `0x4ea15bf3…`, the same address that made all five deposits, because they were
 run as tests of the mechanism with the only funds available. A payment to a
-fresh per-invoice address is the same operation with a different destination
-felt, but this table would be overclaiming if it said one had happened.
+fresh per-invoice address is the same operation with a different destination,
+but this table would be overclaiming if it said one had happened.
 
 The ledger balances exactly, and this is where the pool's undocumented fee was
 found: 55 STRK deposited, 10 withdrawn, 42 taken as a flat 6 STRK on each of

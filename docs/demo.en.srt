@@ -104,7 +104,7 @@ Signed webhook fires, the invoice flips to paid, and the order ships itself.
 
 27
 00:02:37,000 --> 00:02:44,000
-Seven mainnet transactions. Over two hundred tests. Nine rounds of tearing it apart.
+Real mainnet transactions, all verified. Over two hundred tests. Nine rounds of tearing it apart.
 
 28
 00:02:44,000 --> 00:02:50,000

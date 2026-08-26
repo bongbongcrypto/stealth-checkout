@@ -87,8 +87,12 @@ file.
 3. Start the demo server in a second terminal: `npm run dev`.
 4. Open the dashboard at `http://127.0.0.1:4173/apps/dashboard/index.html`,
    paste the watcher URL and the token, and register the invoice you are about
-   to pay. Serving the payer page from the same origin as the watcher is what
-   makes the server-verified path visible on camera.
+   to pay. **Use a fresh receive address that has never been paid before** — one
+   this wallet controls but has not received on. That makes this the first
+   genuine end-to-end payment to a real merchant address, which is the one thing
+   the seven earlier transactions do not show (they were withdrawals to our own
+   address, and the README says so). Serving the payer page from the same origin
+   as the watcher is what makes the server-verified path visible on camera.
 5. Tabs, in this order, so the recording is one left-to-right sweep:
    1. `https://github.com/bongbongcrypto/stealth-checkout` (README)
    2. `https://bongbongcrypto.github.io/stealth-checkout/`
@@ -150,7 +154,7 @@ run the generator.
 | 2:15 | watcher terminal, the arrival | The merchant's watcher picks it up off public RPC. No wallet open anywhere. |
 | 2:22 | the delta log line, zoomed | It counts what came in, not what's sitting there. Money already on the address proves nothing. |
 | 2:30 | webhook log, then the dashboard flips to PAID | Signed webhook fires, the invoice flips to paid, and the order ships itself. |
-| 2:37 | strk20.json, then the test run | Seven mainnet transactions. Over two hundred tests. Nine rounds of tearing it apart. |
+| 2:37 | strk20.json, then the test run | Real mainnet transactions, all verified. Over two hundred tests. Nine rounds of tearing it apart. |
 | 2:44 | README, what these do and do not show | And the README says what those transactions don't prove, too. |
 | 2:50 | landing page | Stealth Checkout. The receiving side of STRK20. Code, docs and the transactions are all in the repo. |
 
@@ -177,9 +181,12 @@ the one shot where an unreadable line costs a scored point.
    for someone who isn't logged in." Unlisted resolves without a login, but the
    rule is worded strictly and Public removes all doubt.
 4. Put the URL in `strk20.json` as `demo_video`.
-5. Only if you recorded a live payment: add its transaction hash to
-   `transactions` in the same commit. If the video shows the seven existing
-   transactions on Voyager instead, `transactions` is already complete.
+5. You recorded a live payment, so add its transaction hash to `transactions`
+   in `strk20.json` (now eight). Because it went to a fresh merchant address,
+   also update the README's "What these do and do not show" section: it is no
+   longer true that none of them is an end-to-end payment to a merchant. Then
+   run `npm run check:claims` — it re-counts everything and fails if any number
+   in the docs no longer matches.
 6. **Link-check.** Open the YouTube URL in a private window (logged out) and
    confirm it plays. The rules require every linked URL to resolve for someone
    not logged in, and a broken `demo_video` reads as no video at all.

@@ -64,7 +64,7 @@ where the choice is made, rather than in a footnote nobody opens.
 
 ```bash
 npm install
-npm test                 # 200 tests: widget, checkout core, QR encoder, watcher logic, HTTP API
+npm test                 # 205 tests: widget, checkout core, QR encoder, watcher logic, HTTP API
 npm run build:all        # widget dist + hosted-page bundle
 npm run dev              # demos at http://127.0.0.1:4173
 WATCHER_TOKEN=dev node server/watcher/watcher.mjs

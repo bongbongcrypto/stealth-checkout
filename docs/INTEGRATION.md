@@ -237,6 +237,28 @@ Your endpoint receives:
                "overpaidUnits": null, "confirmedAt": 1756600000000 } }
 ```
 
+### When a create refuses
+
+`POST /invoices` answers **503** when the invoice could not be written to the
+ledger. Nothing was created, the id is still free, and the right response is to
+fix the store and send the request again.
+
+This is not a formality. The invoice-to-order mapping lives only in that file,
+so a row that exists in the process and nowhere else is one a restart erases:
+you would file the order, the payer would pay, and the money would land on an
+address nothing is watching any more. It used to answer 201 in exactly that
+case, with the failure written to a log instead.
+
+`GET /status`, with your token, says whether the ledger is writable:
+
+```json
+{ "watching": 3, "invoices": 12, "store": "ok", "storePath": "…", "storeError": null }
+```
+
+It answers 503 rather than 200 when the store is unwritable, so a monitor can
+watch it. `/healthz` deliberately does not carry this: it is unauthenticated,
+and whether your ledger is healthy is not a stranger's business.
+
 ### Invoice states
 
 | State | Meaning | What to do |

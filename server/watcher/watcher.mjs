@@ -15,6 +15,7 @@
 //   GET    /invoices/:id            one invoice
 //   DELETE /invoices/:id            release a reserving / expired / needs_reregistration row
 //   POST   /invoices/:id/redeliver  re-queue this invoice's webhook
+//   GET    /status                  whether the ledger is writable (needs the token)
 //   GET    /healthz                 unauthenticated liveness (also /public/healthz)
 //
 // Payer-facing (unauthenticated, needs the invoice id AND its address, which
@@ -648,6 +649,15 @@ function persist() {
   return persistChain;
 }
 
+/**
+ * Whether the last write to the ledger reached the disk.
+ *
+ * Read by the create route, which must not answer 201 for a row that exists
+ * only in this process, and reported on /public/healthz so an operator finds
+ * out from something other than a log line nobody is reading.
+ */
+export const storeHealth = { ok: true, error: null, at: null };
+
 async function persistNow() {
   try {
     // The idempotency table rides with the ledger. It used to be memory-only,
@@ -660,9 +670,19 @@ async function persistNow() {
     );
     await writeFile(`${STORE_PATH}.tmp`, body);
     await rename(`${STORE_PATH}.tmp`, STORE_PATH);
+    storeHealth.ok = true;
+    storeHealth.error = null;
+    storeHealth.at = Date.now();
   } catch (err) {
     // Loud, because the invoice-to-order mapping lives ONLY here. Losing it
     // means a paid invoice can never be matched back to an order.
+    //
+    // Recorded as well as logged. This used to be a log line and nothing else,
+    // so a create whose write had failed still answered 201 and the merchant
+    // wrote an order against an invoice that would not survive a restart.
+    storeHealth.ok = false;
+    storeHealth.error = err.message;
+    storeHealth.at = Date.now();
     log(`PERSISTENCE FAILED (${STORE_PATH}): ${err.message}`);
   }
 }
@@ -834,12 +854,10 @@ export function makeServer() {
       return res.end();
     }
     // Health is unauthenticated and reveals nothing.
-    if (req.method === "GET" && url.pathname === "/healthz") {
-      return json(req, res, 200, { ok: true, watcher: true }, PUBLIC_CORS);
-    }
-    // The same answer under the payer-facing prefix, for callers that only
-    // grant themselves that path. Identical body, identical CORS.
-    if (req.method === "GET" && url.pathname === "/public/healthz") {
+    if (req.method === "GET" && (url.pathname === "/healthz" || url.pathname === "/public/healthz")) {
+      // Deliberately says nothing but "this process is answering". Whether the
+      // ledger is writable is the operator's business and not a stranger's, so
+      // it lives on the authenticated /status below.
       return json(req, res, 200, { ok: true, watcher: true }, PUBLIC_CORS);
     }
     // The payer's view. Unauthenticated by necessity: the payer's browser has
@@ -944,6 +962,23 @@ export function makeServer() {
         }
         if (key) rememberIdempotency(key, inv.id, fingerprint);
         await persist();
+
+        // 201 means the invoice exists. If the write did not reach the disk it
+        // exists in this process and nowhere else: the merchant would file an
+        // order against an id that a restart erases, the payer would pay, and
+        // the money would land on an address nothing is watching. Undo it and
+        // say so, because a merchant who is told to retry loses a request, and
+        // a merchant who is told it worked loses a payment.
+        if (!storeHealth.ok) {
+          invoices.delete(inv.id);
+          if (key) idempotency.delete(key);
+          return json(req, res, 503, {
+            error:
+              `the invoice could not be written to ${STORE_PATH} (${storeHealth.error}), so nothing was ` +
+              "created. Fix the store and send this request again.",
+          });
+        }
+
         log(`watching ${inv.id} -> ${inv.receiveAddress} for ${inv.amount} ${inv.token} (baseline ${inv.baselineUnits})`);
         return json(req, res, 201, inv);
       }
@@ -952,6 +987,21 @@ export function makeServer() {
       // undeletable because only terminal rows may be released. Cancelling
       // retires it without freeing its address, which is the part that must
       // never be reused.
+      if (req.method === "GET" && url.pathname === "/status") {
+        // Whether the last write to the ledger reached the disk. It used to be
+        // a log line and nothing else, so a create whose write had failed still
+        // answered 201 and the merchant filed an order against an invoice that
+        // a restart would erase.
+        return json(req, res, storeHealth.ok ? 200 : 503, {
+          watching: [...invoices.values()].filter((i) => i.status === "watching").length,
+          invoices: invoices.size,
+          store: storeHealth.ok ? "ok" : "unwritable",
+          storePath: STORE_PATH,
+          storeError: storeHealth.error,
+          storeCheckedAt: storeHealth.at,
+        });
+      }
+
       const cancel = url.pathname.match(/^\/invoices\/([\w.-]{1,64})\/cancel$/);
       if (req.method === "POST" && cancel) {
         const inv = invoices.get(cancel[1]);

@@ -29,7 +29,7 @@ export const SEGMENT_SLOTS = [
     // Not automatable, and named as such rather than left out. A missing entry
     // would silently shorten the video by forty-seven seconds and the narration
     // would run over the end.
-    owner: "this one needs a wallet signature, which is the owner's to give",
+    owner: "the owner signs this one at the desk",
   },
   {
     id: "e",

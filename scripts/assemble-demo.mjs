@@ -73,14 +73,32 @@ mkdirSync(OUT, { recursive: true });
 
 /** A stand-in for a slot with no recording, saying what belongs there. */
 function slate(slot, length, file) {
-  const text = (slot.owner ? `${slot.what.toUpperCase()}\\n\\n${slot.owner}` : `${slot.what}\\n\\nnot recorded yet`)
-    .replace(/:/g, "\\:")
-    .replace(/'/g, "");
+  // The font is named outright. There is no fontconfig on Windows, so drawtext
+  // with no fontfile fails with "Cannot load default config file: (null)",
+  // which reads like a broken filter rather than a missing font.
+  const font = ["C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/arial.ttf"].find((f) => existsSync(f));
+  if (!font) throw new Error("no font for the slate; looked for Segoe UI and Arial in C:/Windows/Fonts");
+  const fontArg = font.replace(/\\/g, "/").replace(/^([A-Za-z]):/, "$1\\:");
+
+  // One drawtext per line rather than a newline inside the text.
+  //
+  // drawtext's own \n survived neither the argument nor the filter parser here:
+  // the slate came out reading "THE LIVE MAINNET PAYMENTnnthis one needs", with
+  // both breaks flattened into the letter n. Two filters have nothing to escape.
+  const lines = slot.owner ? [slot.what.toUpperCase(), slot.owner] : [slot.what, "not recorded yet"];
+  // Apostrophes are dropped, not escaped. drawtext's text sits inside single
+  // quotes and ffmpeg's parser has no way to put a single quote inside them: a
+  // \' ended the quoted section early, and the rest of the sentence was read as
+  // filter options, which is why this failed with "option w not found".
+  const escape = (t) => t.replace(/[\\']/g, "").replace(/:/g, "\\:").replace(/[%,;]/g, " ");
+  const draw = lines.map(
+    (line, i) =>
+      `drawtext=fontfile='${fontArg}':text='${escape(line)}':fontcolor=${i === 0 ? "0xc8d8ee" : "0x8aa0c0"}:` +
+      `fontsize=${i === 0 ? 52 : 36}:x=(w-text_w)/2:y=(h/2)${i === 0 ? "-60" : "+30"}`,
+  );
   run([
     "-f", "lavfi", "-i", `color=c=0x0b1220:s=${WIDTH}x${HEIGHT}:d=${length}`,
-    "-vf",
-    `drawtext=text='${text}':fontcolor=0x8aa0c0:fontsize=44:x=(w-text_w)/2:y=(h-text_h)/2:line_spacing=18,` +
-      `drawbox=x=0:y=0:w=iw:h=ih:color=0x7fd1ff@0.25:t=6`,
+    "-vf", [...draw, "drawbox=x=0:y=0:w=iw:h=ih:color=0x7fd1ff@0.25:t=6"].join(","),
     "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", file,
   ]);
 }

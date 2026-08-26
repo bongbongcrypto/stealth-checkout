@@ -138,7 +138,7 @@ run the generator.
 | 0:31 | credit granted, the game starts | The shop's server saw the payment and granted the credit. Payment in, product out. |
 | 0:38 | scroll up to the confirmation block | Now look at the price before you sign. |
 | 0:42 | highlight the total line | A one STRK coin costs seven. |
-| 0:46 | highlight the pool fee row | The pool takes six every single time. Flat. Doesn't matter if you move one or a thousand. |
+| 0:46 | highlight the pool fee row | STRK20's pool takes six every single time. Flat. Doesn't matter if you move one or a thousand. |
 | 0:54 | the amber fee warning | That number is nowhere in STRK20's docs. We read it off the contract ourselves. |
 | 1:01 | the same warning, then scroll down | So a private payment has a minimum practical size. Under sixty STRK, fees eat more than ten percent. |
 | 1:09 | honesty panel, the public rows | This panel spells out what the payment leaks. Including the parts we couldn't hide. |
@@ -151,7 +151,7 @@ run the generator.
 | 1:54 | the red unverified-link banner | See the warning? Nothing here has checked this link's amount or address. We print that in red instead of hiding it. |
 | 2:02 | same banner | A link can't vouch for itself. So there's no box here for naming your own auditor. |
 | 2:08 | wallet popup, sign | Signing. The pool submits it, so the chain never records me as the sender. |
-| 2:15 | watcher terminal, the arrival | The merchant's watcher picks it up off public RPC. No wallet open anywhere. |
+| 2:15 | watcher terminal, the arrival | The merchant's server picks it up over public RPC. No wallet open anywhere. |
 | 2:22 | the delta log line, zoomed | It counts what came in, not what's sitting there. Money already on the address proves nothing. |
 | 2:30 | webhook log, then the dashboard flips to PAID | Signed webhook fires, the invoice flips to paid, and the order goes out. |
 | 2:37 | strk20.json, then the test run | Real mainnet transactions, all verified. Over two hundred tests. Nine rounds of tearing it apart. |

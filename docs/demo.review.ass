@@ -51,12 +51,12 @@ Dialogue: 0,0:00:38.00,0:00:40.48,Ko,,0,0,0,,{\fad(120,120)}서명하기 전에 
 Dialogue: 0,0:00:42.50,0:00:43.62,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}A one STRK
 Dialogue: 0,0:00:43.62,0:00:45.53,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}coin costs seven.
 Dialogue: 0,0:00:42.50,0:00:45.53,Ko,,0,0,0,,{\fad(120,120)}1 STRK짜리 코인인데 7을 냅니다.
-Dialogue: 0,0:00:46.50,0:00:47.91,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}The pool takes six
-Dialogue: 0,0:00:47.91,0:00:49.79,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}every single time. Flat.
-Dialogue: 0,0:00:49.79,0:00:51.12,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Doesn't matter if
-Dialogue: 0,0:00:51.12,0:00:52.06,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}you move one
-Dialogue: 0,0:00:52.06,0:00:53.16,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}or a thousand.
-Dialogue: 0,0:00:46.50,0:00:53.16,Ko,,0,0,0,,{\fad(120,120)}풀이 매번 6을 뗍니다. 고정입니다. 1을 옮기든 1000을 옮기든 같습니다.
+Dialogue: 0,0:00:46.50,0:00:48.41,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}STRK20's pool takes six
+Dialogue: 0,0:00:48.41,0:00:50.41,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}every single time. Flat.
+Dialogue: 0,0:00:50.41,0:00:51.83,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Doesn't matter if
+Dialogue: 0,0:00:51.83,0:00:52.83,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}you move one
+Dialogue: 0,0:00:52.83,0:00:54.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}or a thousand.
+Dialogue: 0,0:00:46.50,0:00:54.00,Ko,,0,0,0,,{\fad(120,120)}STRK20 풀이 매번 6을 뗍니다. 고정입니다. 1을 옮기든 1000을 옮기든 같습니다.
 Dialogue: 0,0:00:54.00,0:00:55.78,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}That number is nowhere
 Dialogue: 0,0:00:55.78,0:00:57.40,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}in STRK20's docs. We
 Dialogue: 0,0:00:57.40,0:00:58.29,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}read it off
@@ -115,11 +115,11 @@ Dialogue: 0,0:02:09.92,0:02:11.15,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy1
 Dialogue: 0,0:02:11.15,0:02:12.38,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}never records me
 Dialogue: 0,0:02:12.38,0:02:13.46,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}as the sender.
 Dialogue: 0,0:02:08.00,0:02:13.46,Ko,,0,0,0,,{\fad(120,120)}서명합니다. 풀이 대신 제출해서, 체인에 제가 발신자로 안 남습니다.
-Dialogue: 0,0:02:15.50,0:02:17.73,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}The merchant's watcher picks
-Dialogue: 0,0:02:17.73,0:02:18.45,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}it up off
-Dialogue: 0,0:02:18.45,0:02:19.57,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}public RPC. No
-Dialogue: 0,0:02:19.57,0:02:21.25,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}wallet open anywhere.
-Dialogue: 0,0:02:15.50,0:02:21.25,Ko,,0,0,0,,{\fad(120,120)}가게 워처가 공개 RPC에서 그걸 잡아냅니다. 지갑은 어디에도 안 열려 있습니다.
+Dialogue: 0,0:02:15.50,0:02:17.64,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}The merchant's server picks
+Dialogue: 0,0:02:17.64,0:02:18.44,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}it up over
+Dialogue: 0,0:02:18.44,0:02:19.55,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}public RPC. No
+Dialogue: 0,0:02:19.55,0:02:21.22,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}wallet open anywhere.
+Dialogue: 0,0:02:15.50,0:02:21.22,Ko,,0,0,0,,{\fad(120,120)}가게 서버가 공개 RPC에서 그걸 잡아냅니다. 지갑은 어디에도 안 열려 있습니다.
 Dialogue: 0,0:02:22.50,0:02:23.72,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}It counts what came
 Dialogue: 0,0:02:23.72,0:02:25.14,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}in, not what's sitting
 Dialogue: 0,0:02:25.14,0:02:26.62,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}there. Money already on

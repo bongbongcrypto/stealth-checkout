@@ -39,8 +39,8 @@ Now look at the price before you sign.
 A one STRK coin costs seven.
 
 11
-00:00:46,500 --> 00:00:53,162
-The pool takes six every single time. Flat. Doesn't matter if you move one or a thousand.
+00:00:46,500 --> 00:00:54,000
+STRK20's pool takes six every single time. Flat. Doesn't matter if you move one or a thousand.
 
 12
 00:00:54,000 --> 00:01:00,158
@@ -91,8 +91,8 @@ A link can't vouch for itself. So there's no box here for naming your own audito
 Signing. The pool submits it, so the chain never records me as the sender.
 
 24
-00:02:15,500 --> 00:02:21,250
-The merchant's watcher picks it up off public RPC. No wallet open anywhere.
+00:02:15,500 --> 00:02:21,226
+The merchant's server picks it up over public RPC. No wallet open anywhere.
 
 25
 00:02:22,500 --> 00:02:28,370

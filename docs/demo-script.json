@@ -90,8 +90,8 @@
       "start": "00:46.500",
       "end": "00:54.000",
       "shot": "highlight the pool fee row",
-      "say": "The pool takes six every single time. Flat. Doesn't matter if you move one or a thousand.",
-      "ko": "풀이 매번 6을 뗍니다. 고정입니다. 1을 옮기든 1000을 옮기든 같습니다."
+      "say": "STRK20's pool takes six every single time. Flat. Doesn't matter if you move one or a thousand.",
+      "ko": "STRK20 풀이 매번 6을 뗍니다. 고정입니다. 1을 옮기든 1000을 옮기든 같습니다."
     },
     {
       "start": "00:54.000",
@@ -181,8 +181,8 @@
       "start": "02:15.500",
       "end": "02:22.500",
       "shot": "watcher terminal, the arrival",
-      "say": "The merchant's watcher picks it up off public RPC. No wallet open anywhere.",
-      "ko": "가게 워처가 공개 RPC에서 그걸 잡아냅니다. 지갑은 어디에도 안 열려 있습니다."
+      "say": "The merchant's server picks it up over public RPC. No wallet open anywhere.",
+      "ko": "가게 서버가 공개 RPC에서 그걸 잡아냅니다. 지갑은 어디에도 안 열려 있습니다."
     },
     {
       "start": "02:22.500",

@@ -112,7 +112,7 @@ mountCheckout(document.getElementById("checkout")!, {
       by default and lists what goes on-chain and what does not. Overclaiming privacy is the one
       thing this must never do.</li>
       <li><strong>Shows the pool's fee, and gets its direction right.</strong> The STRK20 pool charges
-      a flat <strong>6 STRK per operation</strong> and documents it nowhere. It comes <em>out of</em> a
+      a flat <strong>6 STRK per operation</strong>, which the docs do not cover yet. It comes <em>out of</em> a
       deposit and <em>on top of</em> a payment, so a payer who has to shield first pays it twice: 22
       STRK to settle a 10 STRK invoice. The widget reads it from the contract, quotes the real total
       before you sign, and warns when it is larger than the invoice.</li>

@@ -34,7 +34,7 @@ Stealth Checkout is that missing accepting side.
 
 ## Three findings worth more than the code
 
-**1. STRK20's pool charges a flat 6 STRK per operation, and documents it nowhere.**
+**1. STRK20's pool charges a flat 6 STRK per operation, which the docs do not cover yet.**
 Not a percentage: the same 6 STRK whether you move 1 STRK or 1,000. It is read live from the pool's `get_fee_amount()`. A checkout that shows a price and hides that is lying by omission, so the widget adds it to the total before the payer signs, and warns when it is larger than the invoice. It also means private payments have an economic floor: below roughly 60 STRK, the fee is more than 10% of the purchase.
 
 **2. Confirmation must be a delta, never a balance.**
@@ -141,7 +141,7 @@ arrival over public RPC and delivered the signed `payment.confirmed` webhook.
 The payer's wallet appears nowhere in that transaction, and the demo video's
 live section is a recording of this payment being made.
 
-The ledger balances exactly, and this is where the pool's undocumented fee was
+The ledger balances exactly, and this arithmetic is how the flat fee was
 found. The first seven operations: 55 STRK deposited, 10 withdrawn, 42 taken as
 a flat 6 STRK on each operation, leaving 3 STRK shielded. The direction matters
 and is not obvious: the fee comes **out of** a deposit and **on top of** a

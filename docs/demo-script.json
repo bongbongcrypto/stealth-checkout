@@ -48,8 +48,8 @@
       "start": "00:16.000",
       "end": "00:21.000",
       "shot": "arcade, top of page",
-      "say": "Here's our demo shop: an arcade that sells game credits.",
-      "ko": "우리 시연용 가게입니다. 게임 크레딧을 파는 오락실입니다."
+      "say": "Here's the demo: an arcade selling game credits on a practice wallet.",
+      "ko": "시연입니다. 연습용 지갑으로 도는, 게임 크레딧 파는 오락실입니다."
     },
     {
       "start": "00:21.000",
@@ -62,8 +62,8 @@
       "start": "00:27.000",
       "end": "00:31.000",
       "shot": "click INSERT COIN, the phases run",
-      "say": "No wallet, no install. Drop a coin in.",
-      "ko": "지갑도 설치도 필요 없습니다. 코인을 하나 넣습니다."
+      "say": "Nothing to install. Drop a coin in.",
+      "ko": "설치할 것 없이, 코인을 넣습니다."
     },
     {
       "start": "00:31.000",
@@ -97,8 +97,8 @@
       "start": "00:54.000",
       "end": "01:01.000",
       "shot": "the amber fee warning",
-      "say": "That number is nowhere in STRK20's docs. We read it off the contract ourselves.",
-      "ko": "그 숫자는 STRK20 문서 어디에도 없습니다. 우리가 컨트랙트에서 직접 읽어냈습니다."
+      "say": "That number isn't documented yet. We read it live off the contract and show it up front.",
+      "ko": "그 숫자는 아직 문서에 없습니다. 컨트랙트에서 실시간으로 읽어 미리 보여줍니다."
     },
     {
       "start": "01:01.000",
@@ -153,8 +153,8 @@
       "start": "01:50.000",
       "end": "01:54.000",
       "shot": "hosted invoice page, mainnet, real wallet",
-      "say": "Mainnet now. Real money.",
-      "ko": "이제 메인넷입니다. 진짜 돈입니다."
+      "say": "Mainnet. Real wallet. Real money.",
+      "ko": "메인넷. 진짜 지갑. 진짜 돈."
     },
     {
       "start": "01:54.000",

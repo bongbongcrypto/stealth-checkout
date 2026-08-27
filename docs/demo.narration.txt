@@ -2,14 +2,14 @@ This is Stealth Checkout, a payment box you drop into any website.
 Someone pays you privately. The chain never learns who.
 Starknet could already send money privately. Receiving it? Nobody built that.
 So we did.
-Here's our demo shop: an arcade that sells game credits.
+Here's the demo: an arcade selling game credits on a practice wallet.
 That panel is the whole widget. One call drops it into any page.
-No wallet, no install. Drop a coin in.
+Nothing to install. Drop a coin in.
 The shop's server saw the payment and granted the credit. Payment in, product out.
 Now look at the price before you sign.
 A one STRK coin costs seven.
 STRK20's pool takes six every single time. Flat. Doesn't matter if you move one or a thousand.
-That number is nowhere in STRK20's docs. We read it off the contract ourselves.
+That number isn't documented yet. We read it live off the contract and show it up front.
 So a private payment has a minimum practical size. Under sixty STRK, fees eat more than ten percent.
 This panel spells out what the payment leaks. Including the parts we couldn't hide.
 Merchant side. Every invoice gets a link and a QR.
@@ -17,7 +17,7 @@ Or print one code and stick it on the counter. The customer picks the amount.
 One printed code means one address forever. Anyone can add up your sales.
 Your customers stay anonymous either way. We tell you that before you choose.
 The QR encoder is ours. No dependencies, checked against the ISO spec.
-Mainnet now. Real money.
+Mainnet. Real wallet. Real money.
 See the warning? Nothing here has checked this link's amount or address. We print that in red instead of hiding it.
 A link can't vouch for itself. So there's no box here for naming your own auditor.
 Signing. The pool submits it, so the chain never records me as the sender.

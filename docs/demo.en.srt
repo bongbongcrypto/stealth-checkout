@@ -15,16 +15,16 @@ Starknet could already send money privately. Receiving it? Nobody built that.
 So we did.
 
 5
-00:00:16,000 --> 00:00:20,238
-Here's our demo shop: an arcade that sells game credits.
+00:00:16,000 --> 00:00:20,622
+Here's the demo: an arcade selling game credits on a practice wallet.
 
 6
 00:00:21,000 --> 00:00:25,646
 That panel is the whole widget. One call drops it into any page.
 
 7
-00:00:27,000 --> 00:00:30,662
-No wallet, no install. Drop a coin in.
+00:00:27,000 --> 00:00:29,990
+Nothing to install. Drop a coin in.
 
 8
 00:00:31,000 --> 00:00:36,510
@@ -43,8 +43,8 @@ A one STRK coin costs seven.
 STRK20's pool takes six every single time. Flat. Doesn't matter if you move one or a thousand.
 
 12
-00:00:54,000 --> 00:01:00,158
-That number is nowhere in STRK20's docs. We read it off the contract ourselves.
+00:00:54,000 --> 00:00:59,726
+That number isn't documented yet. We read it live off the contract and show it up front.
 
 13
 00:01:01,000 --> 00:01:08,646
@@ -75,8 +75,8 @@ Your customers stay anonymous either way. We tell you that before you choose.
 The QR encoder is ours. No dependencies, checked against the ISO spec.
 
 20
-00:01:50,000 --> 00:01:52,342
-Mainnet now. Real money.
+00:01:50,000 --> 00:01:53,254
+Mainnet. Real wallet. Real money.
 
 21
 00:01:54,000 --> 00:02:01,310

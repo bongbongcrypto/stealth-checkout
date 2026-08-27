@@ -28,18 +28,18 @@ Dialogue: 0,0:00:12.62,0:00:13.90,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy1
 Dialogue: 0,0:00:08.60,0:00:13.90,Ko,,0,0,0,,{\fad(120,120)}스타크넷은 이미 비공개로 보낼 수 있었습니다. 받는 쪽은? 아무도 안 만들었습니다.
 Dialogue: 0,0:00:13.90,0:00:16.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}So we did.
 Dialogue: 0,0:00:13.90,0:00:16.00,Ko,,0,0,0,,{\fad(120,120)}그래서 우리가 만들었습니다.
-Dialogue: 0,0:00:16.00,0:00:17.64,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Here's our demo shop:
-Dialogue: 0,0:00:17.64,0:00:18.74,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}an arcade that
-Dialogue: 0,0:00:18.74,0:00:20.23,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}sells game credits.
-Dialogue: 0,0:00:16.00,0:00:20.23,Ko,,0,0,0,,{\fad(120,120)}우리 시연용 가게입니다. 게임 크레딧을 파는 오락실입니다.
+Dialogue: 0,0:00:16.00,0:00:17.31,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Here's the demo: an
+Dialogue: 0,0:00:17.31,0:00:19.17,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}arcade selling game credits
+Dialogue: 0,0:00:19.17,0:00:20.62,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}on a practice wallet.
+Dialogue: 0,0:00:16.00,0:00:20.62,Ko,,0,0,0,,{\fad(120,120)}시연입니다. 연습용 지갑으로 도는, 게임 크레딧 파는 오락실입니다.
 Dialogue: 0,0:00:21.00,0:00:22.29,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}That panel is the
 Dialogue: 0,0:00:22.29,0:00:23.59,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}whole widget. One
 Dialogue: 0,0:00:23.59,0:00:24.58,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}call drops it
 Dialogue: 0,0:00:24.58,0:00:25.64,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}into any page.
 Dialogue: 0,0:00:21.00,0:00:25.64,Ko,,0,0,0,,{\fad(120,120)}저 패널이 위젯 전부입니다. 호출 한 번이면 어느 페이지에나 들어갑니다.
-Dialogue: 0,0:00:27.00,0:00:29.17,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}No wallet, no install.
-Dialogue: 0,0:00:29.17,0:00:30.66,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Drop a coin in.
-Dialogue: 0,0:00:27.00,0:00:30.66,Ko,,0,0,0,,{\fad(120,120)}지갑도 설치도 필요 없습니다. 코인을 하나 넣습니다.
+Dialogue: 0,0:00:27.00,0:00:29.11,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Nothing to install. Drop
+Dialogue: 0,0:00:29.11,0:00:29.99,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}a coin in.
+Dialogue: 0,0:00:27.00,0:00:29.99,Ko,,0,0,0,,{\fad(120,120)}설치할 것 없이, 코인을 넣습니다.
 Dialogue: 0,0:00:31.00,0:00:32.46,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}The shop's server saw
 Dialogue: 0,0:00:32.46,0:00:34.06,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}the payment and granted
 Dialogue: 0,0:00:34.06,0:00:35.39,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}the credit. Payment
@@ -57,11 +57,12 @@ Dialogue: 0,0:00:50.41,0:00:51.83,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy1
 Dialogue: 0,0:00:51.83,0:00:52.83,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}you move one
 Dialogue: 0,0:00:52.83,0:00:54.00,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}or a thousand.
 Dialogue: 0,0:00:46.50,0:00:54.00,Ko,,0,0,0,,{\fad(120,120)}STRK20 풀이 매번 6을 뗍니다. 고정입니다. 1을 옮기든 1000을 옮기든 같습니다.
-Dialogue: 0,0:00:54.00,0:00:55.78,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}That number is nowhere
-Dialogue: 0,0:00:55.78,0:00:57.40,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}in STRK20's docs. We
-Dialogue: 0,0:00:57.40,0:00:58.29,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}read it off
-Dialogue: 0,0:00:58.29,0:01:00.15,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}the contract ourselves.
-Dialogue: 0,0:00:54.00,0:01:00.15,Ko,,0,0,0,,{\fad(120,120)}그 숫자는 STRK20 문서 어디에도 없습니다. 우리가 컨트랙트에서 직접 읽어냈습니다.
+Dialogue: 0,0:00:54.00,0:00:55.90,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}That number isn't documented
+Dialogue: 0,0:00:55.90,0:00:56.93,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}yet. We read it
+Dialogue: 0,0:00:56.93,0:00:57.75,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}live off the
+Dialogue: 0,0:00:57.75,0:00:58.90,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}contract and show
+Dialogue: 0,0:00:58.90,0:00:59.72,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}it up front.
+Dialogue: 0,0:00:54.00,0:00:59.72,Ko,,0,0,0,,{\fad(120,120)}그 숫자는 아직 문서에 없습니다. 컨트랙트에서 실시간으로 읽어 미리 보여줍니다.
 Dialogue: 0,0:01:01.00,0:01:02.59,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}So a private payment
 Dialogue: 0,0:01:02.59,0:01:04.42,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}has a minimum practical
 Dialogue: 0,0:01:04.42,0:01:06.25,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}size. Under sixty STRK,
@@ -96,8 +97,9 @@ Dialogue: 0,0:01:43.00,0:01:44.48,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy1
 Dialogue: 0,0:01:44.48,0:01:47.10,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}ours. No dependencies, checked
 Dialogue: 0,0:01:47.10,0:01:48.94,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}against the ISO spec.
 Dialogue: 0,0:01:43.00,0:01:48.94,Ko,,0,0,0,,{\fad(120,120)}QR 인코더는 우리가 짰습니다. 의존성 없이 ISO 규격과 대조했습니다.
-Dialogue: 0,0:01:50.00,0:01:52.34,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Mainnet now. Real money.
-Dialogue: 0,0:01:50.00,0:01:52.34,Ko,,0,0,0,,{\fad(120,120)}이제 메인넷입니다. 진짜 돈입니다.
+Dialogue: 0,0:01:50.00,0:01:52.13,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Mainnet. Real wallet.
+Dialogue: 0,0:01:52.13,0:01:53.25,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}Real money.
+Dialogue: 0,0:01:50.00,0:01:53.25,Ko,,0,0,0,,{\fad(120,120)}메인넷. 진짜 지갑. 진짜 돈.
 Dialogue: 0,0:01:54.00,0:01:55.59,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}See the warning? Nothing
 Dialogue: 0,0:01:55.59,0:01:56.99,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}here has checked this
 Dialogue: 0,0:01:56.99,0:01:58.65,Pop,,0,0,0,,{\fad(50,50)\t(0,90,\fscx112\fscy112)\t(90,190,\fscx100\fscy100)}link's amount or address.

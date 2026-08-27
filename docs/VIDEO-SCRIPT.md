@@ -132,14 +132,14 @@ run the generator.
 | 0:04 | the honesty summary, ring on the HIDDEN row | Someone pays you privately. The chain never learns who. |
 | 0:08 | landing page, top | Starknet could already send money privately. Receiving it? Nobody built that. |
 | 0:13 | landing page, the three cards | So we did. |
-| 0:16 | arcade, top of page | Here's our demo shop: an arcade that sells game credits. |
+| 0:16 | arcade, top of page | Here's the demo: an arcade selling game credits on a practice wallet. |
 | 0:21 | cursor circles the widget panel | That panel is the whole widget. One call drops it into any page. |
-| 0:27 | click INSERT COIN, the phases run | No wallet, no install. Drop a coin in. |
+| 0:27 | click INSERT COIN, the phases run | Nothing to install. Drop a coin in. |
 | 0:31 | credit granted, the game starts | The shop's server saw the payment and granted the credit. Payment in, product out. |
 | 0:38 | scroll up to the confirmation block | Now look at the price before you sign. |
 | 0:42 | highlight the total line | A one STRK coin costs seven. |
 | 0:46 | highlight the pool fee row | STRK20's pool takes six every single time. Flat. Doesn't matter if you move one or a thousand. |
-| 0:54 | the amber fee warning | That number is nowhere in STRK20's docs. We read it off the contract ourselves. |
+| 0:54 | the amber fee warning | That number isn't documented yet. We read it live off the contract and show it up front. |
 | 1:01 | the same warning, then scroll down | So a private payment has a minimum practical size. Under sixty STRK, fees eat more than ten percent. |
 | 1:09 | honesty panel, the public rows | This panel spells out what the payment leaks. Including the parts we couldn't hide. |
 | 1:16 | dashboard with live invoices | Merchant side. Every invoice gets a link and a QR. |
@@ -147,7 +147,7 @@ run the generator.
 | 1:29 | the advice text under the selector | One printed code means one address forever. Anyone can add up your sales. |
 | 1:36 | same | Your customers stay anonymous either way. We tell you that before you choose. |
 | 1:43 | src/qr.ts, then the test run | The QR encoder is ours. No dependencies, checked against the ISO spec. |
-| 1:50 | hosted invoice page, mainnet, real wallet | Mainnet now. Real money. |
+| 1:50 | hosted invoice page, mainnet, real wallet | Mainnet. Real wallet. Real money. |
 | 1:54 | the red unverified-link banner | See the warning? Nothing here has checked this link's amount or address. We print that in red instead of hiding it. |
 | 2:02 | same banner | A link can't vouch for itself. So there's no box here for naming your own auditor. |
 | 2:08 | wallet popup, sign | Signing. The pool submits it, so the chain never records me as the sender. |

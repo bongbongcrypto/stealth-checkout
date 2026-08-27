@@ -176,10 +176,13 @@ the one shot where an unreadable line costs a scored point.
 1. Generate the voice from `demo.narration.txt`.
 2. Lay the recording, the audio and `demo.short.ass` together, and export at
    1080p.
-3. Upload to YouTube as **Public**, not unlisted. The sprint rules say
-   "Public only. Your repository, your demo, and anything you link must resolve
-   for someone who isn't logged in." Unlisted resolves without a login, but the
-   rule is worded strictly and Public removes all doubt.
+3. Host it where the repo lives. The sprint rules say "Public only. Your
+   repository, your demo, and anything you link must resolve for someone who
+   isn't logged in", and the hub checks only that `demo_video` is non-empty.
+   A file under 100MB committed to the repo plays in GitHub's own viewer with
+   no login, and it keeps the submission pseudonymous: a YouTube upload hangs
+   someone's Google account name over the video, and this repo does not say
+   whose it is. This one shipped as `docs/demo.mp4`.
 4. Put the URL in `strk20.json` as `demo_video`.
 5. You recorded a live payment, so add its transaction hash to `transactions`
    in `strk20.json` (now eight). Because it went to a fresh merchant address,

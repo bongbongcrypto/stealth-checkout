@@ -156,7 +156,7 @@ No contracts were deployed, so these are judged against the pool alone.
 - [x] Public repo, MIT licensed
 - [x] Live demo URL
 - [x] 3+ mainnet transactions against the STRK20 pool in `strk20.json`
-- [ ] 3-minute demo video
+- [x] 3-minute demo video ([docs/demo.mp4](docs/demo.mp4), including the live mainnet payment)
 - [ ] `strk20-pay` published to npm (packaged and ready; publishing is the owner's to run)
 
 ## License

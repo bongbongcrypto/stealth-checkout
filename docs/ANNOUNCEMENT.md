@@ -1,6 +1,12 @@
-# Builders-group announcement (draft for owner to post)
+# Announcement text (posted to X on 2026-08-27)
 
-> Post this in the STRK20 sprint Telegram when ready. Plain text below the line.
+> An earlier draft of this header said to post it "in the STRK20 sprint
+> Telegram". No such group chat exists: the hub's docs carry no invite link
+> anywhere, and the `telegram` field in the registry is how the STRK20 team
+> contacts a project, not a room. The sprint's stated channel for reaching the
+> team is issues on the hub repository, which is for questions rather than
+> announcements. This text went out on X instead, and stays here for reuse
+> wherever builders actually gather.
 
 ---
 

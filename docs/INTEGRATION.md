@@ -170,7 +170,8 @@ element.innerHTML = qrCodeSvg(payUrl, { scale: 8 });
 ```
 
 `qrCodeSvg` returns an SVG string; `qrDataUri` returns the same thing packed for
-an `<img src>`; `encodeQr` gives you the raw module matrix if you would rather
+an `<img src>`; `encodeQr` returns `{ size, modules, version, mask }`, where
+`modules` is the `size` by `size` boolean matrix, if you would rather
 draw it yourself. Byte mode, error-correction level M, versions 1 to 20, which
 is 666 bytes and far more than a payment URL.
 

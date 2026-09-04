@@ -199,7 +199,8 @@ if a browser needs to reach it; that grant is an exact origin, never a wildcard.
 Two routes are deliberately outside the token, because the people who need them
 have no token:
 
-- `GET /healthz` returns `{ok:true}` and nothing else.
+- `GET /healthz` returns `{ok:true,watcher:true}`: that the process is up, and
+  nothing about your ledger.
 - `GET /public/invoices/:id?to=0x…` returns one invoice's terms, and only to a
   caller who presents both its id **and** its receive address, which is exactly
   what a payment link carries. It is readable from any origin
@@ -254,7 +255,8 @@ case, with the failure written to a log instead.
 `GET /status`, with your token, says whether the ledger is writable:
 
 ```json
-{ "watching": 3, "invoices": 12, "store": "ok", "storePath": "…", "storeError": null }
+{ "watching": 3, "invoices": 12, "store": "ok", "storePath": "…", "storeError": null,
+  "storeCheckedAt": 1756600000000 }
 ```
 
 It answers 503 rather than 200 when the store is unwritable, so a monitor can
@@ -272,6 +274,38 @@ and whether your ledger is healthy is not a stranger's business.
 | `expired` | The deadline passed with nothing received. | Nothing. Deletable. |
 | `reserving` | A create crashed mid-flight. | Delete it and create again. |
 | `needs_reregistration` | A row from a build that predates baselines. | Delete it and create again. |
+| `cancelled` | You called off a `watching` invoice that had received nothing. | Nothing. Its address stays claimed and is never reused. |
+| `written_off` | You retired an `underpaid` invoice rather than chasing it. | Nothing. Also never polled again, and its address stays claimed. |
+
+### Getting out of a row you no longer want
+
+Two exits, and both refuse to bury money. Each asks the chain for the address's
+live balance first rather than trusting `receivedUnits`, which is only written
+by a poll: a payment landing between the last cycle and your call would
+otherwise be sealed into a state that is never polled again.
+
+```bash
+# call off an invoice nobody has paid
+curl -X POST http://127.0.0.1:8787/invoices/order-42/cancel \
+  -H "Authorization: Bearer $WATCHER_TOKEN"
+
+# retire an underpaid invoice instead of chasing the shortfall
+curl -X POST http://127.0.0.1:8787/invoices/order-42/write-off \
+  -H "Authorization: Bearer $WATCHER_TOKEN"
+```
+
+`cancel` takes only a `watching` invoice, and refuses with 409 if anything has
+arrived: an invoice with money at its address is resolved, not cancelled.
+
+`write-off` takes only an `underpaid` one. It exists because anyone who has seen
+a payment link can send one wei to its address, which makes the row `underpaid`
+and therefore neither deletable nor cancellable. Without a way out, a stranger
+could pin every invoice a merchant issues, for dust. It refuses with 409 if the
+invoice has since been paid in full.
+
+Both keep the address claimed forever, which is the part that must not be
+undone: releasing an address that has ever received money is how a later
+payer's funds land somewhere already swept.
 
 An `overpaidUnits` field appears on any settled invoice that received more than
 it asked for. Nothing is done with it automatically: silently keeping an

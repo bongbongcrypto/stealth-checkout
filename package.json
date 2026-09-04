@@ -12,7 +12,8 @@
     "build:pay": "esbuild apps/pay-live/main.ts --bundle --format=esm --target=es2022 --outfile=apps/pay-live/bundle.js",
     "build:all": "npm run build && npm run build:pay",
     "dev": "node server/dev-static.mjs",
-    "check:claims": "node scripts/check-claims.mjs"
+    "check:claims": "node scripts/check-claims.mjs",
+    "check:docs": "node scripts/check-docs.mjs"
   },
   "devDependencies": {
     "esbuild": "0.25.9",

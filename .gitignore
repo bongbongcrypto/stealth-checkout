@@ -41,3 +41,8 @@ docs/demo.narration.wav
 # video lives on YouTube and its URL is in strk20.json; the raw takes are
 # large, are re-shot rather than edited, and are nobody else's business.
 docs/recording/
+
+# Internal working notes: never publish these in a public submission repo
+PROGRESS.md
+CLAUDE.md
+AGENTS.md
